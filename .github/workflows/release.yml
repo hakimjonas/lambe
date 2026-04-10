@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: lam-linux-x64
+            mcp-artifact: lam-mcp-linux-x64
+          - os: macos-latest
+            artifact: lam-macos-x64
+            mcp-artifact: lam-mcp-macos-x64
+          - os: windows-latest
+            artifact: lam-windows-x64.exe
+            mcp-artifact: lam-mcp-windows-x64.exe
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dart-lang/setup-dart@v1.7.2
+
+      - run: dart pub get
+      - run: dart compile exe bin/lam.dart -o ${{ matrix.artifact }}
+      - run: dart compile exe bin/mcp_server.dart -o ${{ matrix.mcp-artifact }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.mcp-artifact }}
+          path: ${{ matrix.mcp-artifact }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*

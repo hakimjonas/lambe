@@ -1,0 +1,26 @@
+name: lambe_test
+description: >-
+  Test matchers for Lambé queries. Assert on structured data using
+  Lambé's pipeline DSL in your Dart tests.
+version: 0.1.0
+repository: https://github.com/hakimjonas/lambe
+issue_tracker: https://github.com/hakimjonas/lambe/issues
+topics:
+  - testing
+  - query
+  - json
+
+environment:
+  sdk: ^3.7.0
+
+dependencies:
+  lambe: ^0.1.0
+  matcher: ^0.12.0
+
+dependency_overrides:
+  lambe:
+    path: ..
+
+dev_dependencies:
+  test: ^1.31.0
+  lints: ^6.0.0

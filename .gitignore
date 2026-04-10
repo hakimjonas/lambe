@@ -1,0 +1,18 @@
+.dart_tool/
+.packages
+pubspec.lock
+build/
+doc/api/
+
+.idea/
+*.iml
+.vscode/
+
+.DS_Store
+Thumbs.db
+
+# Compiled binaries
+lam-mcp
+
+# Local dependency overrides
+pubspec_overrides.yaml

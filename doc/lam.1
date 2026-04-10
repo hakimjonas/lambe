@@ -1,0 +1,239 @@
+.TH "LAM" "1" "April 2026" "Lambë 0.1.0" ""
+.SH AUTHOR
+Hakim Jonas Ghoula
+.SH NAME
+.PP
+lam - query structured data files
+.SH SYNOPSIS
+.PP
+\fBlam\fR [\fIOPTIONS\fR] \fIEXPRESSION\fR [\fIFILE\fR]
+.PP
+\fBlam\fR \fB-i\fR [\fIOPTIONS\fR] \fIFILE\fR
+.SH DESCRIPTION
+.PP
+Query JSON, YAML, TOML, HCL, XML, CSV, and TSV files using a composable pipeline DSL. Format is auto-detected from file extension.
+.PP
+If no file is given, reads from standard input.
+.SH OPTIONS
+.TP
+\fB-p\fR, \fB--pretty\fR
+Pretty-print output. On by default.
+.TP
+\fB--no-pretty\fR
+Disable pretty-printing.
+.TP
+\fB-r\fR, \fB--raw\fR
+Output strings without quotes.
+.TP
+\fB-f\fR, \fB--format\fR \fIFMT\fR
+Input format. One of: json, yaml, toml, hcl, xml, csv, tsv. Auto-detected from file extension if omitted.
+.TP
+\fB-t\fR, \fB--to\fR \fIFMT\fR
+Output format. One of: json, yaml, toml, xml, csv, tsv, hcl. Default is json.
+.TP
+\fB--schema\fR
+Show the data structure with type names instead of values.
+.TP
+\fB--assert\fR
+Evaluate the expression and exit with code 0 if the result is true, 1 if false.
+.TP
+\fB-i\fR, \fB--interactive\fR
+Start the interactive REPL. Requires a file argument.
+.TP
+\fB-h\fR, \fB--help\fR
+Show usage information.
+.SH QUERY LANGUAGE
+.PP
+Queries start with \fB.\fR (the current document) and chain operations with \fB|\fR.
+.SS Field access
+.PP
+\fB.name\fR accesses a field. \fB.a.b.c\fR chains access. Missing fields return null.
+.SS Indexing
+.PP
+\fB.[0]\fR indexes into a list. \fB.[\fR-1\fB]\fR indexes from the end. Out of bounds returns null.
+.SS Slicing
+.PP
+\fB.[1:3]\fR extracts elements 1 and 2. \fB.[:3]\fR from the start. \fB.[2:]\fR to the end. \fB.[:-1]\fR all except the last.
+.SS Arithmetic
+.PP
++, -, *, /, % on numbers.
+.SS Comparison
+.PP
+<, >, <=, >= on numbers. ==, != on any type.
+.SS Boolean logic
+.PP
+&&, ||, ! with short-circuit evaluation.
+.SS String interpolation
+.PP
+\fB"\\(.name) is \\(.age)"\fR evaluates expressions inside strings.
+.SS Object construction
+.PP
+{name, total: .price * .qty} constructs a new object. {name} expands to {name: .name}.
+.SS Conditionals
+.PP
+\fBif\fR \fIcond\fR \fBthen\fR \fIa\fR \fBelse\fR \fIb\fR
+.SS Pipelines
+.PP
+\fB|\fR passes the left result into the right operation. Pipelines bind tighter than binary operators.
+.SH PIPELINE OPERATIONS
+.TP
+\fBfilter\fR(\fIpred\fR)
+Keep elements where \fIpred\fR is true.
+.TP
+\fBmap\fR(\fIexpr\fR)
+Transform each element.
+.TP
+\fBsort\fR
+Sort by natural order.
+.TP
+\fBsort_by\fR(\fIkey\fR)
+Sort by a key expression.
+.TP
+\fBgroup_by\fR(\fIkey\fR)
+Group into [{key, values}].
+.TP
+\fBunique\fR
+Remove duplicates.
+.TP
+\fBunique_by\fR(\fIkey\fR)
+Remove duplicates by key.
+.TP
+\fBflatten\fR
+Flatten one level.
+.TP
+\fBreverse\fR
+Reverse order.
+.TP
+\fBkeys\fR
+Map keys or list indices.
+.TP
+\fBvalues\fR
+Map values.
+.TP
+\fBlength\fR
+Length of list, map, or string.
+.TP
+\fBfirst\fR, \fBlast\fR
+First or last element.
+.TP
+\fBsum\fR, \fBavg\fR, \fBmin\fR, \fBmax\fR
+Aggregate operations on numeric lists.
+.TP
+\fBhas\fR(\fIkey\fR)
+Check if a map contains a key.
+.TP
+\fBto_entries\fR
+Map to [{key, value}].
+.TP
+\fBfrom_entries\fR
+[{key, value}] to map.
+.TP
+\fBfilter_values\fR(\fIpred\fR)
+Filter a map's values.
+.TP
+\fBmap_values\fR(\fIexpr\fR)
+Transform a map's values.
+.TP
+\fBfilter_keys\fR(\fIpred\fR)
+Filter a map's keys.
+.SH NULL PROPAGATION
+.PP
+Navigation on null returns null: \fB.missing\fR returns null, \fB.missing.nested\fR returns null.
+.PP
+Computation on null throws: \fBnull + 5\fR and \fBnull > 3\fR are errors.
+.SH INTERACTIVE MODE
+.PP
+\fBlam -i\fR \fIfile\fR starts the REPL. Type queries at the \fBlambe>\fR prompt. REPL commands start with \fB:\fR to distinguish them from queries.
+.TP
+\fB:schema\fR
+Show data structure.
+.TP
+\fB:to\fR \fIfmt\fR
+Set output format.
+.TP
+\fB:raw\fR
+Toggle unquoted string output.
+.TP
+\fB:pretty\fR
+Toggle pretty-printing.
+.TP
+\fB:load\fR \fIfile\fR
+Load a different data file.
+.TP
+\fB:history\fR
+Show query history.
+.TP
+\fB:help\fR
+Show available commands.
+.TP
+\fB:quit\fR, \fB:q\fR
+Exit.
+.PP
+Tab completes field names and pipeline operations. Up/Down navigates history. Ctrl+R searches history.
+.SH EXIT STATUS
+.TP
+\fB0\fR
+Success, or \fB--assert\fR passed.
+.TP
+\fB1\fR
+Error, or \fB--assert\fR failed.
+.SH FILES
+.TP
+\fB~/.lambe_history\fR
+REPL command history, persisted between sessions.
+.SH EXAMPLES
+.PP
+Extract a value:
+.PP
+.nf
+lam '.database.host' config.toml
+.fi
+.PP
+Filter and project:
+.PP
+.nf
+lam '.users | filter(.age > 30) | map(.name)' data.json
+.fi
+.PP
+Aggregate:
+.PP
+.nf
+lam '.items | map(.price) | sum' data.json
+.fi
+.PP
+Format conversion:
+.PP
+.nf
+lam --to yaml '.config' data.json
+.fi
+.PP
+Schema inspection:
+.PP
+.nf
+lam --schema deployment.yaml
+.fi
+.PP
+CI validation:
+.PP
+.nf
+lam --assert '.version != "0.0.0"' package.json
+.fi
+.PP
+Pipe from stdin:
+.PP
+.nf
+curl -s https://api.example.com/data | lam '.results | first'
+.fi
+.PP
+Interactive exploration:
+.PP
+.nf
+lam -i data.json
+.fi
+.SH SEE ALSO
+.PP
+\fBjq\fR(1)
+.PP
+Project: https://github.com/hakimjonas/lambe
+.PP
+Documentation: https://pub.dev/packages/lambe
