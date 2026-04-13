@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "lambe": {
+      "command": "lam-mcp",
+      "args": []
+    }
+  }
+}

@@ -227,17 +227,24 @@ Lambë includes an MCP server for use with AI coding assistants.
 
 ### MCP Server
 
-```bash
-# Install and run
-dart pub global activate lambe
-lam-mcp
+Install, then add `.mcp.json` to your project:
+
+```json
+{
+  "mcpServers": {
+    "lambe": {
+      "command": "lam-mcp",
+      "args": []
+    }
+  }
+}
 ```
 
-Provides three tools: `lambe_query` (extract/filter/transform), `lambe_schema` (structure inspection), `lambe_assert` (validation).
+This gives AI assistants three tools: `lambe_query` (extract/filter/transform), `lambe_schema` (structure inspection), `lambe_assert` (validation).
 
 ### For AI Coding Agents
 
-Add [AGENTS.md](AGENTS.md) to your project root. AI assistants that open the project will discover Lambë and use it for data queries.
+Add [AGENTS.md](AGENTS.md) and `.mcp.json` to your project root. AI assistants that open the project will discover and use Lambë for data queries.
 
 ### In CI
 
