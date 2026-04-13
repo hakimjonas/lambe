@@ -52,3 +52,68 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*
+
+  publish-mcp:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Update server.json
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          HASH_LINUX=$(sha256sum artifacts/lam-mcp-linux-x64 | cut -d' ' -f1)
+          HASH_MACOS=$(sha256sum artifacts/lam-mcp-macos-x64 | cut -d' ' -f1)
+          HASH_WINDOWS=$(sha256sum artifacts/lam-mcp-windows-x64.exe | cut -d' ' -f1)
+          TAG=${GITHUB_REF#refs/tags/}
+          cat > server.json <<EOF
+          {
+            "\$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+            "name": "io.github.hakimjonas/lambe",
+            "title": "Lambe",
+            "description": "Query JSON, YAML, TOML, HCL, XML, CSV, and TSV with a composable pipeline syntax.",
+            "repository": {
+              "url": "https://github.com/hakimjonas/lambe.git",
+              "source": "github"
+            },
+            "version": "${VERSION}",
+            "packages": [
+              {
+                "registryType": "mcpb",
+                "identifier": "https://github.com/hakimjonas/lambe/releases/download/${TAG}/lam-mcp-linux-x64",
+                "fileSha256": "${HASH_LINUX}",
+                "transport": { "type": "stdio" }
+              },
+              {
+                "registryType": "mcpb",
+                "identifier": "https://github.com/hakimjonas/lambe/releases/download/${TAG}/lam-mcp-macos-x64",
+                "fileSha256": "${HASH_MACOS}",
+                "transport": { "type": "stdio" }
+              },
+              {
+                "registryType": "mcpb",
+                "identifier": "https://github.com/hakimjonas/lambe/releases/download/${TAG}/lam-mcp-windows-x64.exe",
+                "fileSha256": "${HASH_WINDOWS}",
+                "transport": { "type": "stdio" }
+              }
+            ]
+          }
+          EOF
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate to MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish

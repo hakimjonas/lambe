@@ -16,3 +16,6 @@ lam-mcp
 
 # Local dependency overrides
 pubspec_overrides.yaml
+
+# MCP registry tokens
+.mcpregistry_*
