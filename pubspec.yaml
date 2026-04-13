@@ -2,7 +2,7 @@ name: lambe
 description: >-
   Query JSON, YAML, TOML, and HCL files with a composable pipeline DSL.
   Like jq but multi-format, with cleaner syntax. CLI tool + Dart library + MCP server for AI agents.
-version: 0.1.0
+version: 0.1.1
 repository: https://github.com/hakimjonas/lambe
 issue_tracker: https://github.com/hakimjonas/lambe/issues
 topics:

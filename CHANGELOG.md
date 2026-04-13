@@ -1,3 +1,9 @@
+## 0.1.1
+
+- Added `.mcp.json` for automatic MCP server discovery in AI coding assistants
+- Documented MCP server setup in README
+- Added query syntax guide, REPL guide, recipes, and man page to `doc/`
+
 ## 0.1.0
 
 ### Core
