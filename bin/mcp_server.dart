@@ -59,12 +59,35 @@ base class LambeServer extends MCPServer with ToolsSupport {
       properties: {
         'expression': Schema.string(
           description:
-              'The Lambe query expression. Examples:\n'
-              '  ".database.host"                          — extract a value\n'
+              'The Lambe query expression. Syntax reference:\n'
+              '\n'
+              'Field access and indexing:\n'
+              '  ".name"                                   — field access\n'
+              '  ".users[0].name"                          — index then field\n'
+              '  ".tags[-1]"                               — negative index\n'
+              '  ".tags[1:3]"                              — slice\n'
+              '\n'
+              'Pipeline operations (| passes left result as context):\n'
               '  ".users | filter(.age > 30) | map(.name)" — filter and project\n'
               '  ".items | sort_by(.price) | first"        — sort and pick\n'
               '  ".items | map(.price) | sum"              — aggregate\n'
-              '  ".users | group_by(.dept)"                — group by field\n',
+              '  ".users | group_by(.dept)"                — group by field\n'
+              '  ".users | unique_by(.role) | length"      — deduplicate\n'
+              '\n'
+              'Object construction (| pipes into {}):\n'
+              '  ".users[0] | {name, age}"                 — project fields\n'
+              '  ".users | map({name, senior: .age > 65})" — transform to new shape\n'
+              '\n'
+              'Conditionals and string interpolation:\n'
+              '  ".users | map(if .active then \\"yes\\" else \\"no\\")" — conditional\n'
+              '  ".users | map(\\"\\\\(.name): \\\\(.age)\\")"          — interpolation\n'
+              '\n'
+              'Aggregation: sum, avg, min, max, length, first, last\n'
+              'Map operations: keys, values, has("key"), to_entries, from_entries\n'
+              'Map transforms: filter_values(pred), map_values(expr), filter_keys(pred)\n'
+              '\n'
+              'Null propagation: .missing returns null, null | op returns null.\n'
+              'Arithmetic on null throws. Use .field == null to test.\n',
         ),
         'data': Schema.string(
           description: 'The input data as a string (JSON, YAML, TOML, or HCL)',

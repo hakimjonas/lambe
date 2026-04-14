@@ -79,13 +79,16 @@ final class Index extends LamExpr {
   const Index(this.target, this.index);
 }
 
-/// Pipeline expression: `expr | operation`.
+/// Pipeline expression: `expr | expr`.
+///
+/// Evaluates [op] with the result of [input] as context. This is expression
+/// composition: the right side sees `.` bound to the left side's result.
 final class Pipe extends LamExpr {
   /// The input expression.
   final LamExpr input;
 
-  /// The pipeline operation to apply.
-  final PipeOp op;
+  /// The expression to evaluate with the input's result as context.
+  final LamExpr op;
 
   /// Creates a pipeline of [input] through [op].
   const Pipe(this.input, this.op);
@@ -118,14 +121,8 @@ final class BinaryOp extends LamExpr {
   const BinaryOp(this.op, this.left, this.right);
 }
 
-/// A pipeline operation applied via `|`.
-sealed class PipeOp {
-  /// Base constructor.
-  const PipeOp();
-}
-
 /// Filter elements by predicate: `filter(.age > 30)`.
-final class FilterOp extends PipeOp {
+final class FilterOp extends LamExpr {
   /// The predicate expression, evaluated per element.
   final LamExpr predicate;
 
@@ -134,7 +131,7 @@ final class FilterOp extends PipeOp {
 }
 
 /// Transform each element: `map(.name)`.
-final class MapOp extends PipeOp {
+final class MapOp extends LamExpr {
   /// The transform expression, evaluated per element.
   final LamExpr transform;
 
@@ -143,73 +140,73 @@ final class MapOp extends PipeOp {
 }
 
 /// Sort elements naturally: `sort`.
-final class SortOp extends PipeOp {
+final class SortOp extends LamExpr {
   /// Creates a sort operation.
   const SortOp();
 }
 
 /// Reverse element order: `reverse`.
-final class ReverseOp extends PipeOp {
+final class ReverseOp extends LamExpr {
   /// Creates a reverse operation.
   const ReverseOp();
 }
 
 /// Get keys of a map or indices of a list: `keys`.
-final class KeysOp extends PipeOp {
+final class KeysOp extends LamExpr {
   /// Creates a keys operation.
   const KeysOp();
 }
 
 /// Get values of a map (or identity for a list): `values`.
-final class ValuesOp extends PipeOp {
+final class ValuesOp extends LamExpr {
   /// Creates a values operation.
   const ValuesOp();
 }
 
 /// Get length of a list, map, or string: `length`.
-final class LengthOp extends PipeOp {
+final class LengthOp extends LamExpr {
   /// Creates a length operation.
   const LengthOp();
 }
 
 /// Get first element of a list: `first`.
-final class FirstOp extends PipeOp {
+final class FirstOp extends LamExpr {
   /// Creates a first operation.
   const FirstOp();
 }
 
 /// Get last element of a list: `last`.
-final class LastOp extends PipeOp {
+final class LastOp extends LamExpr {
   /// Creates a last operation.
   const LastOp();
 }
 
 /// Sum all numeric elements: `sum`.
-final class SumOp extends PipeOp {
+final class SumOp extends LamExpr {
   /// Creates a sum operation.
   const SumOp();
 }
 
 /// Average of all numeric elements: `avg`.
-final class AvgOp extends PipeOp {
+final class AvgOp extends LamExpr {
   /// Creates an avg operation.
   const AvgOp();
 }
 
 /// Minimum element: `min`.
-final class MinOp extends PipeOp {
+final class MinOp extends LamExpr {
   /// Creates a min operation.
   const MinOp();
 }
 
 /// Maximum element: `max`.
-final class MaxOp extends PipeOp {
+final class MaxOp extends LamExpr {
   /// Creates a max operation.
   const MaxOp();
 }
 
 /// Sort by a key expression: `sort_by(.age)`.
-final class SortByOp extends PipeOp {
+final class SortByOp extends LamExpr {
   /// The key expression, evaluated per element.
   final LamExpr key;
 
@@ -220,7 +217,7 @@ final class SortByOp extends PipeOp {
 /// Group elements by a key expression: `group_by(.type)`.
 ///
 /// Returns `[{key: k, values: [items]}, ...]`.
-final class GroupByOp extends PipeOp {
+final class GroupByOp extends LamExpr {
   /// The key expression, evaluated per element.
   final LamExpr key;
 
@@ -229,13 +226,13 @@ final class GroupByOp extends PipeOp {
 }
 
 /// Remove duplicate elements: `unique`.
-final class UniqueOp extends PipeOp {
+final class UniqueOp extends LamExpr {
   /// Creates a unique operation.
   const UniqueOp();
 }
 
 /// Remove duplicates by key: `unique_by(.name)`.
-final class UniqueByOp extends PipeOp {
+final class UniqueByOp extends LamExpr {
   /// The key expression, evaluated per element.
   final LamExpr key;
 
@@ -244,13 +241,13 @@ final class UniqueByOp extends PipeOp {
 }
 
 /// Flatten one level of nesting: `flatten`.
-final class FlattenOp extends PipeOp {
+final class FlattenOp extends LamExpr {
   /// Creates a flatten operation.
   const FlattenOp();
 }
 
 /// Filter map values by predicate: `filter_values(. > 5)`.
-final class FilterValuesOp extends PipeOp {
+final class FilterValuesOp extends LamExpr {
   /// The predicate expression, evaluated per value.
   final LamExpr predicate;
 
@@ -259,7 +256,7 @@ final class FilterValuesOp extends PipeOp {
 }
 
 /// Transform map values: `map_values(. * 2)`.
-final class MapValuesOp extends PipeOp {
+final class MapValuesOp extends LamExpr {
   /// The transform expression, evaluated per value.
   final LamExpr transform;
 
@@ -271,7 +268,7 @@ final class MapValuesOp extends PipeOp {
 ///
 /// The key expression is evaluated and must produce a `String`.
 /// Returns `true` if the input map contains the key.
-final class HasOp extends PipeOp {
+final class HasOp extends LamExpr {
   /// The key expression (must evaluate to a string).
   final LamExpr key;
 
@@ -280,19 +277,19 @@ final class HasOp extends PipeOp {
 }
 
 /// Convert a map to a list of `{key, value}` entries: `to_entries`.
-final class ToEntriesOp extends PipeOp {
+final class ToEntriesOp extends LamExpr {
   /// Creates a to_entries operation.
   const ToEntriesOp();
 }
 
 /// Convert a list of `{key, value}` entries back to a map: `from_entries`.
-final class FromEntriesOp extends PipeOp {
+final class FromEntriesOp extends LamExpr {
   /// Creates a from_entries operation.
   const FromEntriesOp();
 }
 
 /// Filter map keys by predicate: `filter_keys(. != "internal")`.
-final class FilterKeysOp extends PipeOp {
+final class FilterKeysOp extends LamExpr {
   /// The predicate expression, evaluated per key.
   final LamExpr predicate;
 

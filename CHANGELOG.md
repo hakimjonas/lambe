@@ -1,3 +1,21 @@
+## 0.2.0
+
+### Breaking
+- **`|` is expression composition.** `PipeOp` sealed class removed. Pipeline operations
+  are now `LamExpr` subtypes. Any expression can appear after `|`:
+  `.users[0] | {name, age}`, `. | if .active then "yes" else "no"`.
+
+### Improved
+- Parser error messages show position pointers and contextual descriptions
+- "Did you mean?" suggestions for misspelled pipeline operations
+- MCP tool descriptions expanded with syntax reference and common patterns
+- Expanded recipes: object projection, string interpolation, chaining patterns
+
+### Added
+- `doc/jq-to-lambe.md` migration guide
+- `test/syntax_examples_test.dart` backing every example in `doc/syntax.md`
+- 465 tests (was 369)
+
 ## 0.1.1
 
 - Added `.mcp.json` for automatic MCP server discovery in AI coding assistants

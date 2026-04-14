@@ -258,6 +258,195 @@ void main() {
     });
   });
 
+  group('Expression composition (| expr)', () {
+    final user = {'name': 'Alice', 'age': 25, 'active': true};
+    final data = {
+      'users': [
+        user,
+        {'name': 'Bob', 'age': 35, 'active': false},
+      ],
+    };
+
+    test('object construction after pipe', () {
+      expect(query('. | {name, age}', user), {'name': 'Alice', 'age': 25});
+    });
+
+    test('object construction after index', () {
+      expect(query('.users[0] | {name, age}', data), {
+        'name': 'Alice',
+        'age': 25,
+      });
+    });
+
+    test('chained: filter then first then project', () {
+      expect(query('.users | filter(.active) | first | {name}', data), {
+        'name': 'Alice',
+      });
+    });
+
+    test('null propagation with expression', () {
+      expect(query('.missing | {name}', <String, Object?>{}), null);
+    });
+
+    test('identity after pipe', () {
+      expect(query('. | .', 42), 42);
+    });
+
+    test('field access after pipe', () {
+      expect(query('. | .name', user), 'Alice');
+    });
+  });
+
+  group('Expression composition edge cases', () {
+    final user = {'name': 'Alice', 'age': 25, 'active': true};
+
+    test('object construction with computed values after pipe', () {
+      expect(query('. | {name, senior: .age > 65}', user), {
+        'name': 'Alice',
+        'senior': false,
+      });
+    });
+
+    test('conditional after pipe', () {
+      expect(
+        query('. | if .age > 65 then "senior" else "junior"', user),
+        'junior',
+      );
+    });
+
+    test('parenthesized expression after pipe', () {
+      expect(query('.age | (. + 10)', user), 35);
+    });
+
+    test('string literal after pipe', () {
+      expect(query('. | "constant"', user), 'constant');
+    });
+
+    test('number literal after pipe', () {
+      expect(query('. | 42', user), 42);
+    });
+
+    test('nested pipe with mixed ops and expressions', () {
+      final data = {
+        'users': [
+          {'name': 'Alice', 'age': 25},
+          {'name': 'Bob', 'age': 35},
+        ],
+      };
+      expect(query('.users | filter(.age > 30) | first | {name}', data), {
+        'name': 'Bob',
+      });
+    });
+
+    test('null propagation: null | .field', () {
+      expect(query('.missing | .name', <String, Object?>{}), null);
+    });
+
+    test('null propagation: null | conditional', () {
+      expect(
+        query('.missing | if . then "yes" else "no"', <String, Object?>{}),
+        null,
+      );
+    });
+
+    test('null propagation: null | (expr)', () {
+      expect(query('.missing | (. + 1)', <String, Object?>{}), null);
+    });
+
+    test('chained expression pipes', () {
+      expect(query('. | . | . | .name', user), 'Alice');
+    });
+
+    test('map then project', () {
+      final data = {
+        'users': [
+          {'name': 'Alice', 'age': 25, 'score': 90},
+          {'name': 'Bob', 'age': 35, 'score': 85},
+        ],
+      };
+      expect(query('.users | map(. | {name, score})', data), [
+        {'name': 'Alice', 'score': 90},
+        {'name': 'Bob', 'score': 85},
+      ]);
+    });
+  });
+
+  group('Parse error messages', () {
+    test('unknown operation after |', () {
+      expect(
+        () => query('.x | zorb', {}),
+        throwsA(
+          isA<QueryError>().having(
+            (e) => e.message,
+            'message',
+            contains('unknown operation "zorb"'),
+          ),
+        ),
+      );
+    });
+
+    test('typo suggests closest operation', () {
+      expect(
+        () => query('.x | filtr(.a)', {}),
+        throwsA(
+          isA<QueryError>().having(
+            (e) => e.message,
+            'message',
+            contains('did you mean "filter"'),
+          ),
+        ),
+      );
+    });
+
+    test('unexpected | at end', () {
+      expect(
+        () => query('.x |', {}),
+        throwsA(
+          isA<QueryError>().having(
+            (e) => e.message,
+            'message',
+            contains('unexpected |'),
+          ),
+        ),
+      );
+    });
+
+    test('missing closing paren', () {
+      expect(
+        () => query('.x | filter(.a > 1', {}),
+        throwsA(
+          isA<QueryError>().having(
+            (e) => e.message,
+            'message',
+            contains('expected ")"'),
+          ),
+        ),
+      );
+    });
+
+    test('error includes position pointer', () {
+      expect(
+        () => query('.x | zorb', {}),
+        throwsA(
+          isA<QueryError>().having((e) => e.message, 'message', contains('^')),
+        ),
+      );
+    });
+
+    test('completely invalid input', () {
+      expect(
+        () => query('}{', {}),
+        throwsA(
+          isA<QueryError>().having(
+            (e) => e.message,
+            'message',
+            contains('expected'),
+          ),
+        ),
+      );
+    });
+  });
+
   group('Edge cases', () {
     test('null field returns null, not error', () {
       expect(query('.x', {'x': null}), null);

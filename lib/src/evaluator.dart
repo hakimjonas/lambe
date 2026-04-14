@@ -52,6 +52,30 @@ Object? evaluate(LamExpr expr, Object? ctx) => switch (expr) {
     end,
     ctx,
   ),
+  FilterOp(:final predicate) => _filter(ctx, predicate),
+  MapOp(:final transform) => _mapOp(ctx, transform),
+  SortOp() => _sort(ctx),
+  ReverseOp() => _reverse(ctx),
+  KeysOp() => _keys(ctx),
+  ValuesOp() => _values(ctx),
+  LengthOp() => _length(ctx),
+  FirstOp() => _first(ctx),
+  LastOp() => _last(ctx),
+  SumOp() => _sum(ctx),
+  AvgOp() => _avg(ctx),
+  MinOp() => _min(ctx),
+  MaxOp() => _max(ctx),
+  SortByOp(:final key) => _sortBy(ctx, key),
+  GroupByOp(:final key) => _groupBy(ctx, key),
+  UniqueOp() => _unique(ctx),
+  UniqueByOp(:final key) => _uniqueBy(ctx, key),
+  FlattenOp() => _flatten(ctx),
+  FilterValuesOp(:final predicate) => _filterValues(ctx, predicate),
+  MapValuesOp(:final transform) => _mapValues(ctx, transform),
+  FilterKeysOp(:final predicate) => _filterKeys(ctx, predicate),
+  HasOp(:final key) => _has(ctx, key),
+  ToEntriesOp() => _toEntries(ctx),
+  FromEntriesOp() => _fromEntries(ctx),
 };
 
 Object? _field(Object? target, String name) {
@@ -78,34 +102,9 @@ Object? _index(Object? target, Object? idx) {
   throw QueryError('Cannot index ${typeName(target)}');
 }
 
-Object? _pipe(Object? input, PipeOp op) {
+Object? _pipe(Object? input, LamExpr op) {
   if (input == null) return null;
-  return switch (op) {
-    FilterOp(:final predicate) => _filter(input, predicate),
-    MapOp(:final transform) => _mapOp(input, transform),
-    SortOp() => _sort(input),
-    ReverseOp() => _reverse(input),
-    KeysOp() => _keys(input),
-    ValuesOp() => _values(input),
-    LengthOp() => _length(input),
-    FirstOp() => _first(input),
-    LastOp() => _last(input),
-    SumOp() => _sum(input),
-    AvgOp() => _avg(input),
-    MinOp() => _min(input),
-    MaxOp() => _max(input),
-    SortByOp(:final key) => _sortBy(input, key),
-    GroupByOp(:final key) => _groupBy(input, key),
-    UniqueOp() => _unique(input),
-    UniqueByOp(:final key) => _uniqueBy(input, key),
-    FlattenOp() => _flatten(input),
-    FilterValuesOp(:final predicate) => _filterValues(input, predicate),
-    MapValuesOp(:final transform) => _mapValues(input, transform),
-    FilterKeysOp(:final predicate) => _filterKeys(input, predicate),
-    HasOp(:final key) => _has(input, key),
-    ToEntriesOp() => _toEntries(input),
-    FromEntriesOp() => _fromEntries(input),
-  };
+  return evaluate(op, input);
 }
 
 List<Object?> _filter(Object? input, LamExpr predicate) {

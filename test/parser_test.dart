@@ -265,6 +265,36 @@ void main() {
     });
   });
 
+  group('Expression composition (| expr)', () {
+    test('. | {name, age} parses as Pipe with ObjConstruct', () {
+      final expr = _parse('. | {name, age}');
+      expect(expr, isA<Pipe>());
+      final pipe = expr as Pipe;
+      expect(pipe.op, isA<ObjConstruct>());
+    });
+
+    test('. | .name parses as Pipe with Field', () {
+      final expr = _parse('. | .name');
+      expect(expr, isA<Pipe>());
+      final pipe = expr as Pipe;
+      expect(pipe.op, isA<Field>());
+    });
+
+    test('.users[0] | {name} parses correctly', () {
+      final expr = _parse('.users[0] | {name}');
+      expect(expr, isA<Pipe>());
+      final pipe = expr as Pipe;
+      expect(pipe.input, isA<Index>());
+      expect(pipe.op, isA<ObjConstruct>());
+    });
+
+    test('named ops still parse as before', () {
+      final expr = _parse('. | filter(.age > 30)');
+      expect(expr, isA<Pipe>());
+      expect((expr as Pipe).op, isA<FilterOp>());
+    });
+  });
+
   group('Edge cases', () {
     test('zero', () {
       final expr = _parse('0');

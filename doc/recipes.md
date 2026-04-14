@@ -229,6 +229,95 @@ No duplicates:
 $ lam --assert '.users | map(.email) | unique | length == (.users | length)' data.json
 ```
 
+## package.json / pubspec.yaml
+
+Get the package name and version:
+
+```bash
+$ lam '{name, version}' package.json
+$ lam '{name, version}' pubspec.yaml
+```
+
+List all dependencies:
+
+```bash
+$ lam '.dependencies | keys' package.json
+$ lam '.dependencies | keys' pubspec.yaml
+```
+
+Find a specific dependency version:
+
+```bash
+$ lam '.dependencies.react' package.json
+$ lam '.dependencies.rumil' pubspec.yaml
+```
+
+Check for outdated version:
+
+```bash
+$ lam --assert '.version != "0.0.0"' package.json
+```
+
+## Object projection after pipe
+
+Select specific fields from a result:
+
+```bash
+$ lam '.users[0] | {name, age}' data.json
+```
+
+Project fields in a map pipeline:
+
+```bash
+$ lam '.users | filter(.active) | map(. | {name, email})' data.json
+```
+
+Add computed fields:
+
+```bash
+$ lam '.items | map({name, total: .price * .qty, expensive: .price > 100})' data.json
+```
+
+Conditional labels:
+
+```bash
+$ lam '.users | map({name, status: if .active then "active" else "inactive"})' data.json
+```
+
+## String interpolation in pipelines
+
+Generate labels:
+
+```bash
+$ lam '.users | map("\(.name) (\(.age))")' data.json
+```
+
+Build key-value strings:
+
+```bash
+$ lam '.config | to_entries | map("\(.key)=\(.value)")' config.json
+```
+
+## Chaining multiple operations
+
+Sort, filter, then aggregate:
+
+```bash
+$ lam '.orders | filter(.status == "complete") | map(.total) | sum' orders.json
+```
+
+Group, then summarize each group:
+
+```bash
+$ lam '.users | group_by(.role) | map({role: .key, count: .values | length, avg_age: .values | map(.age) | avg})' data.json
+```
+
+Flatten nested lists, then deduplicate:
+
+```bash
+$ lam '.users | map(.tags) | flatten | unique | sort' data.json
+```
+
 ## Schema exploration
 
 Start with `--schema` to understand unfamiliar data:

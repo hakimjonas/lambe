@@ -222,41 +222,41 @@ final Parser<ParseError, String> _closeBracket = _sym(']').recover(succeed(''));
 final Parser<ParseError, String> _closeBrace = _sym('}').recover(succeed(''));
 
 /// Parameterized pipe op: `name(expr)` with tolerant inner and close.
-Parser<ParseError, PipeOp> _paramOp(
+Parser<ParseError, LamExpr> _paramOp(
   String name,
-  PipeOp Function(LamExpr) ctor,
+  LamExpr Function(LamExpr) ctor,
 ) => _sym(
   name,
 ).skipThen(_sym('(')).skipThen(_innerExpr).thenSkip(_closeParen).map(ctor);
 
-final Parser<ParseError, PipeOp> _pipeOp =
+final Parser<ParseError, LamExpr> _pipeOp =
     _paramOp('filter_values', FilterValuesOp.new) |
     _paramOp('filter_keys', FilterKeysOp.new) |
     _paramOp('filter', FilterOp.new) |
     _paramOp('map_values', MapValuesOp.new) |
     _paramOp('map', MapOp.new) |
     _paramOp('sort_by', SortByOp.new) |
-    _kw('sort').as<PipeOp>(const SortOp()) |
+    _kw('sort').as<LamExpr>(const SortOp()) |
     _paramOp('group_by', GroupByOp.new) |
     _paramOp('unique_by', UniqueByOp.new) |
-    _kw('unique').as<PipeOp>(const UniqueOp()) |
-    _kw('flatten').as<PipeOp>(const FlattenOp()) |
-    _kw('reverse').as<PipeOp>(const ReverseOp()) |
-    _kw('keys').as<PipeOp>(const KeysOp()) |
-    _kw('values').as<PipeOp>(const ValuesOp()) |
-    _kw('length').as<PipeOp>(const LengthOp()) |
-    _kw('first').as<PipeOp>(const FirstOp()) |
-    _kw('last').as<PipeOp>(const LastOp()) |
-    _kw('sum').as<PipeOp>(const SumOp()) |
-    _kw('avg').as<PipeOp>(const AvgOp()) |
-    _kw('min').as<PipeOp>(const MinOp()) |
-    _kw('max').as<PipeOp>(const MaxOp()) |
+    _kw('unique').as<LamExpr>(const UniqueOp()) |
+    _kw('flatten').as<LamExpr>(const FlattenOp()) |
+    _kw('reverse').as<LamExpr>(const ReverseOp()) |
+    _kw('keys').as<LamExpr>(const KeysOp()) |
+    _kw('values').as<LamExpr>(const ValuesOp()) |
+    _kw('length').as<LamExpr>(const LengthOp()) |
+    _kw('first').as<LamExpr>(const FirstOp()) |
+    _kw('last').as<LamExpr>(const LastOp()) |
+    _kw('sum').as<LamExpr>(const SumOp()) |
+    _kw('avg').as<LamExpr>(const AvgOp()) |
+    _kw('min').as<LamExpr>(const MinOp()) |
+    _kw('max').as<LamExpr>(const MaxOp()) |
     _paramOp('has', HasOp.new) |
-    _kw('to_entries').as<PipeOp>(const ToEntriesOp()) |
-    _kw('from_entries').as<PipeOp>(const FromEntriesOp());
+    _kw('to_entries').as<LamExpr>(const ToEntriesOp()) |
+    _kw('from_entries').as<LamExpr>(const FromEntriesOp());
 
 /// The full pipe op parser, named for error messages.
-final Parser<ParseError, PipeOp> _namedPipeOp = _pipeOp.named(
+final Parser<ParseError, LamExpr> _namedPipeOp = _pipeOp.named(
   'pipeline operation',
 );
 
@@ -268,7 +268,9 @@ final Parser<ParseError, String> _pipe = _lex(
 final Parser<ParseError, LamExpr> _postfix = rule(
   () =>
       defer(() => _postfix).flatMap(
-        (e) => _pipe.skipThen(_namedPipeOp).map((op) => Pipe(e, op) as LamExpr),
+        (e) => _pipe
+            .skipThen(_namedPipeOp | _atom)
+            .map((op) => Pipe(e, op) as LamExpr),
       ) |
       defer(() => _postfix).flatMap(
         (e) => char('.')

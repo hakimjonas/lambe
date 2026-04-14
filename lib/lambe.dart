@@ -39,9 +39,9 @@ Object? query(String expression, Object? data) {
   return switch (result) {
     Success<ParseError, LamExpr>(:final value) => eval_.evaluate(value, data),
     Partial<ParseError, LamExpr>() =>
-      throw QueryError('Parse error: ${result.errors}'),
+      throw QueryError(_formatParseErrors(expression, result.errors)),
     Failure<ParseError, LamExpr>() =>
-      throw QueryError('Parse error: ${result.errors}'),
+      throw QueryError(_formatParseErrors(expression, result.errors)),
   };
 }
 
@@ -75,3 +75,104 @@ Result<ParseError, LamExpr> parse(String expression) =>
 /// Use this when parsing once and evaluating against multiple data values.
 /// Throws [QueryError] on evaluation errors.
 Object? eval(LamExpr ast, Object? data) => eval_.evaluate(ast, data);
+
+String _formatParseErrors(String expression, List<ParseError> errors) {
+  if (errors.isEmpty) return 'parse error';
+
+  final deepest = errors.reduce(
+    (a, b) => b.location.offset > a.location.offset ? b : a,
+  );
+  final offset = deepest.location.offset;
+  final col = deepest.location.column;
+
+  final expected = <String>{};
+  for (final e in errors) {
+    if (e.location.offset != offset) continue;
+    switch (e) {
+      case final Unexpected u:
+        expected.addAll(u.expected);
+      case final EndOfInput eoi:
+        expected.add(eoi.expected);
+      case final CustomError c:
+        if (c.message == 'Expected end of input') {
+          return 'parse error at column $col: '
+              '${_describeLeftover(expression, offset)}\n'
+              '  $expression\n'
+              '  ${' ' * (col - 1)}^';
+        }
+        return 'parse error at column $col: ${c.message}\n'
+            '  $expression\n'
+            '  ${' ' * (col - 1)}^';
+    }
+  }
+
+  final what =
+      expected.isEmpty
+          ? 'unexpected input'
+          : 'expected ${_joinExpected(expected)}';
+
+  return 'parse error at column $col: $what\n'
+      '  $expression\n'
+      '  ${' ' * (col - 1)}^';
+}
+
+String _describeLeftover(String expression, int offset) {
+  final rest = expression.substring(offset).trimLeft();
+  if (rest.startsWith('|')) {
+    final after = rest.substring(1).trimLeft();
+    if (after.isEmpty) return 'unexpected | at end of expression';
+    final word = after.split(RegExp(r'[^a-zA-Z_]')).first;
+    if (word.isNotEmpty && !parser_.pipeOpNames.contains(word)) {
+      final suggestion = _closestMatch(word, parser_.pipeOpNames);
+      final hint =
+          suggestion != null ? '\n  help: did you mean "$suggestion"?' : '';
+      return 'unknown operation "$word" after |$hint';
+    }
+    return 'unexpected input after |';
+  }
+  final token = rest.split(RegExp(r'\s')).first;
+  if (token.isNotEmpty) return 'unexpected "$token"';
+  return 'unexpected input';
+}
+
+String? _closestMatch(String input, List<String> candidates) {
+  final maxDist = (input.length / 2).ceil().clamp(1, 3);
+  String? best;
+  var bestDist = maxDist + 1;
+  for (final c in candidates) {
+    final d = _editDistance(input, c);
+    if (d < bestDist) {
+      bestDist = d;
+      best = c;
+    }
+  }
+  return best;
+}
+
+int _editDistance(String a, String b) {
+  if (a == b) return 0;
+  if (a.isEmpty) return b.length;
+  if (b.isEmpty) return a.length;
+  final prev = List.generate(b.length + 1, (i) => i);
+  final curr = List.filled(b.length + 1, 0);
+  for (var i = 1; i <= a.length; i++) {
+    curr[0] = i;
+    for (var j = 1; j <= b.length; j++) {
+      final cost = a[i - 1] == b[j - 1] ? 0 : 1;
+      curr[j] = [
+        curr[j - 1] + 1,
+        prev[j] + 1,
+        prev[j - 1] + cost,
+      ].reduce((a, b) => a < b ? a : b);
+    }
+    prev.setAll(0, curr);
+  }
+  return curr[b.length];
+}
+
+String _joinExpected(Set<String> items) {
+  final list = items.toList()..sort();
+  if (list.length == 1) return list[0];
+  if (list.length == 2) return '${list[0]} or ${list[1]}';
+  return '${list.sublist(0, list.length - 1).join(', ')}, or ${list.last}';
+}

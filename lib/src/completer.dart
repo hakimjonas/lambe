@@ -184,7 +184,7 @@ Completions _fieldsOf(Object? target, String partial, int dotPos) {
   return (start: dotPos, candidates: <String>[for (final k in matching) '.$k']);
 }
 
-/// Resolve the target for field completion, walking into Pipe/PipeOp.
+/// Resolve the target for field completion, walking into Pipe operations.
 ///
 /// When [ast] is a Pipe with a parameterized op, evaluates the inner
 /// expression against the first element of the piped collection. This
@@ -204,10 +204,11 @@ Object? _resolveTarget(LamExpr? ast, Object? data) {
   return _tryEvalAst(ast, data);
 }
 
-/// Extract the inner expression from a parameterized [PipeOp].
+/// Extract the inner expression from a parameterized pipe operation.
 ///
 /// Returns `null` for simple (no-arg) ops like [SortOp], [ReverseOp], etc.
-LamExpr? _innerExpr(PipeOp op) => switch (op) {
+/// and for non-operation expressions like [ObjConstruct].
+LamExpr? _innerExpr(LamExpr op) => switch (op) {
   FilterOp(:final predicate) => predicate,
   MapOp(:final transform) => transform,
   SortByOp(:final key) => key,
