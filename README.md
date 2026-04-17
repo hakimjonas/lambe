@@ -1,6 +1,6 @@
 # Lambë
 
-Query JSON, YAML, TOML, HCL, XML, and CSV with a composable pipeline DSL.
+Query JSON, YAML, TOML, HCL, XML, CSV, and Markdown with a composable pipeline DSL.
 
 Built on [Rumil](https://pub.dev/packages/rumil) parser combinators with left-recursive grammar support.
 
@@ -119,6 +119,7 @@ lam --to xml '.data' config.json
 lam '.project.dependencies' pom.xml
 lam '. | filter(.status != "closed")' issues.csv
 lam '.resource | map(._labels)' main.tf
+lam '.children | filter(.type == "heading") | map(.children[0].text)' README.md
 
 # Pipe from stdin
 curl -s https://api.example.com/users | lam '.results | filter(.active)'
@@ -189,6 +190,7 @@ final schema = inferSchema(data);
 | XML | yes | yes | W3C XML 1.0 (1506/1506) |
 | CSV | yes | yes | RFC 4180 + auto-dialect detection |
 | TSV | yes | yes | Tab-separated variant of CSV |
+| Markdown | yes | — | CommonMark 0.31.2 (652/652) |
 
 Parsers from [rumil_parsers](https://pub.dev/packages/rumil_parsers), tested against official spec suites.
 

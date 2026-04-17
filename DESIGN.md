@@ -2,7 +2,7 @@
 
 **Package**: `lambe` | **CLI**: `lam` | **Repo**: `github.com/hakimjonas/lambe`
 
-A query language for structured data: JSON, YAML, TOML, HCL, XML, CSV, TSV. Built on Rumil parser combinators with left-recursive grammar support via Warth seed-growth.
+A query language for structured data: JSON, YAML, TOML, HCL, XML, CSV, TSV, Markdown. Built on Rumil parser combinators with left-recursive grammar support via Warth seed-growth.
 
 ---
 
@@ -30,7 +30,7 @@ Lambë uses the vocabulary of SQL, Spark DataFrames, and functional programming 
 | Map filtering | 3 steps (`to_entries \| select \| from_entries`) | 1 step (`filter_values`) |
 | Conditionals | `if ... end` | `if ... else ...` (no `end`) |
 | Error messages | Terse | Source-positioned via Rumil |
-| Formats | JSON only | JSON, YAML, TOML, HCL, XML, CSV, TSV |
+| Formats | JSON only | JSON, YAML, TOML, HCL, XML, CSV, TSV, Markdown |
 
 ### Absence propagates, type errors throw
 

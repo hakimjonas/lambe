@@ -1,6 +1,6 @@
 /// Universal query language for structured data.
 ///
-/// Lambé provides a composable query DSL for JSON, YAML, TOML, and HCL, with
+/// Lambé provides a composable query DSL for JSON, YAML, TOML, HCL, and Markdown, with
 /// pipeline operations, property access chains, and filter predicates. Built
 /// on Rumil parser combinators with left-recursive grammar support via Warth
 /// seed-growth.
@@ -25,7 +25,8 @@ import 'src/parser.dart' as parser_;
 
 export 'src/ast.dart';
 export 'src/errors.dart';
-export 'src/input.dart' show Format, detectFormat, sniffFormat, parseInput;
+export 'src/input.dart'
+    show Format, detectFormat, sniffFormat, parseInput, mdToNative;
 export 'src/output.dart' show OutputFormat, formatOutput, inferSchema;
 
 /// Parse and evaluate a query expression against [data].
@@ -48,7 +49,6 @@ Object? query(String expression, Object? data) {
 /// Parse an input string in the given [format], then evaluate [expression].
 ///
 /// If [format] is omitted, attempts to detect it from the content.
-/// Supports JSON, YAML, and TOML.
 ///
 /// Throws [QueryError] on parse or evaluation errors.
 /// Throws [FormatException] if JSON input is malformed.

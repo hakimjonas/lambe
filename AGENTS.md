@@ -36,13 +36,18 @@ lam '.project.dependencies' pom.xml
 # Query Terraform
 lam '.resource | filter(._labels[0] == "aws_instance") | map(._labels[1])' main.tf
 
+# Query Markdown (AST with typed nodes: heading, paragraph, link, code_block, etc.)
+lam '.children | filter(.type == "heading") | map(.children[0].text)' README.md
+lam '.. | filter(.type == "link") | map({href, text: .children[0].text})' doc.md
+lam '.children | filter(.type == "code_block") | map(.language)' tutorial.md
+
 # Interactive REPL
 lam -i data.json
 ```
 
 ### Supported Formats
 
-Input: JSON, YAML, TOML, HCL/Terraform, XML, CSV, TSV (auto-detected from file extension).
+Input: JSON, YAML, TOML, HCL/Terraform, XML, CSV, TSV, Markdown (auto-detected from file extension).
 Output: JSON (default), YAML, TOML, XML, CSV.
 
 ### As MCP Tool

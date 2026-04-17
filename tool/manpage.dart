@@ -1,4 +1,5 @@
-/// Generates lam.1 mandoc from doc/lam.1.md using Rumil combinators.
+/// Generates lam.1 mandoc from doc/lam.1.md using rumil_parsers' CommonMark
+/// parser.
 ///
 /// Usage: dart run tool/manpage.dart > doc/lam.1
 library;
@@ -6,174 +7,177 @@ library;
 import 'dart:io';
 
 import 'package:rumil/rumil.dart';
+import 'package:rumil_parsers/rumil_parsers.dart';
 
 void main() {
-  final input = File('doc/lam.1.md').readAsStringSync();
-  final result = _document.run(input);
+  var input = File('doc/lam.1.md').readAsStringSync();
+
+  final meta = _extractFrontMatter(input);
+  if (meta != null) {
+    input = input.substring(meta.endOffset);
+  }
+
+  final result = parseMarkdown(input);
   switch (result) {
     case Success(:final value) || Partial(:final value):
-      stdout.write(_emit(value));
+      stdout.write(_emit(meta, value));
     case Failure(:final errors):
       stderr.writeln('Parse error: $errors');
       exit(1);
   }
 }
 
-sealed class MdNode {
-  const MdNode();
-}
-
-final class TitleBlock extends MdNode {
+final class _FrontMatter {
   final String title;
   final String section;
   final String source;
   final String author;
   final String date;
-  const TitleBlock(
-    this.title,
-    this.section,
-    this.source,
-    this.author,
-    this.date,
+  final int endOffset;
+  const _FrontMatter({
+    required this.title,
+    required this.section,
+    required this.source,
+    required this.author,
+    required this.date,
+    required this.endOffset,
+  });
+}
+
+_FrontMatter? _extractFrontMatter(String input) {
+  if (!input.startsWith('---\n')) return null;
+  final end = input.indexOf('\n---\n', 4);
+  if (end < 0) return null;
+  final yamlSource = input.substring(4, end);
+  final result = parseYaml(yamlSource);
+  final fields = switch (result) {
+    Success(:final value) => yamlToNative(value),
+    Partial(:final value) => yamlToNative(value),
+    Failure() => null,
+  };
+  if (fields is! Map<String, Object?>) return null;
+  return _FrontMatter(
+    title: '${fields['title'] ?? 'UNTITLED'}',
+    section: '${fields['section'] ?? '1'}',
+    source: '${fields['source'] ?? ''}',
+    author: '${fields['author'] ?? ''}',
+    date: '${fields['date'] ?? ''}',
+    endOffset: end + 5,
   );
 }
 
-final class Heading extends MdNode {
-  final int level;
-  final String text;
-  const Heading(this.level, this.text);
-}
-
-final class Paragraph extends MdNode {
-  final String text;
-  const Paragraph(this.text);
-}
-
-final class DefinitionItem extends MdNode {
-  final String term;
-  final String definition;
-  const DefinitionItem(this.term, this.definition);
-}
-
-final class CodeBlock extends MdNode {
-  final String text;
-  const CodeBlock(this.text);
-}
-
-final class BlankLine extends MdNode {
-  const BlankLine();
-}
-
-final _nl = char('\n');
-final _notNl = satisfy((c) => c != '\n', 'not newline');
-final _restOfLine = _notNl.many.capture.thenSkip(_nl);
-final _blankLine = char('\n').as<MdNode>(const BlankLine());
-
-final _frontMatterDelim = string('---').thenSkip(_nl);
-final _frontMatterField = string(
-  '---',
-).notFollowedBy.skipThen(_notNl.many1.capture).thenSkip(_nl);
-
-final _titleBlock = _frontMatterDelim
-    .skipThen(_frontMatterField.many1)
-    .thenSkip(_frontMatterDelim)
-    .map((lines) {
-      final fields = <String, String>{};
-      for (final line in lines) {
-        final colon = line.indexOf(':');
-        if (colon > 0) {
-          fields[line.substring(0, colon).trim()] =
-              line.substring(colon + 1).trim();
-        }
-      }
-      return TitleBlock(
-            fields['title'] ?? 'UNTITLED',
-            fields['section'] ?? '1',
-            fields['source'] ?? '',
-            fields['author'] ?? '',
-            fields['date'] ?? '',
-          )
-          as MdNode;
-    });
-
-final _heading = char('#').many1.capture.flatMap(
-  (hashes) => char(' ')
-      .skipThen(_restOfLine)
-      .map((text) => Heading(hashes.length, text.trim()) as MdNode),
-);
-
-final _defTerm = _restOfLine;
-final _defBody = string(':   ').skipThen(_restOfLine);
-final _definition = _defTerm.flatMap(
-  (term) => _defBody.map(
-    (body) => DefinitionItem(term.trim(), body.trim()) as MdNode,
-  ),
-);
-
-final _codeLine = string('    ').skipThen(_restOfLine);
-final _codeBlock = _codeLine.many1.map(
-  (lines) => CodeBlock(lines.join('\n')) as MdNode,
-);
-
-final _paragraph = _notNl.many1.capture
-    .thenSkip(_nl)
-    .many1
-    .map((lines) => Paragraph(lines.join(' ').trim()) as MdNode);
-
-final _node =
-    _titleBlock | _heading | _definition | _codeBlock | _blankLine | _paragraph;
-
-final _document = _node.many.thenSkip(eof());
-
-String _emit(List<MdNode> nodes) {
+String _emit(_FrontMatter? meta, MdDocument doc) {
   final buf = StringBuffer();
 
-  for (final node in nodes) {
-    switch (node) {
-      case TitleBlock(
-        :final title,
-        :final section,
-        :final source,
-        :final author,
-        :final date,
-      ):
-        buf.writeln(
-          '.TH "${title.toUpperCase()}" "$section" "$date" "$source" ""',
-        );
-        if (author.isNotEmpty) {
-          buf.writeln('.SH AUTHOR');
-          buf.writeln(author);
-        }
-      case Heading(:final level, :final text):
-        if (level == 1) {
-          buf.writeln('.SH ${text.toUpperCase()}');
-        } else {
-          buf.writeln('.SS $text');
-        }
-      case Paragraph(:final text):
-        buf.writeln('.PP');
-        buf.writeln(_inlineFormat(text));
-      case DefinitionItem(:final term, :final definition):
-        buf.writeln('.TP');
-        buf.writeln(_inlineFormat(term));
-        buf.writeln(_inlineFormat(definition));
-      case CodeBlock(:final text):
-        buf.writeln('.PP');
-        buf.writeln('.nf');
-        buf.writeln(text);
-        buf.writeln('.fi');
-      case BlankLine():
-        break;
+  if (meta != null) {
+    buf.writeln(
+      '.TH "${meta.title.toUpperCase()}" "${meta.section}" '
+      '"${meta.date}" "${meta.source}" ""',
+    );
+    if (meta.author.isNotEmpty) {
+      buf.writeln('.SH AUTHOR');
+      buf.writeln(meta.author);
     }
+  }
+
+  for (final node in doc.children) {
+    _emitBlock(buf, node);
   }
 
   return buf.toString();
 }
 
-String _inlineFormat(String text) => text
-    .replaceAllMapped(
-      RegExp(r'\*\*([^*]+)\*\*'),
-      (m) => '\\fB${m.group(1)}\\fR',
-    )
-    .replaceAllMapped(RegExp(r'\*([^*]+)\*'), (m) => '\\fI${m.group(1)}\\fR')
-    .replaceAllMapped(RegExp(r'`([^`]+)`'), (m) => '\\fC${m.group(1)}\\fR');
+void _emitBlock(StringBuffer buf, MdNode node) {
+  switch (node) {
+    case MdHeading(:final level, :final children):
+      final text = _inlineText(children);
+      if (level == 1) {
+        buf.writeln('.SH ${text.toUpperCase()}');
+      } else {
+        buf.writeln('.SS $text');
+      }
+    case MdParagraph(:final children):
+      final def = _tryDefinition(children);
+      if (def != null) {
+        buf.writeln('.TP');
+        buf.writeln(def.term);
+        buf.writeln(def.definition);
+      } else {
+        buf.writeln('.PP');
+        buf.writeln(_inlineText(children));
+      }
+    case MdCodeBlock(:final code):
+      buf.writeln('.PP');
+      buf.writeln('.nf');
+      buf.write(code);
+      if (!code.endsWith('\n')) buf.writeln();
+      buf.writeln('.fi');
+    case MdBlockquote(:final children):
+      buf.writeln('.RS');
+      for (final child in children) {
+        _emitBlock(buf, child);
+      }
+      buf.writeln('.RE');
+    case MdList(:final items):
+      for (final item in items) {
+        _emitBlock(buf, item);
+      }
+    case MdListItem(:final children):
+      buf.writeln('.IP \\(bu 2');
+      for (final child in children) {
+        _emitBlock(buf, child);
+      }
+    case MdThematicBreak():
+      buf.writeln('.PP');
+      buf.writeln('\\l\'\\n(.lu\'');
+    default:
+      break;
+  }
+}
+
+final class _Definition {
+  final String term;
+  final String definition;
+  const _Definition(this.term, this.definition);
+}
+
+_Definition? _tryDefinition(List<MdNode> children) {
+  final breakIdx = children.indexWhere((n) => n is MdSoftBreak);
+  if (breakIdx < 0 || breakIdx >= children.length - 1) return null;
+
+  final afterBreak = children[breakIdx + 1];
+  if (afterBreak is! MdText) return null;
+  if (!afterBreak.text.startsWith(':   ')) return null;
+
+  final term = _inlineText(children.sublist(0, breakIdx));
+  final defParts = <MdNode>[
+    MdText(afterBreak.text.substring(4)),
+    ...children.sublist(breakIdx + 2),
+  ];
+  return _Definition(term, _inlineText(defParts));
+}
+
+String _inlineText(List<MdNode> nodes) {
+  final buf = StringBuffer();
+  for (final node in nodes) {
+    switch (node) {
+      case MdText(:final text):
+        buf.write(text.replaceAll(r'\', r'\\'));
+      case MdStrong(:final children):
+        buf.write('\\fB${_inlineText(children)}\\fR');
+      case MdEmphasis(:final children):
+        buf.write('\\fI${_inlineText(children)}\\fR');
+      case MdCode(:final code):
+        buf.write('\\fC$code\\fR');
+      case MdLink(:final children):
+        buf.write(_inlineText(children));
+      case MdSoftBreak():
+        buf.write(' ');
+      case MdHardBreak():
+        buf.writeln();
+      default:
+        break;
+    }
+  }
+  return buf.toString();
+}

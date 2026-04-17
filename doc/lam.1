@@ -11,7 +11,7 @@ lam - query structured data files
 \fBlam\fR \fB-i\fR [\fIOPTIONS\fR] \fIFILE\fR
 .SH DESCRIPTION
 .PP
-Query JSON, YAML, TOML, HCL, XML, CSV, and TSV files using a composable pipeline DSL. Format is auto-detected from file extension.
+Query JSON, YAML, TOML, HCL, XML, CSV, TSV, and Markdown files using a composable pipeline DSL. Format is auto-detected from file extension.
 .PP
 If no file is given, reads from standard input.
 .SH OPTIONS
@@ -26,7 +26,7 @@ Disable pretty-printing.
 Output strings without quotes.
 .TP
 \fB-f\fR, \fB--format\fR \fIFMT\fR
-Input format. One of: json, yaml, toml, hcl, xml, csv, tsv. Auto-detected from file extension if omitted.
+Input format. One of: json, yaml, toml, hcl, xml, csv, tsv, markdown. Auto-detected from file extension if omitted.
 .TP
 \fB-t\fR, \fB--to\fR \fIFMT\fR
 Output format. One of: json, yaml, toml, xml, csv, tsv, hcl. Default is json.
@@ -50,7 +50,7 @@ Queries start with \fB.\fR (the current document) and chain operations with \fB|
 \fB.name\fR accesses a field. \fB.a.b.c\fR chains access. Missing fields return null.
 .SS Indexing
 .PP
-\fB.[0]\fR indexes into a list. \fB.[\fR-1\fB]\fR indexes from the end. Out of bounds returns null.
+\fB.[0]\fR indexes into a list. \fB.[-1]\fR indexes from the end. Out of bounds returns null.
 .SS Slicing
 .PP
 \fB.[1:3]\fR extracts elements 1 and 2. \fB.[:3]\fR from the start. \fB.[2:]\fR to the end. \fB.[:-1]\fR all except the last.

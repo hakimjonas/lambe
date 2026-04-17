@@ -26,7 +26,16 @@ void main(List<String> arguments) {
           'format',
           abbr: 'f',
           help: 'Input format',
-          allowed: ['json', 'yaml', 'toml', 'hcl', 'xml', 'csv', 'tsv'],
+          allowed: [
+            'json',
+            'yaml',
+            'toml',
+            'hcl',
+            'xml',
+            'csv',
+            'tsv',
+            'markdown',
+          ],
         )
         ..addOption(
           'to',
@@ -215,6 +224,9 @@ void _usage(ArgParser parser) {
   stderr.writeln("  lam --to csv '.users | map({name, age})' data.json");
   stderr.writeln("  lam '.project.dependencies' pom.xml");
   stderr.writeln("  lam '.[] | filter(.age > 30)' users.csv");
+  stderr.writeln(
+    "  lam '.children | filter(.type == \"heading\") | map(.level)' README.md",
+  );
   stderr.writeln('  lam --schema data.json');
   stderr.writeln('  lam --assert \'.version != "0.0.0"\' pubspec.yaml');
   stderr.writeln('  lam -i data.json');

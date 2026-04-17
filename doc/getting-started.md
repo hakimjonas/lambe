@@ -139,9 +139,12 @@ $ lam '.resource | map(._labels)' main.tf
 
 $ lam '. | map(.name)' users.csv
 ["Alice", "Bob", "Carol"]
+
+$ lam '.children | filter(.type == "heading") | map(.level)' README.md
+[1, 2, 2, 3]
 ```
 
-Supported: JSON, YAML, TOML, HCL/Terraform, XML, CSV, TSV.
+Supported: JSON, YAML, TOML, HCL/Terraform, XML, CSV, TSV, Markdown.
 
 ## Convert between formats
 

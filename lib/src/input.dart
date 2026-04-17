@@ -28,6 +28,9 @@ enum Format {
 
   /// TSV (tab-separated values).
   tsv,
+
+  /// CommonMark Markdown.
+  markdown,
 }
 
 /// Parse [input] string in the given [format] to native Dart types.
@@ -45,6 +48,7 @@ Object? parseInput(String input, Format format) => switch (format) {
   Format.xml => _parse(parseXml(input), (doc) => xmlToNative(doc.root), 'XML'),
   Format.csv => _parseDelimited(input, null),
   Format.tsv => _parseDelimited(input, defaultTsvConfig),
+  Format.markdown => _parseMd(input),
 };
 
 /// Detect format from a file path's extension.
@@ -64,6 +68,9 @@ Format? detectFormat(String path) {
   }
   if (lower.endsWith('.csv')) return Format.csv;
   if (lower.endsWith('.tsv') || lower.endsWith('.tab')) return Format.tsv;
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) {
+    return Format.markdown;
+  }
   return null;
 }
 
@@ -77,6 +84,11 @@ Format sniffFormat(String input) {
   if (trimmed.startsWith('---') || trimmed.contains(': ')) return Format.yaml;
   if (trimmed.contains(' = ') && !trimmed.contains('{')) return Format.toml;
   if (trimmed.contains(' = ') || trimmed.contains(' {')) return Format.hcl;
+  if (trimmed.startsWith('#') ||
+      trimmed.startsWith('- ') ||
+      trimmed.startsWith('* ')) {
+    return Format.markdown;
+  }
   return Format.json;
 }
 
@@ -114,6 +126,88 @@ Object? _parseDelimited(String input, DelimitedConfig? config) {
     Failure() => throw QueryError('CSV parse error: ${result.errors}'),
   };
 }
+
+/// Parse CommonMark Markdown into queryable native Dart types.
+Object? _parseMd(String input) {
+  final result = parseMarkdown(input);
+  return switch (result) {
+    Success(:final value) => mdToNative(value),
+    Partial(:final value) => mdToNative(value),
+    Failure() => throw QueryError('Markdown parse error: ${result.errors}'),
+  };
+}
+
+/// Convert an [MdDocument] into queryable native Dart types.
+///
+/// Every node becomes a map with a `type` discriminator. Container nodes
+/// include a `children` list; leaf nodes carry their content directly.
+Object? mdToNative(MdDocument doc) => {
+  'type': 'document',
+  'children': doc.children.map(_nodeToNative).toList(),
+};
+
+Object? _nodeToNative(MdNode node) => switch (node) {
+  MdDocument(:final children) => {
+    'type': 'document',
+    'children': children.map(_nodeToNative).toList(),
+  },
+  MdHeading(:final level, :final children) => {
+    'type': 'heading',
+    'level': level,
+    'children': children.map(_nodeToNative).toList(),
+  },
+  MdParagraph(:final children) => {
+    'type': 'paragraph',
+    'children': children.map(_nodeToNative).toList(),
+  },
+  MdBlockquote(:final children) => {
+    'type': 'blockquote',
+    'children': children.map(_nodeToNative).toList(),
+  },
+  MdList(:final ordered, :final start, :final tight, :final items) => {
+    'type': 'list',
+    'ordered': ordered,
+    if (start != null) 'start': start,
+    'tight': tight,
+    'items': items.map(_nodeToNative).toList(),
+  },
+  MdListItem(:final children) => {
+    'type': 'list_item',
+    'children': children.map(_nodeToNative).toList(),
+  },
+  MdCodeBlock(:final language, :final code) => {
+    'type': 'code_block',
+    if (language != null) 'language': language,
+    'code': code,
+  },
+  MdHtmlBlock(:final html) => {'type': 'html_block', 'html': html},
+  MdThematicBreak() => {'type': 'thematic_break'},
+  MdText(:final text) => {'type': 'text', 'text': text},
+  MdEmphasis(:final children) => {
+    'type': 'emphasis',
+    'children': children.map(_nodeToNative).toList(),
+  },
+  MdStrong(:final children) => {
+    'type': 'strong',
+    'children': children.map(_nodeToNative).toList(),
+  },
+  MdLink(:final href, :final title, :final children) => {
+    'type': 'link',
+    'href': href,
+    if (title != null) 'title': title,
+    'children': children.map(_nodeToNative).toList(),
+  },
+  MdImage(:final src, :final alt, :final title) => {
+    'type': 'image',
+    'src': src,
+    'alt': alt,
+    if (title != null) 'title': title,
+  },
+  MdCode(:final code) => {'type': 'code', 'code': code},
+  MdHtmlInline(:final html) => {'type': 'html_inline', 'html': html},
+  MdHardBreak() => {'type': 'hard_break'},
+  MdSoftBreak() => {'type': 'soft_break'},
+};
 
 /// Convert header + rows into a list of maps.
 List<Map<String, Object?>> _headersToMaps(

@@ -25,7 +25,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
         instructions:
             'Lambé is a universal query language for structured data. '
             'Use the query tool to find, extract, filter, transform, or look up '
-            'values from JSON, YAML, TOML, or HCL files. '
+            'values from JSON, YAML, TOML, HCL, or Markdown files. '
             'Use the schema tool to understand data structure before querying. '
             'Use the assert tool to validate or check conditions on data.\n\n'
             'Common patterns:\n'
@@ -34,7 +34,30 @@ base class LambeServer extends MCPServer with ToolsSupport {
             '  .items | sort_by(.price) | first        — sort and pick\n'
             '  .users | group_by(.role)                 — group by field\n'
             '  .items | map(.price) | sum               — aggregate\n'
-            '  .config | has("required_field")           — check existence\n',
+            '  .config | has("required_field")           — check existence\n'
+            '\n'
+            'Markdown data model:\n'
+            'Markdown is parsed into an AST of typed nodes. The root is '
+            '{type: "document", children: [...]}. Each node has a "type" field '
+            'and container nodes have "children". Node types: heading (level, '
+            'children), paragraph (children), list (ordered, tight, items), '
+            'list_item (children), code_block (language, code), blockquote '
+            '(children), link (href, title, children), image (src, alt, title), '
+            'emphasis (children), strong (children), text (text), code (code), '
+            'thematic_break, hard_break, soft_break, html_block (html), '
+            'html_inline (html).\n'
+            '\n'
+            'Markdown query patterns:\n'
+            '  .children | filter(.type == "heading") | map(.children[0].text)\n'
+            '    — extract all heading texts\n'
+            '  .children | filter(.type == "heading") | map({level, text: .children[0].text})\n'
+            '    — headings with levels\n'
+            '  .children | filter(.type == "code_block") | map(.language)\n'
+            '    — list code block languages\n'
+            '  .. | filter(.type == "link") | map({href, text: .children[0].text})\n'
+            '    — find all links (recursive descent)\n'
+            '  .. | filter(.type == "image") | map({src, alt})\n'
+            '    — find all images\n',
       ) {
     registerTool(_queryTool, _handleQuery);
     registerTool(_schemaTool, _handleSchema);
@@ -49,7 +72,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
     name: 'lambe_query',
     description:
         'Use this tool when the user asks to find, extract, filter, query, get, '
-        'look up, check, or transform data from JSON, YAML, TOML, HCL, or any '
+        'look up, check, or transform data from JSON, YAML, TOML, HCL, Markdown, or any '
         'structured configuration file. Supports property chains (.users[0].name), '
         'pipeline operations (filter, map, sort_by, group_by, unique, flatten), '
         'aggregation (sum, avg, min, max, length), arithmetic, comparisons, '
@@ -86,17 +109,26 @@ base class LambeServer extends MCPServer with ToolsSupport {
               'Map operations: keys, values, has("key"), to_entries, from_entries\n'
               'Map transforms: filter_values(pred), map_values(expr), filter_keys(pred)\n'
               '\n'
+              'Markdown queries (data is an AST with typed nodes):\n'
+              '  ".children | filter(.type == \\"heading\\") | map(.children[0].text)"\n'
+              '    — extract heading texts\n'
+              '  ".children | filter(.type == \\"code_block\\") | map({language, code})"\n'
+              '    — extract code blocks\n'
+              '  ".. | filter(.type == \\"link\\") | map(.href)"\n'
+              '    — find all link URLs (recursive descent with ..)\n'
+              '\n'
               'Null propagation: .missing returns null, null | op returns null.\n'
               'Arithmetic on null throws. Use .field == null to test.\n',
         ),
         'data': Schema.string(
-          description: 'The input data as a string (JSON, YAML, TOML, or HCL)',
+          description:
+              'The input data as a string (JSON, YAML, TOML, HCL, or Markdown)',
         ),
         'format': UntitledSingleSelectEnumSchema(
           description:
-              'Input format: json, yaml, toml, hcl. '
+              'Input format: json, yaml, toml, hcl, markdown. '
               'Auto-detected from content if omitted.',
-          values: ['json', 'yaml', 'toml', 'hcl'],
+          values: ['json', 'yaml', 'toml', 'hcl', 'markdown'],
         ),
       },
       required: ['expression', 'data'],
@@ -144,11 +176,12 @@ base class LambeServer extends MCPServer with ToolsSupport {
     inputSchema: Schema.object(
       properties: {
         'data': Schema.string(
-          description: 'The input data as a string (JSON, YAML, TOML, or HCL)',
+          description:
+              'The input data as a string (JSON, YAML, TOML, HCL, or Markdown)',
         ),
         'format': UntitledSingleSelectEnumSchema(
           description: 'Input format. Auto-detected if omitted.',
-          values: ['json', 'yaml', 'toml', 'hcl'],
+          values: ['json', 'yaml', 'toml', 'hcl', 'markdown'],
         ),
       },
       required: ['data'],
@@ -199,7 +232,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
         'data': Schema.string(description: 'The input data as a string'),
         'format': UntitledSingleSelectEnumSchema(
           description: 'Input format. Auto-detected if omitted.',
-          values: ['json', 'yaml', 'toml', 'hcl'],
+          values: ['json', 'yaml', 'toml', 'hcl', 'markdown'],
         ),
       },
       required: ['expression', 'data'],
