@@ -1,3 +1,18 @@
+## 0.3.0
+
+### Added
+- **Markdown support.** CommonMark Markdown (.md, .markdown) is now a queryable
+  input format. Parsed into a typed AST with node types like heading, paragraph,
+  link, code_block, list, image, emphasis, etc.
+- `mdToNative` public API for converting `MdDocument` to queryable Dart types
+- Markdown query examples in MCP server instructions, AI.md, and AGENTS.md
+
+### Changed
+- Bumped rumil, rumil_parsers, rumil_expressions to ^0.5.0
+- Rewrote `tool/manpage.dart` to use `parseMarkdown` + `parseYaml` from
+  rumil_parsers instead of handrolled parser
+- 491 tests (was 465)
+
 ## 0.2.0
 
 ### Breaking
