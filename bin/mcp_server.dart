@@ -39,9 +39,6 @@ base class LambeServer extends MCPServer with ToolsSupport {
             'Common mistakes:\n'
             '  - Use && and || for boolean logic, not "and"/"or":\n'
             '      .users | filter(.age > 30 && .active)\n'
-            '  - Pipeline ops (has, length, keys, sum, etc.) must come after |, not\n'
-            '    as bare expressions. Use ". | has(\\"k\\")" instead of "has(\\"k\\")".\n'
-            '    Inside map, wrap with ". |": map(. | has("k")), not map(has("k")).\n'
             '  - Hyphenated or dotted keys need bracket syntax:\n'
             '      .project["optional-dependencies"].dev\n'
             '      (not .project."optional-dependencies")\n'
@@ -79,10 +76,6 @@ base class LambeServer extends MCPServer with ToolsSupport {
     registerTool(_schemaTool, _handleSchema);
     registerTool(_assertTool, _handleAssert);
   }
-
-  // --------------------------------------------------------------------------
-  // Tool: query
-  // --------------------------------------------------------------------------
 
   final _queryTool = Tool(
     name: 'lambe_query',
@@ -139,11 +132,11 @@ base class LambeServer extends MCPServer with ToolsSupport {
               '  Consume with map, not to_entries:\n'
               '    ".users | group_by(.role) | map({role: .key, count: .values | length})"\n'
               '\n'
-              'has() and other pipeline ops MUST follow | (they are not bare\n'
-              'expressions). Use:\n'
-              '  ". | has(\\"users\\")"                       — standalone\n'
-              '  ".users | map(. | has(\\"email\\"))"        — inside map\n'
-              '(Writing "has(\\"users\\")" or "map(has(\\"k\\"))" will parse-error.)\n'
+              'Pipeline ops can also appear as bare expressions with implicit\n'
+              '. input, so these are equivalent:\n'
+              '  "has(\\"users\\")" ≡ ". | has(\\"users\\")"\n'
+              '  "length" ≡ ". | length"\n'
+              '  ".users | map(has(\\"email\\"))" ≡ ".users | map(. | has(\\"email\\"))"\n'
               '\n'
               'Markdown queries (data is an AST with typed nodes):\n'
               '  ".children | filter(.type == \\"heading\\") | map(.children[0].text)"\n'
@@ -212,10 +205,6 @@ base class LambeServer extends MCPServer with ToolsSupport {
     }
   }
 
-  // --------------------------------------------------------------------------
-  // Tool: schema
-  // --------------------------------------------------------------------------
-
   final _schemaTool = Tool(
     name: 'lambe_schema',
     description:
@@ -261,10 +250,6 @@ base class LambeServer extends MCPServer with ToolsSupport {
       );
     }
   }
-
-  // --------------------------------------------------------------------------
-  // Tool: assert
-  // --------------------------------------------------------------------------
 
   final _assertTool = Tool(
     name: 'lambe_assert',

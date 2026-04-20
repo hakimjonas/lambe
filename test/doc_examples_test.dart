@@ -1,10 +1,10 @@
-/// Extracts Lambé query expressions from human-facing docs (AI.md and the MCP
-/// server's tool descriptions/instructions) and asserts that each one parses
-/// and evaluates without error against a representative fixture.
+/// Extracts Lambé query expressions from human-facing docs (AI.md and the
+/// MCP server's tool descriptions and instructions), then asserts each one
+/// parses against a representative fixture.
 ///
-/// If a doc advertises a syntax like `.. | filter(...)` or a feature that
-/// was never implemented, this test fails. Prevents doc-drift where examples
-/// reference phantom features and AI agents copy them verbatim.
+/// Guards against doc drift where examples reference features the parser
+/// does not implement. LLM-drafted examples are especially prone to this
+/// (they autocomplete idioms from jq/XPath).
 library;
 
 import 'dart:io';
@@ -15,10 +15,6 @@ import 'package:rumil_parsers/rumil_parsers.dart';
 import 'package:test/test.dart';
 
 void main() {
-  // Fixture broad enough to exercise the examples without requiring each to
-  // succeed on the same path — expressions just need to parse and either
-  // return a value or a clean QueryError (type mismatch on a field that
-  // doesn't exist in this fixture is acceptable; parser errors are not).
   final fixture = <String, Object?>{
     'database': {'host': 'localhost', 'port': 5432},
     'users': <Object?>[
@@ -87,9 +83,6 @@ void main() {
   });
 
   group('MCP server instructions and tool descriptions', () {
-    // The MCP server exposes instruction text and per-tool descriptions that
-    // agents consume as ground truth. Extract every embedded query example
-    // and ensure each one parses.
     const path = 'bin/mcp_server.dart';
     final file = File(path);
     if (!file.existsSync()) {
@@ -111,12 +104,12 @@ void main() {
   });
 }
 
-/// Extracts Lambé query expressions from markdown files.
+/// Extracts `lam '...'` invocations from fenced code blocks and inline
+/// backticked table cells in the given Markdown source.
 ///
-/// Looks inside fenced code blocks whose language tag suggests a shell
-/// invocation (`bash`, `console`, `sh`) or is a plain code block. Within
-/// those blocks, pulls out anything that follows `lam '...'` or is a naked
-/// query starting with a dot on its own line.
+/// Fenced blocks are restricted to shell-flavoured languages (`bash`, `sh`,
+/// `console`, or untagged). Every matched expression is returned with a
+/// location tag for test-name reporting.
 List<(String, String)> _extractLamExpressions(String md) {
   final result = parseMarkdown(md);
   final doc = switch (result) {
@@ -139,8 +132,6 @@ List<(String, String)> _extractLamExpressions(String md) {
     }
   });
 
-  // Also extract from markdown table cells that contain backticked `lam '...'`
-  // invocations (used heavily in AI.md's "Natural Language to Lambë" table).
   for (final match in RegExp(r'`lam[^`]*`').allMatches(md)) {
     final inside = match.group(0)!;
     final expr = _extractExprFromShellLine(
@@ -152,6 +143,7 @@ List<(String, String)> _extractLamExpressions(String md) {
   return out;
 }
 
+/// Walks the Markdown AST and invokes [visit] on every `code_block` node.
 void _walkForCodeBlocks(
   Object? node,
   void Function(Map<String, Object?>) visit,
@@ -171,41 +163,35 @@ void _walkForCodeBlocks(
   }
 }
 
-/// Pulls the query string out of `lam '...'` or `lam --flag '...'` invocations.
+/// Pulls the query string out of a `lam '...'` or `lam --flag '...'` call.
+///
+/// Returns `null` if the line does not contain a recognisable invocation.
 String? _extractExprFromShellLine(String line) {
   final m = RegExp(r"\blam\b[^']*'((?:[^'\\]|\\.)*)'").firstMatch(line);
   if (m == null) return null;
   final raw = m.group(1)!;
-  // Unescape any backslash-escaped characters inside the single-quoted string.
   return raw.replaceAll(r'\|', '|').replaceAll(r"\'", "'");
 }
 
-/// Extracts Lambé query expressions from Dart string literals in MCP server
-/// source. Looks for lines inside single-quoted strings that mention a
-/// pipeline or start with a dot — these are the in-instruction examples
-/// agents see.
+/// Extracts Lambé query expressions from double-quoted Dart string literals.
+///
+/// Targets the tool descriptions and instruction text in `bin/mcp_server.dart`,
+/// where embedded examples appear as nested `"..."` within outer `'...'`
+/// description strings. Filters out prose fragments that merely gesture at
+/// syntax (trailing `|`, `...` ellipses, bare field names).
 List<(String, String)> _extractDartStringExpressions(String dart) {
   final out = <(String, String)>[];
-  // Each continuation line in a description looks like:
-  //   '  "..."  — comment'
-  // or
-  //   '  .something | ...'
-  // Match backticked/quoted examples that clearly start with a dot.
   final doubleQuoted = RegExp(r'"((?:\.[^"\\]|\\[.a-z]|[^"\\])+)"');
   for (final match in doubleQuoted.allMatches(dart)) {
     final inner = match.group(1)!;
-    // Unescape common Dart string escapes.
     final expr = inner.replaceAll(r'\"', '"').replaceAll(r'\\', r'\');
     if (!expr.startsWith('.') && !expr.startsWith('if ')) continue;
-    // Skip prose fragments that merely gesture at syntax ("`. | ...`",
-    // trailing pipes, open parens).
     final trimmed = expr.trim();
     if (trimmed.endsWith('|') ||
         trimmed.endsWith('...') ||
         trimmed.contains('...')) {
       continue;
     }
-    // Skip non-expression content (bare field names used in prose).
     if (!trimmed.contains('|') &&
         !trimmed.contains('[') &&
         !trimmed.contains('(') &&
@@ -217,6 +203,9 @@ List<(String, String)> _extractDartStringExpressions(String dart) {
   return out;
 }
 
+/// Asserts [expr] parses. Evaluation errors from fixture-shape mismatches
+/// are tolerated — the test's purpose is to catch parse failures, which
+/// indicate phantom features or typos in docs.
 void _expectParsesAndEvals(String expr, Object? fixture) {
   final parseResult = parse(expr);
   expect(
@@ -224,13 +213,9 @@ void _expectParsesAndEvals(String expr, Object? fixture) {
     isA<Success<Object?, Object?>>(),
     reason: 'Failed to parse: $expr',
   );
-  // Evaluate too. Type errors on fixture fields are OK (examples use various
-  // shapes); parse failures and unrecognised ops are not. QueryError is the
-  // recognisable type for runtime mismatches and is allowed here.
   try {
     query(expr, fixture);
   } on QueryError {
-    // expected for fixture-shape mismatches; doc parse success is what we're
-    // verifying
+    // Fixture-shape mismatches are not failures here.
   }
 }

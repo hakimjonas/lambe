@@ -1,5 +1,15 @@
 ## 0.4.0
 
+### Added
+- **Pipeline ops are now valid bare expressions with implicit `.` input.**
+  `has("k")`, `length`, `keys`, `sum`, `filter(...)`, `map(...)` and every
+  other pipe op can appear as standalone expressions — `has("k")` parses as
+  sugar for `. | has("k")`. This also unblocks common shapes like
+  `map(has("email"))`, `filter(has("k"))`, and `filter(length > 0)`. Bare
+  ops are only consulted after the other `_atom` alternatives fail, so
+  existing forms like `{length}` object shorthand, `.length` field access,
+  and `"\(length)"` string interpolation keep their prior meaning.
+
 ### Breaking
 - **XML input/output support removed.** `Format.xml`, `OutputFormat.xml`, and
   XML extension detection (`.xml`, `.pom`, `.csproj`, `.svg`) are gone. The
@@ -11,7 +21,7 @@
   a proper projection (array-preserved siblings, attribute preservation) once
   the design is settled.
 
-### Added
+### MCP surface
 - **`output_format` parameter on the `lambe_query` MCP tool.** AI agents can
   now request yaml/toml/csv/tsv/hcl output directly, matching the CLI's
   `--to` flag. Defaults to json.

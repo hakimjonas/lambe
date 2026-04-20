@@ -33,7 +33,7 @@ Use Lambë when the user needs to **extract, filter, transform, validate, or con
 | "Get all unique tags" | `lam '.items \| map(.tags) \| flatten \| unique' data.json` |
 | "Get the first 3 items" | `lam '.items[:3]' data.json` |
 | "Build a summary object" | `lam '{count: .items \| length, total: .items \| map(.price) \| sum}' data.json` |
-| "Find containers without limits" | `lam '.spec.template.spec.containers \| filter((. \| has("resources")) == false) \| map(.name)' deployment.yaml` |
+| "Find containers without limits" | `lam '.spec.template.spec.containers \| filter(has("resources") == false) \| map(.name)' deployment.yaml` |
 | "List Terraform resources" | `lam '.resource \| map(._labels)' main.tf` |
 | "Query CSV data" | `lam '. \| filter(.status != "closed") \| map(.title)' issues.csv` |
 | "List all headings in this markdown" | `lam '.children \| filter(.type == "heading") \| map(.children[0].text)' README.md` |
