@@ -18,7 +18,7 @@ lam - query structured data files
 
 # DESCRIPTION
 
-Query JSON, YAML, TOML, HCL, XML, CSV, TSV, and Markdown files using a composable pipeline DSL. Format is auto-detected from file extension.
+Query JSON, YAML, TOML, HCL, CSV, TSV, and Markdown files using a composable pipeline DSL. Format is auto-detected from file extension.
 
 If no file is given, reads from standard input.
 
@@ -34,10 +34,10 @@ If no file is given, reads from standard input.
 :   Output strings without quotes.
 
 **-f**, **--format** *FMT*
-:   Input format. One of: json, yaml, toml, hcl, xml, csv, tsv, markdown. Auto-detected from file extension if omitted.
+:   Input format. One of: json, yaml, toml, hcl, csv, tsv, markdown. Auto-detected from file extension if omitted.
 
 **-t**, **--to** *FMT*
-:   Output format. One of: json, yaml, toml, xml, csv, tsv, hcl. Default is json.
+:   Output format. One of: json, yaml, toml, csv, tsv, hcl. Default is json.
 
 **--schema**
 :   Show the data structure with type names instead of values.

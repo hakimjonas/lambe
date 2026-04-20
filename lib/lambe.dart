@@ -1,9 +1,9 @@
 /// Universal query language for structured data.
 ///
-/// Lambé provides a composable query DSL for JSON, YAML, TOML, HCL, and Markdown, with
-/// pipeline operations, property access chains, and filter predicates. Built
-/// on Rumil parser combinators with left-recursive grammar support via Warth
-/// seed-growth.
+/// Lambé provides a composable query DSL for JSON, YAML, TOML, HCL, CSV, TSV,
+/// and Markdown, with pipeline operations, property access chains, and filter
+/// predicates. Built on Rumil parser combinators with left-recursive grammar
+/// support via Warth seed-growth.
 ///
 /// ```dart
 /// import 'package:lambe/lambe.dart';
@@ -23,6 +23,7 @@ import 'src/input.dart';
 import 'src/input.dart' as input_;
 import 'src/parser.dart' as parser_;
 
+export 'src/_version.dart' show lambeVersion;
 export 'src/ast.dart';
 export 'src/errors.dart';
 export 'src/input.dart'

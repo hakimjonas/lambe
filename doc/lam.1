@@ -11,7 +11,7 @@ lam - query structured data files
 \fBlam\fR \fB-i\fR [\fIOPTIONS\fR] \fIFILE\fR
 .SH DESCRIPTION
 .PP
-Query JSON, YAML, TOML, HCL, XML, CSV, TSV, and Markdown files using a composable pipeline DSL. Format is auto-detected from file extension.
+Query JSON, YAML, TOML, HCL, CSV, TSV, and Markdown files using a composable pipeline DSL. Format is auto-detected from file extension.
 .PP
 If no file is given, reads from standard input.
 .SH OPTIONS
@@ -26,10 +26,10 @@ Disable pretty-printing.
 Output strings without quotes.
 .TP
 \fB-f\fR, \fB--format\fR \fIFMT\fR
-Input format. One of: json, yaml, toml, hcl, xml, csv, tsv, markdown. Auto-detected from file extension if omitted.
+Input format. One of: json, yaml, toml, hcl, csv, tsv, markdown. Auto-detected from file extension if omitted.
 .TP
 \fB-t\fR, \fB--to\fR \fIFMT\fR
-Output format. One of: json, yaml, toml, xml, csv, tsv, hcl. Default is json.
+Output format. One of: json, yaml, toml, csv, tsv, hcl. Default is json.
 .TP
 \fB--schema\fR
 Show the data structure with type names instead of values.

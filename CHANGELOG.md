@@ -1,3 +1,47 @@
+## 0.4.0
+
+### Breaking
+- **XML input/output support removed.** `Format.xml`, `OutputFormat.xml`, and
+  XML extension detection (`.xml`, `.pom`, `.csproj`, `.svg`) are gone. The
+  XML→native projection was lossy in ways that silently produced wrong query
+  results (repeated sibling elements collapsed under last-wins map semantics;
+  attributes were dropped entirely). Rather than ship a footgun, XML is
+  dropped for now. The underlying XML parser in `rumil_parsers` is unchanged
+  and remains spec-compliant; a future lambe release may reintroduce XML with
+  a proper projection (array-preserved siblings, attribute preservation) once
+  the design is settled.
+
+### Added
+- **`output_format` parameter on the `lambe_query` MCP tool.** AI agents can
+  now request yaml/toml/csv/tsv/hcl output directly, matching the CLI's
+  `--to` flag. Defaults to json.
+- **CSV and TSV exposed through the MCP surface.** The library always
+  supported them; the MCP `format` enum was missing them.
+- **MCP tool descriptions now document common pitfalls:** `&&`/`||` for
+  boolean logic (not `and`/`or`), bracket syntax for hyphenated keys,
+  `has()` and other pipeline ops requiring a leading `|`, and the
+  `[{key, values}]` shape of `group_by` output.
+- **Build-time version generation.** `tool/gen_version.dart` reads
+  `pubspec.yaml` and writes `lib/src/_version.dart`, which the MCP server
+  uses to report its version. Run after bumping the pubspec; the release
+  workflow also runs it automatically.
+- **`test/doc_examples_test.dart` — AI-doc and MCP-instruction examples are
+  now test-gated.** Every `lam '...'` in AI.md and every embedded query in
+  the MCP server's tool descriptions/instructions is parsed and evaluated
+  against a fixture. Prevents future phantom-feature drift (e.g., LLM-drafted
+  examples that advertise syntax the parser doesn't implement).
+
+### Fixed
+- **MCP server now reports its actual version.** `bin/mcp_server.dart` had
+  hardcoded `0.1.0` since that release and was never bumped.
+- **Removed phantom `..` (recursive descent) references from docs.** The
+  operator was advertised in `AI.md` and the MCP server instructions as a
+  Markdown query pattern but was never implemented. Callers who saw it would
+  have hit parse errors.
+- **Fixed broken example in `AI.md`**: `filter(has("resources") == false)` →
+  `filter((. | has("resources")) == false)`. `has` is a pipeline op and
+  cannot appear as a bare expression.
+
 ## 0.3.0
 
 ### Added

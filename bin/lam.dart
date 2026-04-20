@@ -31,7 +31,6 @@ void main(List<String> arguments) {
             'yaml',
             'toml',
             'hcl',
-            'xml',
             'csv',
             'tsv',
             'markdown',
@@ -41,7 +40,7 @@ void main(List<String> arguments) {
           'to',
           abbr: 't',
           help: 'Output format',
-          allowed: ['json', 'yaml', 'toml', 'xml', 'csv', 'tsv', 'hcl'],
+          allowed: ['json', 'yaml', 'toml', 'csv', 'tsv', 'hcl'],
         )
         ..addFlag(
           'schema',
@@ -222,7 +221,6 @@ void _usage(ArgParser parser) {
   stderr.writeln("  cat data.yaml | lam '.users | filter(.age > 30)'");
   stderr.writeln("  lam --to yaml '.config' data.json");
   stderr.writeln("  lam --to csv '.users | map({name, age})' data.json");
-  stderr.writeln("  lam '.project.dependencies' pom.xml");
   stderr.writeln("  lam '.[] | filter(.age > 30)' users.csv");
   stderr.writeln(
     "  lam '.children | filter(.type == \"heading\") | map(.level)' README.md",

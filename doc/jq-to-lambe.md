@@ -146,7 +146,7 @@ Identical.
 | N/A | `lam --to csv '.users' data.json` |
 | `@csv` | `lam --to csv` |
 
-jq outputs JSON only (with `@csv`/`@tsv` for limited conversion). Lambe reads JSON, YAML, TOML, HCL, XML, CSV, TSV, and Markdown, and converts between output formats via `--to`.
+jq outputs JSON only (with `@csv`/`@tsv` for limited conversion). Lambe reads JSON, YAML, TOML, HCL, CSV, TSV, and Markdown, and converts between output formats via `--to`.
 
 ## Schema inspection
 
@@ -173,8 +173,8 @@ jq uses `-e` (exit status from expression). Lambe has `--assert` which exits 0 o
 | Average | `add / length` | `avg` |
 | Object shorthand | `{name: .name}` | `{name}` |
 | Conditional end | `end` required | no `end` |
-| Format output | JSON only (`@csv`, `@tsv`) | 7 formats via `--to` |
+| Format output | JSON only (`@csv`, `@tsv`) | 6 formats via `--to` |
 | Schema | none | `--schema` |
 | CI validation | `-e` flag | `--assert` |
 | Null on missing | yes | yes |
-| Multiple formats input | JSON only | JSON, YAML, TOML, HCL, XML, CSV, TSV, Markdown |
+| Multiple formats input | JSON only | JSON, YAML, TOML, HCL, CSV, TSV, Markdown |

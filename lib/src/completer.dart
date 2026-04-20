@@ -39,7 +39,6 @@ const _outputFormats = <String>[
   'json',
   'toml',
   'tsv',
-  'xml',
   'yaml',
 ];
 

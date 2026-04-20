@@ -144,7 +144,7 @@ $ lam '.children | filter(.type == "heading") | map(.level)' README.md
 [1, 2, 2, 3]
 ```
 
-Supported: JSON, YAML, TOML, HCL/Terraform, XML, CSV, TSV, Markdown.
+Supported: JSON, YAML, TOML, HCL/Terraform, CSV, TSV, Markdown.
 
 ## Convert between formats
 
@@ -226,7 +226,7 @@ Output format: yaml
 lambe> :help
 Commands:
   :schema         Show data structure
-  :to <format>    Set output format (json, yaml, toml, xml, csv, tsv, hcl)
+  :to <format>    Set output format (json, yaml, toml, csv, tsv, hcl)
   :raw            Toggle raw string output
   :pretty         Toggle pretty-printing
   :load <file>    Load a different data file
