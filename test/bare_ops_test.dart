@@ -37,10 +37,7 @@ void main() {
     });
 
     test('parameterized op: filter at root', () {
-      expect(
-        query('filter(. > 2)', <Object?>[1, 2, 3, 4]),
-        <Object?>[3, 4],
-      );
+      expect(query('filter(. > 2)', <Object?>[1, 2, 3, 4]), <Object?>[3, 4]);
     });
   });
 
@@ -94,17 +91,14 @@ void main() {
 
   group('Existing constructs still win over op keywords', () {
     test('object shorthand {length} reads field', () {
-      expect(
-        query('{length}', {'length': 42, 'other': 1}),
-        {'length': 42},
-      );
+      expect(query('{length}', {'length': 42, 'other': 1}), {'length': 42});
     });
 
     test('object shorthand {keys, values} reads fields', () {
-      expect(
-        query('{keys, values}', {'keys': 1, 'values': 2}),
-        {'keys': 1, 'values': 2},
-      );
+      expect(query('{keys, values}', {'keys': 1, 'values': 2}), {
+        'keys': 1,
+        'values': 2,
+      });
     });
 
     test('.length field access still works', () {

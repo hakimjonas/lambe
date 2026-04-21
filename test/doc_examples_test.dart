@@ -45,8 +45,18 @@ void main() {
       },
     ],
     'items': <Object?>[
-      {'name': 'w', 'price': 10, 'qty': 2, 'tags': <Object?>['a']},
-      {'name': 'g', 'price': 25, 'qty': 1, 'tags': <Object?>['b', 'c']},
+      {
+        'name': 'w',
+        'price': 10,
+        'qty': 2,
+        'tags': <Object?>['a'],
+      },
+      {
+        'name': 'g',
+        'price': 25,
+        'qty': 1,
+        'tags': <Object?>['b', 'c'],
+      },
     ],
     'config': {
       'database': {'host': 'db', 'port': 5432},
@@ -55,7 +65,9 @@ void main() {
     'version': '1.2.3',
     'replicas': 3,
     'project': {
-      'optional-dependencies': {'dev': <Object?>['pytest']},
+      'optional-dependencies': {
+        'dev': <Object?>['pytest'],
+      },
     },
     'dependencies': <Object?>[
       {'name': 'httpx', 'version': '0.27.0'},

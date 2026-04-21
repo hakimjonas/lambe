@@ -26,15 +26,7 @@ void main(List<String> arguments) {
           'format',
           abbr: 'f',
           help: 'Input format',
-          allowed: [
-            'json',
-            'yaml',
-            'toml',
-            'hcl',
-            'csv',
-            'tsv',
-            'markdown',
-          ],
+          allowed: ['json', 'yaml', 'toml', 'hcl', 'csv', 'tsv', 'markdown'],
         )
         ..addOption(
           'to',
