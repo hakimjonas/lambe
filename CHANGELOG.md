@@ -1,3 +1,72 @@
+## 0.5.0
+
+### Added
+- **`to_number` pipeline op.** Parses a string as a number; pass-through for
+  existing numbers. Matches CSV and TSV cells, which are strings by default:
+  `. | map(.price | to_number) | sum`. Throws `QueryError` on strings that
+  do not parse.
+- **`type` pipeline op.** Returns the runtime type of the input as a string:
+  `"null"`, `"boolean"`, `"number"`, `"string"`, `"array"`, or `"object"`.
+  Example: `. | filter((. | type) == "number")`.
+- **`query()` and `eval()` normalize input data.** Maps and lists with
+  non-canonical static types (e.g. `Map<dynamic, dynamic>` from some
+  third-party decoders, or typed literals like `<int>[1, 2, 3]`) are
+  recursively rebuilt as `Map<String, Object?>` and `List<Object?>` before
+  evaluation. Previously these caused cryptic type-cast errors inside the
+  evaluator. `queryString` skips this step since `parseInput` already
+  produces canonical trees. Maps with non-string keys throw `QueryError`
+  with a clear message.
+
+### Performance
+- **REPL tab completion is now independent of dataset size.** The completer
+  reduces the data to a shape representative (one sample per list, all map
+  keys preserved) before walking the partial AST, so operations like
+  `sort_by`, `group_by`, and `unique` no longer execute against the full
+  data. Median completion latency at 1M records drops from ~380ms–1.2s
+  (depending on pipeline ops) to ~1–2ms. Peak resident set during a
+  completion drops from hundreds of MB to the cost of the shape tree.
+  Completion semantics are unchanged: the candidate lists are identical.
+  Benchmark harness under `tool/bench/`.
+
+### Fixed
+- **`unique`, `unique_by`, and `group_by` now use structural equality on
+  collection-valued keys.** Previously these operations relied on Dart's
+  native `==` for `List` and `Map`, which is reference equality, so
+  `[{"a":1}, {"a":1}] | unique` returned both entries instead of one.
+  The evaluator now canonicalizes keys via JSON with sorted map keys before
+  insertion into the hash set/map. Scalar keys (`num`, `bool`, `String`,
+  `null`) still deduplicate by value as before. Key order in maps no
+  longer affects equality: `{"a":1, "b":2}` and `{"b":2, "a":1}` are
+  treated as equal.
+- **`EvalException` from `rumil_expressions` is now wrapped as `QueryError`**
+  at the public API boundary (`query()` and `eval()`). Previously, type errors
+  in the evaluator (e.g., `.x > 5` where `.x` is a string, or `null + 1`)
+  would leak the underlying `EvalException` with a full Dart stack trace,
+  crashing `bin/lam.dart` with exit code 255 instead of reporting a clean
+  error with exit code 1. The REPL was not affected because it already had a
+  catch-all handler. The docstring for `query()` already advertised
+  `QueryError` as the evaluation error type; this brings the implementation
+  in line with the contract.
+- **REPL banner now uses the actual `lambeVersion`** from `_version.dart`
+  instead of a hardcoded `v0.1.0` string.
+
+### Docs
+- Tagline in the library doc comment and MCP server instructions changed from
+  "universal" to "multi-format" — accurate given the specific format set
+  (JSON, YAML, TOML, HCL, CSV, TSV, Markdown).
+- `AGENTS.md` no longer references the unimplemented `..` (recursive descent)
+  operator in Markdown query examples. The 0.4.0 changelog noted this was
+  removed from `AI.md` but `AGENTS.md` was missed.
+- `AI.md` and `AGENTS.md` pipeline operation lists now include `to_number`
+  and `type`.
+
+### Release infrastructure
+- Release matrix now builds Linux ARM64 and macOS ARM64 (Apple Silicon) in
+  addition to x64 and Windows. The MCP registry manifest covers all five
+  platforms.
+- GitHub Actions bumped: `upload-artifact` v4→v7, `download-artifact` v4→v8,
+  `action-gh-release` v2→v3.
+
 ## 0.4.0
 
 ### Added

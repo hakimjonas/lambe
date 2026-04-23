@@ -35,7 +35,6 @@ lam '.resource | filter(._labels[0] == "aws_instance") | map(._labels[1])' main.
 
 # Query Markdown (AST with typed nodes: heading, paragraph, link, code_block, etc.)
 lam '.children | filter(.type == "heading") | map(.children[0].text)' README.md
-lam '.. | filter(.type == "link") | map({href, text: .children[0].text})' doc.md
 lam '.children | filter(.type == "code_block") | map(.language)' tutorial.md
 
 # Interactive REPL
@@ -79,4 +78,4 @@ expect(config, lamEquals('.database.port', 5432));
 
 filter, map, sort, sort_by, group_by, unique, unique_by, flatten, reverse,
 keys, values, length, first, last, sum, avg, min, max, has, to_entries,
-from_entries, filter_values, map_values, filter_keys.
+from_entries, to_number, type, filter_values, map_values, filter_keys.

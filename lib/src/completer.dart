@@ -46,6 +46,12 @@ final _fieldTailRx = RegExp(r'\.(\w*)$');
 /// Uses [parsePartial] to parse the valid expression prefix (with `.recover()`
 /// preserving inner expressions in pipe ops), then inspects the AST and any
 /// unparsed remainder to determine completion context.
+///
+/// The [data] is reduced to a shape representative (one sample per list,
+/// preserving scalar values) before any AST evaluation. Completions only
+/// need to know field names available at the cursor, not actual values, so
+/// the evaluator walks over the tiny shape tree instead of the full data.
+/// This makes completion time and memory independent of dataset size.
 Completions complete(String text, int cursor, Object? data) {
   final before = text.substring(0, cursor);
 
@@ -76,15 +82,18 @@ Completions complete(String text, int cursor, Object? data) {
     );
   }
 
+  // Reduce once, here, before any AST evaluation against the data.
+  final shape = _reduceToShape(data);
+
   final fMatch = _fieldTailRx.firstMatch(trimmed);
   if (fMatch != null && fMatch.start == 0) {
     final partial = fMatch.group(1)!;
     final dotPos = trimOff + fMatch.start;
-    return _fieldsOf(_resolveTarget(ast, data), partial, dotPos);
+    return _fieldsOf(_resolveTarget(ast, shape), partial, dotPos);
   }
 
   if (ast != null) {
-    return _completionContext(ast, before, data);
+    return _completionContext(ast, before, shape);
   }
 
   return (start: cursor, candidates: <String>[]);
@@ -224,4 +233,33 @@ Object? _tryEvalAst(LamExpr? ast, Object? data) {
   } on Exception {
     return null;
   }
+}
+
+/// Reduce [data] to a shape-preserving representative.
+///
+/// Lists collapse to a single-element list containing the shape of their
+/// first element. Maps keep all keys but recurse into values. Scalars pass
+/// through unchanged.
+///
+/// The reduction is shape-preserving in the sense that type-based ops like
+/// field access, `keys`, `values`, `has`, `length`, `first`, `last` produce
+/// the right completion context on the shape. List-consuming ops like
+/// `sort_by`, `group_by`, `unique`, `reverse`, `filter`, `map` all work
+/// trivially on a one-element list: they preserve or reveal the element
+/// shape, which is all the completer needs.
+///
+/// This is the core reason completion cost is independent of data size:
+/// the AST walks over O(depth) shape tree instead of O(N) data.
+Object? _reduceToShape(Object? data) {
+  if (data is List<Object?>) {
+    if (data.isEmpty) return const <Object?>[];
+    return [_reduceToShape(data.first)];
+  }
+  if (data is Map<String, Object?>) {
+    return {
+      for (final MapEntry(:key, :value) in data.entries)
+        key: _reduceToShape(value),
+    };
+  }
+  return data;
 }

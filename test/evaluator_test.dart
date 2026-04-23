@@ -1,5 +1,4 @@
 import 'package:lambe/lambe.dart';
-import 'package:rumil_expressions/rumil_expressions.dart' show EvalException;
 import 'package:test/test.dart';
 
 void main() {
@@ -471,7 +470,7 @@ void main() {
     });
 
     test('boolean in arithmetic throws', () {
-      expect(() => query('.x + 1', {'x': true}), throwsA(isA<EvalException>()));
+      expect(() => query('.x + 1', {'x': true}), throwsA(isA<QueryError>()));
     });
 
     test('string comparison with == works', () {
@@ -507,7 +506,7 @@ void main() {
     test('sort mixed types throws', () {
       expect(
         () => query('. | sort', <Object?>[1, 'a']),
-        throwsA(isA<EvalException>()),
+        throwsA(isA<QueryError>()),
       );
     });
 

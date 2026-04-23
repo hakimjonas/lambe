@@ -1,6 +1,5 @@
 import 'package:lambe/lambe.dart';
 import 'package:rumil/rumil.dart';
-import 'package:rumil_expressions/rumil_expressions.dart' show EvalException;
 import 'package:test/test.dart';
 
 LamExpr _parse(String input) {
@@ -285,7 +284,7 @@ void main() {
     test('non-bool condition throws', () {
       expect(
         () => query('if .x then "yes" else "no"', {'x': 42}),
-        throwsA(isA<EvalException>()),
+        throwsA(isA<QueryError>()),
       );
     });
 

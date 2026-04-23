@@ -1,5 +1,4 @@
 import 'package:lambe/lambe.dart';
-import 'package:rumil_expressions/rumil_expressions.dart' show EvalException;
 import 'package:test/test.dart';
 
 /// Tests for the "absence propagates, type errors throw" principle.
@@ -126,42 +125,42 @@ void main() {
     test('null + 1 throws', () {
       expect(
         () => query('.a + 1', <String, Object?>{}),
-        throwsA(isA<EvalException>()),
+        throwsA(isA<QueryError>()),
       );
     });
 
     test('1 + null throws', () {
       expect(
         () => query('1 + .a', <String, Object?>{}),
-        throwsA(isA<EvalException>()),
+        throwsA(isA<QueryError>()),
       );
     });
 
     test('null > 5 throws', () {
       expect(
         () => query('.a > 5', <String, Object?>{}),
-        throwsA(isA<EvalException>()),
+        throwsA(isA<QueryError>()),
       );
     });
 
     test('null && true throws', () {
       expect(
         () => query('.a && true', <String, Object?>{}),
-        throwsA(isA<EvalException>()),
+        throwsA(isA<QueryError>()),
       );
     });
 
     test('-null throws', () {
       expect(
         () => query('-.a', <String, Object?>{}),
-        throwsA(isA<EvalException>()),
+        throwsA(isA<QueryError>()),
       );
     });
 
     test('if null then throws', () {
       expect(
         () => query('if .a then 1 else 2', <String, Object?>{}),
-        throwsA(isA<EvalException>()),
+        throwsA(isA<QueryError>()),
       );
     });
   });

@@ -1,5 +1,4 @@
 import 'package:lambe/lambe.dart';
-import 'package:rumil_expressions/rumil_expressions.dart' show EvalException;
 import 'package:test/test.dart';
 
 /// Tests every example from doc/syntax.md against the shared sample data.
@@ -103,7 +102,7 @@ void main() {
     });
 
     test('.missing + 5 throws', () {
-      expect(() => query('.missing + 5', data), throwsA(isA<EvalException>()));
+      expect(() => query('.missing + 5', data), throwsA(isA<QueryError>()));
     });
   });
 
@@ -121,7 +120,7 @@ void main() {
     });
 
     test('.missing > 5 throws', () {
-      expect(() => query('.missing > 5', data), throwsA(isA<EvalException>()));
+      expect(() => query('.missing > 5', data), throwsA(isA<QueryError>()));
     });
 
     test('.missing == null', () {
@@ -417,17 +416,17 @@ void main() {
     });
 
     test('null + 5 throws', () {
-      expect(() => query('.missing + 5', data), throwsA(isA<EvalException>()));
+      expect(() => query('.missing + 5', data), throwsA(isA<QueryError>()));
     });
 
     test('null > 3 throws', () {
-      expect(() => query('.missing > 5', data), throwsA(isA<EvalException>()));
+      expect(() => query('.missing > 5', data), throwsA(isA<QueryError>()));
     });
 
     test('if null then 1 else 2 throws', () {
       expect(
         () => query('if .missing then 1 else 2', data),
-        throwsA(isA<EvalException>()),
+        throwsA(isA<QueryError>()),
       );
     });
   });

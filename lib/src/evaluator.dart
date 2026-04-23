@@ -1,6 +1,8 @@
 /// Query evaluator. Walks the AST over `Object?` JSON values.
 library;
 
+import 'dart:convert';
+
 import 'package:rumil_expressions/rumil_expressions.dart'
     show applyBinaryOp, applyUnaryOp, asBool, compareValues, typeName;
 
@@ -76,6 +78,8 @@ Object? evaluate(LamExpr expr, Object? ctx) => switch (expr) {
   HasOp(:final key) => _has(ctx, key),
   ToEntriesOp() => _toEntries(ctx),
   FromEntriesOp() => _fromEntries(ctx),
+  ToNumberOp() => _toNumber(ctx),
+  TypeOp() => _typeOf(ctx),
 };
 
 Object? _field(Object? target, String name) {
@@ -208,33 +212,62 @@ List<Object?> _sortBy(Object? input, LamExpr key) {
 
 List<Map<String, Object?>> _groupBy(Object? input, LamExpr key) {
   final list = _asList(input, 'group_by');
-  final groups = <Object?, List<Object?>>{};
+  // Use a canonicalized key so structurally-equal Maps/Lists group together.
+  // Preserve the original key value for the output via a side map.
+  final groups = <String, List<Object?>>{};
+  final originalKeys = <String, Object?>{};
   for (final item in list) {
     final k = evaluate(key, item);
-    (groups[k] ??= []).add(item);
+    final canonical = _canonicalKey(k);
+    originalKeys[canonical] = k;
+    (groups[canonical] ??= []).add(item);
   }
   return [
-    for (final MapEntry(:key, :value) in groups.entries)
-      {'key': key, 'values': value},
+    for (final entry in groups.entries)
+      {'key': originalKeys[entry.key], 'values': entry.value},
   ];
 }
 
 List<Object?> _unique(Object? input) {
   final list = _asList(input, 'unique');
-  final seen = <Object?>{};
+  final seen = <String>{};
   return [
     for (final item in list)
-      if (seen.add(item)) item,
+      if (seen.add(_canonicalKey(item))) item,
   ];
 }
 
 List<Object?> _uniqueBy(Object? input, LamExpr key) {
   final list = _asList(input, 'unique_by');
-  final seen = <Object?>{};
+  final seen = <String>{};
   return [
     for (final item in list)
-      if (seen.add(evaluate(key, item))) item,
+      if (seen.add(_canonicalKey(evaluate(key, item)))) item,
   ];
+}
+
+/// Canonical string representation of [value] for use as a hash key.
+///
+/// Dart's native equality on `List` and `Map` is reference-based, so
+/// structurally-equal collections compare as unequal. `unique`, `unique_by`,
+/// and `group_by` need structural equality to behave sensibly. Encoding the
+/// value as JSON with sorted map keys gives a stable, equality-friendly key.
+String _canonicalKey(Object? value) => jsonEncode(_sortKeys(value));
+
+/// Recursively sort map keys so `jsonEncode` produces a stable output.
+Object? _sortKeys(Object? value) {
+  if (value is Map<String, Object?>) {
+    final sorted = <String, Object?>{};
+    final keys = value.keys.toList()..sort();
+    for (final k in keys) {
+      sorted[k] = _sortKeys(value[k]);
+    }
+    return sorted;
+  }
+  if (value is List<Object?>) {
+    return [for (final e in value) _sortKeys(e)];
+  }
+  return value;
 }
 
 List<Object?> _flatten(Object? input) {
@@ -351,6 +384,28 @@ Map<String, Object?> _fromEntries(Object? input) {
             item['value'],
   };
 }
+
+num _toNumber(Object? input) {
+  if (input is num) return input;
+  if (input is String) {
+    final parsed = num.tryParse(input);
+    if (parsed != null) return parsed;
+    throw QueryError('to_number: cannot parse "$input" as a number');
+  }
+  throw QueryError(
+    'to_number: expected string or number, got ${typeName(input)}',
+  );
+}
+
+String _typeOf(Object? input) => switch (input) {
+  null => 'null',
+  bool() => 'boolean',
+  num() => 'number',
+  String() => 'string',
+  List<Object?>() => 'array',
+  Map<String, Object?>() => 'object',
+  _ => throw QueryError('type: unexpected runtime type ${input.runtimeType}'),
+};
 
 List<Object?> _asList(Object? v, String ctx) {
   if (v is List<Object?>) return v;

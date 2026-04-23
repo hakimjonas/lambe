@@ -116,6 +116,17 @@ Convert CSV to JSON:
 $ lam '.' data.csv > data.json
 ```
 
+Aggregate a numeric column. CSV cells are always strings, so coerce with
+`to_number` before arithmetic:
+
+```bash
+$ lam '. | map(.price | to_number) | sum' orders.csv
+1247.50
+
+$ lam '. | map(.count | to_number) | max' inventory.csv
+942
+```
+
 ## TOML (Rust, Python config)
 
 Get a dependency version from Cargo.toml:

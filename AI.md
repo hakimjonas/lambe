@@ -36,6 +36,8 @@ Use Lambë when the user needs to **extract, filter, transform, validate, or con
 | "Find containers without limits" | `lam '.spec.template.spec.containers \| filter(has("resources") == false) \| map(.name)' deployment.yaml` |
 | "List Terraform resources" | `lam '.resource \| map(._labels)' main.tf` |
 | "Query CSV data" | `lam '. \| filter(.status != "closed") \| map(.title)' issues.csv` |
+| "Sum a CSV numeric column" | `lam '. \| map(.price \| to_number) \| sum' orders.csv` |
+| "Inspect a value's type" | `lam '.config \| type' data.yaml` |
 | "List all headings in this markdown" | `lam '.children \| filter(.type == "heading") \| map(.children[0].text)' README.md` |
 | "What languages are in the code blocks?" | `lam '.children \| filter(.type == "code_block") \| map(.language)' tutorial.md` |
 | "Explore interactively" | `lam -i data.json` |
@@ -73,6 +75,8 @@ Use Lambë when the user needs to **extract, filter, transform, validate, or con
 . | has("field")         check field exists
 . | to_entries           map to [{key, value}]
 . | from_entries         [{key, value}] to map
+. | to_number            parse a string as a number (for CSV numeric columns)
+. | type                 runtime type as string: null, boolean, number, string, array, object
 . | filter_values(. > 5) filter map values
 . | map_values(. * 2)   transform map values
 . | filter_keys(. != "x") filter map keys

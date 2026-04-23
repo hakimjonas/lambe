@@ -2,6 +2,14 @@
 
 A side-by-side mapping of common jq patterns to their Lambe equivalents.
 
+Lambe and jq have overlapping but distinct scopes. jq is the established
+standard for JSON processing on the command line, with a long history and
+features Lambe does not have (e.g. streaming, `//` alternative operator,
+recursive descent, regex filters). Lambe covers more input formats by default
+(YAML, TOML, HCL, CSV, TSV, Markdown) and leans on explicit SQL-like verbs
+(`filter`, `map`, `sort_by`) rather than jq's terser generic filter model.
+If you already know jq, most of it translates directly.
+
 All examples use this data:
 
 ```json
@@ -146,7 +154,7 @@ Identical.
 | N/A | `lam --to csv '.users' data.json` |
 | `@csv` | `lam --to csv` |
 
-jq outputs JSON only (with `@csv`/`@tsv` for limited conversion). Lambe reads JSON, YAML, TOML, HCL, CSV, TSV, and Markdown, and converts between output formats via `--to`.
+jq reads and outputs JSON, with `@csv`/`@tsv` filters for flat-record CSV/TSV output. Lambe reads JSON, YAML, TOML, HCL, CSV, TSV, and Markdown, and converts between output formats via `--to`. Different scopes.
 
 ## Schema inspection
 
@@ -154,7 +162,7 @@ jq outputs JSON only (with `@csv`/`@tsv` for limited conversion). Lambe reads JS
 |----|-------|
 | `[paths \| join(".")]` | `lam --schema data.json` |
 
-jq has no built-in schema tool. Lambe's `--schema` shows data structure without values.
+Lambe has `--schema`, which shows data structure without values. jq does not have a direct equivalent (the `paths` function can produce a list of paths, shown above).
 
 ## CI validation
 
@@ -173,8 +181,8 @@ jq uses `-e` (exit status from expression). Lambe has `--assert` which exits 0 o
 | Average | `add / length` | `avg` |
 | Object shorthand | `{name: .name}` | `{name}` |
 | Conditional end | `end` required | no `end` |
-| Format output | JSON only (`@csv`, `@tsv`) | 6 formats via `--to` |
-| Schema | none | `--schema` |
-| CI validation | `-e` flag | `--assert` |
+| Format output | JSON, `@csv`, `@tsv` | JSON, YAML, TOML, HCL, CSV, TSV |
+| Schema | `paths` function | `--schema` flag |
+| CI validation | `-e` flag | `--assert` flag |
 | Null on missing | yes | yes |
-| Multiple formats input | JSON only | JSON, YAML, TOML, HCL, CSV, TSV, Markdown |
+| Input formats | JSON | JSON, YAML, TOML, HCL, CSV, TSV, Markdown |

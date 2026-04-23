@@ -12,7 +12,13 @@ jobs:
           - os: ubuntu-latest
             artifact: lam-linux-x64
             mcp-artifact: lam-mcp-linux-x64
+          - os: ubuntu-24.04-arm
+            artifact: lam-linux-arm64
+            mcp-artifact: lam-mcp-linux-arm64
           - os: macos-latest
+            artifact: lam-macos-arm64
+            mcp-artifact: lam-mcp-macos-arm64
+          - os: macos-13
             artifact: lam-macos-x64
             mcp-artifact: lam-mcp-macos-x64
           - os: windows-latest
@@ -29,12 +35,12 @@ jobs:
       - run: dart compile exe bin/lam.dart -o ${{ matrix.artifact }}
       - run: dart compile exe bin/mcp_server.dart -o ${{ matrix.mcp-artifact }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.mcp-artifact }}
           path: ${{ matrix.mcp-artifact }}
@@ -45,12 +51,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: artifacts/*
 
@@ -63,7 +69,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
@@ -71,8 +77,10 @@ jobs:
       - name: Update server.json
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
-          HASH_LINUX=$(sha256sum artifacts/lam-mcp-linux-x64 | cut -d' ' -f1)
-          HASH_MACOS=$(sha256sum artifacts/lam-mcp-macos-x64 | cut -d' ' -f1)
+          HASH_LINUX_X64=$(sha256sum artifacts/lam-mcp-linux-x64 | cut -d' ' -f1)
+          HASH_LINUX_ARM64=$(sha256sum artifacts/lam-mcp-linux-arm64 | cut -d' ' -f1)
+          HASH_MACOS_X64=$(sha256sum artifacts/lam-mcp-macos-x64 | cut -d' ' -f1)
+          HASH_MACOS_ARM64=$(sha256sum artifacts/lam-mcp-macos-arm64 | cut -d' ' -f1)
           HASH_WINDOWS=$(sha256sum artifacts/lam-mcp-windows-x64.exe | cut -d' ' -f1)
           TAG=${GITHUB_REF#refs/tags/}
           cat > server.json <<EOF
@@ -90,13 +98,25 @@ jobs:
               {
                 "registryType": "mcpb",
                 "identifier": "https://github.com/hakimjonas/lambe/releases/download/${TAG}/lam-mcp-linux-x64",
-                "fileSha256": "${HASH_LINUX}",
+                "fileSha256": "${HASH_LINUX_X64}",
+                "transport": { "type": "stdio" }
+              },
+              {
+                "registryType": "mcpb",
+                "identifier": "https://github.com/hakimjonas/lambe/releases/download/${TAG}/lam-mcp-linux-arm64",
+                "fileSha256": "${HASH_LINUX_ARM64}",
                 "transport": { "type": "stdio" }
               },
               {
                 "registryType": "mcpb",
                 "identifier": "https://github.com/hakimjonas/lambe/releases/download/${TAG}/lam-mcp-macos-x64",
-                "fileSha256": "${HASH_MACOS}",
+                "fileSha256": "${HASH_MACOS_X64}",
+                "transport": { "type": "stdio" }
+              },
+              {
+                "registryType": "mcpb",
+                "identifier": "https://github.com/hakimjonas/lambe/releases/download/${TAG}/lam-mcp-macos-arm64",
+                "fileSha256": "${HASH_MACOS_ARM64}",
                 "transport": { "type": "stdio" }
               },
               {

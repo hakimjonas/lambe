@@ -23,7 +23,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
     : super.fromStreamChannel(
         implementation: Implementation(name: 'lambe', version: lambeVersion),
         instructions:
-            'Lambé is a universal query language for structured data. '
+            'Lambé is a multi-format query language for structured data. '
             'Use the query tool to find, extract, filter, transform, or look up '
             'values from JSON, YAML, TOML, HCL, CSV, TSV, or Markdown files. '
             'Use the schema tool to understand data structure before querying. '

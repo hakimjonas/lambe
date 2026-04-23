@@ -60,6 +60,8 @@ const pipeOpNames = <String>[
   'sort_by',
   'sum',
   'to_entries',
+  'to_number',
+  'type',
   'unique',
   'unique_by',
   'values',
@@ -262,7 +264,9 @@ final Parser<ParseError, LamExpr> _pipeOp =
     _kw('max').as<LamExpr>(const MaxOp()) |
     _paramOp('has', HasOp.new) |
     _kw('to_entries').as<LamExpr>(const ToEntriesOp()) |
-    _kw('from_entries').as<LamExpr>(const FromEntriesOp());
+    _kw('to_number').as<LamExpr>(const ToNumberOp()) |
+    _kw('from_entries').as<LamExpr>(const FromEntriesOp()) |
+    _kw('type').as<LamExpr>(const TypeOp());
 
 /// The full pipe op parser, named for error messages.
 final Parser<ParseError, LamExpr> _namedPipeOp = _pipeOp.named(

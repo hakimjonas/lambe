@@ -23,7 +23,7 @@ import 'readline.dart';
 /// Supports REPL commands (`:schema`, `:to`, `:load`, etc.), tab completion,
 /// history navigation, and multi-line input.
 void runRepl(Object? data, {OutputFormat format = OutputFormat.json}) {
-  stdout.writeln('lambe v0.1.0 - type :help for commands, :q to quit');
+  stdout.writeln('lambe v$lambeVersion - type :help for commands, :q to quit');
   stdout.writeln('Data loaded: ${_briefDescription(data)}');
   stdout.writeln();
 

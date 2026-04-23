@@ -288,6 +288,24 @@ final class FromEntriesOp extends LamExpr {
   const FromEntriesOp();
 }
 
+/// Parse a string as a number: `to_number`.
+///
+/// Matches CSV and TSV cells, which are strings by default. Pass-through
+/// for existing numbers. Throws on strings that do not parse.
+final class ToNumberOp extends LamExpr {
+  /// Creates a to_number operation.
+  const ToNumberOp();
+}
+
+/// Runtime type of the input as a string: `type`.
+///
+/// Returns one of `"null"`, `"boolean"`, `"number"`, `"string"`,
+/// `"array"`, `"object"`.
+final class TypeOp extends LamExpr {
+  /// Creates a type operation.
+  const TypeOp();
+}
+
 /// Filter map keys by predicate: `filter_keys(. != "internal")`.
 final class FilterKeysOp extends LamExpr {
   /// The predicate expression, evaluated per key.

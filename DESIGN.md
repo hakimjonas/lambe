@@ -22,15 +22,18 @@ Lambë uses the vocabulary of SQL, Spark DataFrames, and functional programming 
 
 ### Differences from jq
 
+Lambë was influenced by jq and shares much of its surface, but made different
+choices in a few places:
+
 | Area | jq | Lambë |
 |------|-----|-------|
-| Naming | Implicit (everything is a filter) | Explicit (`filter`, `map`, `sort_by`) |
-| group_by result | `[[items], [items]]` (no keys) | `[{key, values}]` (self-describing) |
-| Object shorthand | None (`{name: .name}`) | `{name}` expands to `{name: .name}` |
-| Map filtering | 3 steps (`to_entries \| select \| from_entries`) | 1 step (`filter_values`) |
+| Naming | Generic filter DSL (`select`, `map`, implicit iteration) | Named operations (`filter`, `map`, `sort_by`) |
+| group_by result | `[[items], [items]]` | `[{key, values}]` |
+| Object shorthand | `{name: .name}` | `{name}` shorthand expands to `{name: .name}` |
+| Map filtering | `to_entries \| select \| from_entries` | `filter_values` |
 | Conditionals | `if ... end` | `if ... else ...` (no `end`) |
-| Error messages | Terse | Source-positioned via Rumil |
-| Formats | JSON only | JSON, YAML, TOML, HCL, CSV, TSV, Markdown |
+| Error messages | Line/column | Source-positioned via Rumil |
+| Input formats | JSON | JSON, YAML, TOML, HCL, CSV, TSV, Markdown |
 
 ### Absence propagates, type errors throw
 

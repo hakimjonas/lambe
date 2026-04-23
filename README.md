@@ -130,7 +130,7 @@ lam -i data.json
 ```
 
 ```
-lambe v0.1.0 - type :help for commands, :q to quit
+lambe v0.5.0 - type :help for commands, :q to quit
 Data loaded: {3 fields, 42 users}
 
 lambe> .users | filter(.age > 30) | map(.name)
@@ -216,6 +216,8 @@ Parsers from [rumil_parsers](https://pub.dev/packages/rumil_parsers), tested aga
 | `has` | `. \| has("name")` | Check field exists |
 | `to_entries` | `. \| to_entries` | Map to `[{key, value}]` |
 | `from_entries` | `. \| from_entries` | `[{key, value}]` to map |
+| `to_number` | `.price \| to_number` | Parse a string as a number |
+| `type` | `. \| type` | Runtime type as a string |
 | `filter_values` | `. \| filter_values(. > 5)` | Filter map values |
 | `map_values` | `. \| map_values(. * 2)` | Transform map values |
 | `filter_keys` | `. \| filter_keys(. != "secret")` | Filter map keys |

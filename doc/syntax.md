@@ -406,6 +406,41 @@ Convert between maps and `[{key, value}]` lists.
 -> {"a": 1}
 ```
 
+### to_number
+
+Parse a string as a number. Pass-through for existing numbers.
+
+CSV and TSV cells are strings by default; use `to_number` to coerce them
+before arithmetic.
+
+```
+"42" | to_number       -> 42
+"3.14" | to_number     -> 3.14
+100 | to_number        -> 100
+
+.price | to_number     on {price: "29.99"} -> 29.99
+```
+
+Throws on strings that do not parse, and on inputs that are not strings
+or numbers.
+
+### type
+
+Return the runtime type of the input as a string.
+
+Possible return values: `"null"`, `"boolean"`, `"number"`, `"string"`,
+`"array"`, `"object"`.
+
+```
+42 | type              -> "number"
+"hello" | type         -> "string"
+null | type            -> "null"
+[1, 2] | type          -> "array"
+{"a": 1} | type        -> "object"
+
+. | filter((. | type) == "number")   on [1, "two", 3] -> [1, 3]
+```
+
 ### filter_values(predicate)
 
 Filter a map's values.

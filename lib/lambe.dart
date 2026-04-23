@@ -1,4 +1,4 @@
-/// Universal query language for structured data.
+/// Multi-format query language for structured data.
 ///
 /// Lambé provides a composable query DSL for JSON, YAML, TOML, HCL, CSV, TSV,
 /// and Markdown, with pipeline operations, property access chains, and filter
@@ -15,6 +15,7 @@
 library;
 
 import 'package:rumil/rumil.dart';
+import 'package:rumil_expressions/rumil_expressions.dart' show EvalException;
 
 import 'src/ast.dart';
 import 'src/errors.dart';
@@ -32,19 +33,26 @@ export 'src/output.dart' show OutputFormat, formatOutput, inferSchema;
 
 /// Parse and evaluate a query expression against [data].
 ///
-/// The [data] should be a decoded value (`Map<String, Object?>`,
-/// `List<Object?>`, `String`, `num`, `bool`, or `null`).
+/// The [data] may be any JSON-shaped value. Maps and lists with non-canonical
+/// element types (e.g. `Map<dynamic, dynamic>` from some third-party decoders)
+/// are normalized to `Map<String, Object?>` and `List<Object?>` before
+/// evaluation. Map keys that are not strings throw [QueryError].
 ///
 /// Throws [QueryError] on evaluation errors, or if the query fails to parse.
 Object? query(String expression, Object? data) {
   final result = parser_.parseQuery(expression);
-  return switch (result) {
-    Success<ParseError, LamExpr>(:final value) => eval_.evaluate(value, data),
+  final ast = switch (result) {
+    Success<ParseError, LamExpr>(:final value) => value,
     Partial<ParseError, LamExpr>() =>
       throw QueryError(_formatParseErrors(expression, result.errors)),
     Failure<ParseError, LamExpr>() =>
       throw QueryError(_formatParseErrors(expression, result.errors)),
   };
+  try {
+    return eval_.evaluate(ast, _normalize(data));
+  } on EvalException catch (e) {
+    throw QueryError(e.message);
+  }
 }
 
 /// Parse an input string in the given [format], then evaluate [expression].
@@ -53,10 +61,24 @@ Object? query(String expression, Object? data) {
 ///
 /// Throws [QueryError] on parse or evaluation errors.
 /// Throws [FormatException] if JSON input is malformed.
-Object? queryString(String expression, String input, {Format? format}) => query(
-  expression,
-  input_.parseInput(input, format ?? input_.sniffFormat(input)),
-);
+Object? queryString(String expression, String input, {Format? format}) {
+  final data = input_.parseInput(input, format ?? input_.sniffFormat(input));
+  // parseInput produces canonical Map<String, Object?> / List<Object?> trees;
+  // skip normalization.
+  final result = parser_.parseQuery(expression);
+  final ast = switch (result) {
+    Success<ParseError, LamExpr>(:final value) => value,
+    Partial<ParseError, LamExpr>() =>
+      throw QueryError(_formatParseErrors(expression, result.errors)),
+    Failure<ParseError, LamExpr>() =>
+      throw QueryError(_formatParseErrors(expression, result.errors)),
+  };
+  try {
+    return eval_.evaluate(ast, data);
+  } on EvalException catch (e) {
+    throw QueryError(e.message);
+  }
+}
 
 /// Parse a JSON string, then evaluate [expression] against it.
 ///
@@ -74,8 +96,45 @@ Result<ParseError, LamExpr> parse(String expression) =>
 /// Evaluate a pre-parsed [LamExpr] AST against [data].
 ///
 /// Use this when parsing once and evaluating against multiple data values.
+/// [data] is normalized on entry (see [query] for details).
 /// Throws [QueryError] on evaluation errors.
-Object? eval(LamExpr ast, Object? data) => eval_.evaluate(ast, data);
+Object? eval(LamExpr ast, Object? data) {
+  try {
+    return eval_.evaluate(ast, _normalize(data));
+  } on EvalException catch (e) {
+    throw QueryError(e.message);
+  }
+}
+
+/// Normalize [value] into the canonical shape the evaluator expects.
+///
+/// Recursively converts any `Map` into `Map<String, Object?>` and any `List`
+/// into `List<Object?>`, regardless of original element type parameters.
+/// Canonical collections from `parseInput`, `jsonDecode`, and hand-written
+/// typed literals round-trip through this cheaply (one traversal, no per-
+/// value reconstruction of scalars).
+///
+/// Throws [QueryError] if a map has a non-string key.
+Object? _normalize(Object? value) {
+  if (value == null || value is num || value is bool || value is String) {
+    return value;
+  }
+  if (value is List) {
+    return <Object?>[for (final e in value) _normalize(e)];
+  }
+  if (value is Map) {
+    final result = <String, Object?>{};
+    for (final entry in value.entries) {
+      final key = entry.key;
+      if (key is! String) {
+        throw QueryError('Map key must be a string, got ${key.runtimeType}');
+      }
+      result[key] = _normalize(entry.value);
+    }
+    return result;
+  }
+  return value;
+}
 
 String _formatParseErrors(String expression, List<ParseError> errors) {
   if (errors.isEmpty) return 'parse error';
