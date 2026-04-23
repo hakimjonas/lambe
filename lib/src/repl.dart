@@ -66,12 +66,12 @@ void runRepl(Object? data, {OutputFormat format = OutputFormat.json}) {
             stdout.writeln('Output format: ${fmt.name}');
           } else {
             stderr.writeln(
-              'Unknown format: $arg (use json, yaml, toml, xml, csv, tsv, hcl)',
+              'Unknown format: $arg (use json, yaml, toml, csv, tsv, hcl)',
             );
           }
 
         case 'to':
-          stderr.writeln('Usage: :to <json|yaml|toml|xml|csv>');
+          stderr.writeln('Usage: :to <json|yaml|toml|csv|tsv|hcl>');
 
         case 'raw':
           raw = !raw;
@@ -325,7 +325,7 @@ void _printHelp() {
   stdout.writeln('Commands:');
   stdout.writeln('  :schema         Show data structure');
   stdout.writeln(
-    '  :to <format>    Set output format (json, yaml, toml, xml, csv)',
+    '  :to <format>    Set output format (json, yaml, toml, csv, tsv, hcl)',
   );
   stdout.writeln('  :raw            Toggle raw string output');
   stdout.writeln('  :pretty         Toggle pretty-printing');

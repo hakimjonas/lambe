@@ -5,7 +5,7 @@ This document helps AI assistants decide when and how to use Lambë.
 ## When to Use
 
 Use Lambë when the user needs to **extract, filter, transform, validate, or convert** data from structured files:
-- JSON, YAML, TOML, HCL/Terraform, XML, CSV, TSV, Markdown
+- JSON, YAML, TOML, HCL/Terraform, CSV, TSV, Markdown
 - Configuration files, API responses, deployment manifests, data exports
 
 ## When NOT to Use
@@ -37,7 +37,6 @@ Use Lambë when the user needs to **extract, filter, transform, validate, or con
 | "List Terraform resources" | `lam '.resource \| map(._labels)' main.tf` |
 | "Query CSV data" | `lam '. \| filter(.status != "closed") \| map(.title)' issues.csv` |
 | "List all headings in this markdown" | `lam '.children \| filter(.type == "heading") \| map(.children[0].text)' README.md` |
-| "Find all links in a markdown file" | `lam '.. \| filter(.type == "link") \| map({href, text: .children[0].text})' doc.md` |
 | "What languages are in the code blocks?" | `lam '.children \| filter(.type == "code_block") \| map(.language)' tutorial.md` |
 | "Explore interactively" | `lam -i data.json` |
 
@@ -104,8 +103,8 @@ Markdown files are parsed into a CommonMark AST. Every node is a map with a `typ
 | `list_item` | children | `.children[0].items \| map(.children)` |
 | `code_block` | code, language? | `.children \| filter(.type == "code_block") \| map({language, code})` |
 | `blockquote` | children | `.children \| filter(.type == "blockquote")` |
-| `link` | href, children, title? | `.. \| filter(.type == "link") \| map(.href)` |
-| `image` | src, alt, title? | `.. \| filter(.type == "image") \| map({src, alt})` |
+| `link` | href, children, title? | inline node inside paragraph/heading children |
+| `image` | src, alt, title? | inline node inside paragraph children |
 | `emphasis` | children | inline node (italic) |
 | `strong` | children | inline node (bold) |
 | `text` | text | leaf inline node |
@@ -126,12 +125,6 @@ lam '.children | filter(.type == "heading") | map(.children[0].text)' README.md
 
 # Headings with levels
 lam '.children | filter(.type == "heading") | map({level, text: .children[0].text})' README.md
-
-# All links (recursive descent finds nested links too)
-lam '.. | filter(.type == "link") | map({href, text: .children[0].text})' doc.md
-
-# All images
-lam '.. | filter(.type == "image") | map({src, alt})' README.md
 
 # Code block languages
 lam '.children | filter(.type == "code_block") | map(.language)' tutorial.md
@@ -159,7 +152,6 @@ Lambë auto-detects format from file extension:
 - `.yaml`, `.yml` → YAML
 - `.toml` → TOML
 - `.tf`, `.hcl` → HCL
-- `.xml`, `.pom`, `.csproj`, `.svg` → XML
 - `.csv` → CSV
 - `.tsv`, `.tab` → TSV
 - `.md`, `.markdown` → Markdown

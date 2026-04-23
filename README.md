@@ -1,6 +1,6 @@
 # Lambë
 
-Query JSON, YAML, TOML, HCL, XML, CSV, and Markdown with a composable pipeline DSL.
+Query JSON, YAML, TOML, HCL, CSV, TSV, and Markdown with a composable pipeline DSL.
 
 Built on [Rumil](https://pub.dev/packages/rumil) parser combinators with left-recursive grammar support.
 
@@ -113,10 +113,8 @@ lam --assert '.replicas >= 2' deployment.yaml
 # Format conversion
 lam --to yaml '.config' data.json
 lam --to csv '.users | map({name, age})' data.json
-lam --to xml '.data' config.json
 
 # Query any format (auto-detected from extension)
-lam '.project.dependencies' pom.xml
 lam '. | filter(.status != "closed")' issues.csv
 lam '.resource | map(._labels)' main.tf
 lam '.children | filter(.type == "heading") | map(.children[0].text)' README.md
@@ -187,7 +185,6 @@ final schema = inferSchema(data);
 | YAML | yes | yes | YAML 1.2.2 (333/333) |
 | TOML | yes | yes | TOML 1.1 (681/681) |
 | HCL/Terraform | yes | yes | HashiCorp spec (2760/2760) |
-| XML | yes | yes | W3C XML 1.0 (1506/1506) |
 | CSV | yes | yes | RFC 4180 + auto-dialect detection |
 | TSV | yes | yes | Tab-separated variant of CSV |
 | Markdown | yes | — | CommonMark 0.31.2 (652/652) |
@@ -276,7 +273,7 @@ expect(data, lamHas('.users[0].address.city'));
 - [Getting started](doc/getting-started.md) - install and first queries
 - [Syntax reference](doc/syntax.md) - the full query language
 - [REPL guide](doc/repl.md) - interactive mode, commands, keyboard shortcuts
-- [Recipes](doc/recipes.md) - real-world patterns for Kubernetes, Terraform, CI, CSV, XML
+- [Recipes](doc/recipes.md) - real-world patterns for Kubernetes, Terraform, CI, CSV
 - [Man page](doc/lam.1.md) - Unix man page (`man -l doc/lam.1`)
 
 ## Design
@@ -286,5 +283,5 @@ See [DESIGN.md](DESIGN.md) for architecture and design decisions.
 ## Part of the Arda Ecosystem
 
 - [Rumil](https://pub.dev/packages/rumil) - parser combinators with left recursion
-- [Rumil Parsers](https://pub.dev/packages/rumil_parsers) - format parsers for JSON, YAML, TOML, XML, CSV, HCL, Proto3
+- [Rumil Parsers](https://pub.dev/packages/rumil_parsers) - format parsers for JSON, YAML, TOML, XML, CSV, HCL, Proto3, Markdown
 - [Rumil Expressions](https://pub.dev/packages/rumil_expressions) - shared evaluation helpers

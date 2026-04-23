@@ -30,9 +30,6 @@ lam --to csv '.users | map({name, age})' data.json
 # Query CSV/TSV
 lam '. | filter(.status != "closed") | map(.title)' issues.csv
 
-# Query XML
-lam '.project.dependencies' pom.xml
-
 # Query Terraform
 lam '.resource | filter(._labels[0] == "aws_instance") | map(._labels[1])' main.tf
 
@@ -47,8 +44,8 @@ lam -i data.json
 
 ### Supported Formats
 
-Input: JSON, YAML, TOML, HCL/Terraform, XML, CSV, TSV, Markdown (auto-detected from file extension).
-Output: JSON (default), YAML, TOML, XML, CSV.
+Input: JSON, YAML, TOML, HCL/Terraform, CSV, TSV, Markdown (auto-detected from file extension).
+Output: JSON (default), YAML, TOML, CSV, TSV, HCL.
 
 ### As MCP Tool
 

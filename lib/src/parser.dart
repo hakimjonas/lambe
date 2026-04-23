@@ -16,6 +16,7 @@
 ///                | _postfix '[' _expr ']'
 ///                | _atom )
 ///   _atom      = number | string | bool | null | '(' _expr ')' | dotField
+///                | objConstruct | conditional | pipe_op
 library;
 
 import 'package:rumil/rumil.dart';
@@ -192,6 +193,13 @@ final Parser<ParseError, LamExpr> _conditional = _sym('if')
     )
     .named('conditional');
 
+/// Base expression.
+///
+/// `_pipeOp` is admitted here so ops like `has("k")`, `length`, `keys` work
+/// as bare expressions with implicit `.` input — i.e. `has("k")` is parsed
+/// as sugar for `. | has("k")`, and `map(has("k"))` Just Works. Placed last
+/// so op keywords never shadow other `_atom` alternatives (object shorthand
+/// `{length}`, field access `.length`, string interpolation `"\(length)"`).
 final Parser<ParseError, LamExpr> _atom =
     _number |
     _stringLit |
@@ -200,7 +208,8 @@ final Parser<ParseError, LamExpr> _atom =
     _conditional |
     _objConstruct |
     _parenExpr |
-    _dotField;
+    _dotField |
+    _pipeOp;
 
 /// Tolerant inner expression - recovers with [Identity] when empty.
 ///

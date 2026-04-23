@@ -18,9 +18,6 @@ enum OutputFormat {
   /// TOML output (root must be a map).
   toml,
 
-  /// XML output.
-  xml,
-
   /// CSV output (root must be a list of maps or list of lists).
   csv,
 
@@ -36,7 +33,6 @@ enum OutputFormat {
 /// For JSON, uses pretty-printing with 2-space indent by default.
 /// For YAML, uses block style.
 /// For TOML/HCL, requires the root value to be a `Map<String, Object?>`.
-/// For XML, wraps in a `<root>` element.
 /// For CSV/TSV, requires a list of maps (uses keys as headers) or list of lists.
 String formatOutput(Object? value, OutputFormat format, {bool pretty = true}) =>
     switch (format) {
@@ -46,7 +42,6 @@ String formatOutput(Object? value, OutputFormat format, {bool pretty = true}) =>
             : const JsonEncoder().convert(value),
       OutputFormat.yaml => _toYaml(value),
       OutputFormat.toml => _toToml(value),
-      OutputFormat.xml => _toXml(value),
       OutputFormat.csv => _toCsv(value, ','),
       OutputFormat.tsv => _toCsv(value, '\t'),
       OutputFormat.hcl => _toHcl(value),
@@ -96,11 +91,6 @@ String _toToml(Object? value) {
       key: nativeToAst(v, tomlBuilder),
   };
   return serializeToml(doc);
-}
-
-String _toXml(Object? value) {
-  final ast = nativeToAst(value, xmlBuilder);
-  return serializeXml(ast);
 }
 
 String _toCsv(Object? value, String delimiter) {

@@ -107,7 +107,7 @@ lambe> .users | filter(.address.<TAB>
 
 ```
 lambe> :to <TAB>
-csv    hcl    json    toml    tsv    xml    yaml
+csv    hcl    json    toml    tsv    yaml
 ```
 
 ## Commands
@@ -117,7 +117,7 @@ Commands start with `:` to distinguish them from queries.
 | Command | Description |
 |---------|-------------|
 | `:schema` | Show data structure (types without values) |
-| `:to fmt` | Set output format: json, yaml, toml, xml, csv, tsv, hcl |
+| `:to fmt` | Set output format: json, yaml, toml, csv, tsv, hcl |
 | `:raw` | Toggle unquoted string output |
 | `:pretty` | Toggle pretty-printing |
 | `:load file` | Load a different data file |

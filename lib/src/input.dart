@@ -20,9 +20,6 @@ enum Format {
   /// HCL (HashiCorp Configuration Language).
   hcl,
 
-  /// XML (W3C 1.0).
-  xml,
-
   /// CSV (RFC 4180, auto-detected dialect).
   csv,
 
@@ -45,7 +42,6 @@ Object? parseInput(String input, Format format) => switch (format) {
   Format.yaml => _parse(parseYaml(input), yamlToNative, 'YAML'),
   Format.toml => _parse(parseToml(input), tomlDocToNative, 'TOML'),
   Format.hcl => _parse(parseHcl(input), hclDocToNative, 'HCL'),
-  Format.xml => _parse(parseXml(input), (doc) => xmlToNative(doc.root), 'XML'),
   Format.csv => _parseDelimited(input, null),
   Format.tsv => _parseDelimited(input, defaultTsvConfig),
   Format.markdown => _parseMd(input),
@@ -60,12 +56,6 @@ Format? detectFormat(String path) {
   if (lower.endsWith('.yaml') || lower.endsWith('.yml')) return Format.yaml;
   if (lower.endsWith('.toml')) return Format.toml;
   if (lower.endsWith('.tf') || lower.endsWith('.hcl')) return Format.hcl;
-  if (lower.endsWith('.xml') ||
-      lower.endsWith('.pom') ||
-      lower.endsWith('.csproj') ||
-      lower.endsWith('.svg')) {
-    return Format.xml;
-  }
   if (lower.endsWith('.csv')) return Format.csv;
   if (lower.endsWith('.tsv') || lower.endsWith('.tab')) return Format.tsv;
   if (lower.endsWith('.md') || lower.endsWith('.markdown')) {
@@ -80,7 +70,6 @@ Format? detectFormat(String path) {
 Format sniffFormat(String input) {
   final trimmed = input.trimLeft();
   if (trimmed.startsWith('{') || trimmed.startsWith('[')) return Format.json;
-  if (trimmed.startsWith('<?xml') || trimmed.startsWith('<')) return Format.xml;
   if (trimmed.startsWith('---') || trimmed.contains(': ')) return Format.yaml;
   if (trimmed.contains(' = ') && !trimmed.contains('{')) return Format.toml;
   if (trimmed.contains(' = ') || trimmed.contains(' {')) return Format.hcl;

@@ -24,7 +24,7 @@ All examples use this data unless stated otherwise:
 
 Lambë operates on JSON-compatible values: maps (objects), lists (arrays), strings, numbers, booleans, and null.
 
-All input formats (YAML, TOML, HCL, XML, CSV) are converted to this model before querying. CSV rows with headers become a list of maps.
+All input formats (YAML, TOML, HCL, CSV, TSV, Markdown) are converted to this model before querying. CSV rows with headers become a list of maps.
 
 ## Identity
 

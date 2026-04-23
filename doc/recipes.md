@@ -90,20 +90,6 @@ Check all S3 buckets have tags:
 $ lam --assert '.resource | filter(._labels[0] == "aws_s3_bucket") | filter(has("tags") == false) | length == 0' main.tf
 ```
 
-## XML (Maven, .NET)
-
-List dependencies from pom.xml:
-
-```bash
-$ lam '.dependencies.dependency | map(.artifactId)' pom.xml
-```
-
-Get a specific dependency version:
-
-```bash
-$ lam '.dependencies.dependency | filter(.groupId == "org.springframework") | map({artifactId, version})' pom.xml
-```
-
 ## CSV and TSV
 
 Filter rows:

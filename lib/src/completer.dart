@@ -33,15 +33,7 @@ const _replCommands = <String>[
 ];
 
 /// Output format names for `:to` command completion.
-const _outputFormats = <String>[
-  'csv',
-  'hcl',
-  'json',
-  'toml',
-  'tsv',
-  'xml',
-  'yaml',
-];
+const _outputFormats = <String>['csv', 'hcl', 'json', 'toml', 'tsv', 'yaml'];
 
 /// Matches a pipe operator followed by a partial op name at end of string.
 final _pipeRx = RegExp(r'^\|\s*(\w*)$');
