@@ -1,9 +1,17 @@
 /// Tab completion for the Lambé REPL.
 ///
-/// Uses [parsePartial] with `.recover()` from the Rumil-based parser to get
-/// the full AST (including inner expressions in pipe ops), then walks the
-/// AST to determine completion context. Regex is only applied to the unparsed
-/// remainder (guaranteed free of string literals - the parser consumed those).
+/// The completer uses [parsePartial] with `.recover()` to obtain the
+/// AST of a valid prefix (including inner expressions of parameterized
+/// pipe ops), then resolves the completion context by walking that AST
+/// over an inferred [Shape] tree. Regex is only applied to the
+/// unparsed remainder; string literals are already consumed by the
+/// parser.
+///
+/// Completion cost is bounded by the structural depth of the input
+/// data and the size of the query, not by the number of elements in
+/// the input. [shapeOf] samples lists on entry and [inferShape]
+/// recurses over AST nodes only, so queries against very large
+/// collections still complete in constant time.
 library;
 
 import 'package:rumil/rumil.dart';
@@ -43,15 +51,9 @@ final _fieldTailRx = RegExp(r'\.(\w*)$');
 
 /// Compute tab completions for [text] at [cursor] position against [data].
 ///
-/// Uses [parsePartial] to parse the valid expression prefix (with `.recover()`
-/// preserving inner expressions in pipe ops), then inspects the AST and any
-/// unparsed remainder to determine completion context.
-///
-/// The [data] is reduced to a shape representative (one sample per list,
-/// preserving scalar values) before any AST evaluation. Completions only
-/// need to know field names available at the cursor, not actual values, so
-/// the evaluator walks over the tiny shape tree instead of the full data.
-/// This makes completion time and memory independent of dataset size.
+/// Uses [parsePartial] to parse the valid expression prefix (with
+/// `.recover()` preserving inner expressions in pipe ops), then inspects
+/// the AST and any unparsed remainder to determine completion context.
 Completions complete(String text, int cursor, Object? data) {
   final before = text.substring(0, cursor);
 
@@ -82,18 +84,19 @@ Completions complete(String text, int cursor, Object? data) {
     );
   }
 
-  // Reduce once, here, before any AST evaluation against the data.
-  final shape = _reduceToShape(data);
+  // Infer the root shape once; downstream resolution walks the AST
+  // against this shape rather than against the value.
+  final rootShape = shapeOf(data);
 
   final fMatch = _fieldTailRx.firstMatch(trimmed);
   if (fMatch != null && fMatch.start == 0) {
     final partial = fMatch.group(1)!;
     final dotPos = trimOff + fMatch.start;
-    return _fieldsOf(_resolveTarget(ast, shape), partial, dotPos);
+    return _fieldsOf(_resolveTarget(ast, rootShape), partial, dotPos);
   }
 
   if (ast != null) {
-    return _completionContext(ast, before, shape);
+    return _completionContext(ast, before, rootShape);
   }
 
   return (start: cursor, candidates: <String>[]);
@@ -122,93 +125,99 @@ Completions _completeCommand(String before) {
 
 /// Walk the AST to find the innermost completion context.
 ///
-/// For [Pipe] nodes with parameterized ops (filter, map, etc.), recursively
-/// descends into the inner expression, evaluating the pipe input to get
-/// element-level data context. This handles nested fields like
-/// `.users | filter(.address.ci` correctly.
-Completions _completionContext(LamExpr ast, String before, Object? data) {
+/// For [Pipe] nodes whose right-hand side is a parameterized op
+/// (`filter`, `map`, and so on), this recurses into the inner
+/// expression against the element shape of the pipe input. A query
+/// such as `.users | filter(.address.ci` resolves the trailing
+/// identifier against the shape of one user's `address`.
+Completions _completionContext(LamExpr ast, String before, Shape inputShape) {
   if (ast is Pipe) {
     final inner = _innerExpr(ast.op);
     if (inner != null) {
-      final collection = _tryEvalAst(ast.input, data);
-      if (collection is List<Object?> && collection.isNotEmpty) {
-        return _completionContext(inner, before, collection.first);
+      final collection = inferShape(ast.input, inputShape);
+      if (collection is SList) {
+        return _completionContext(inner, before, collection.element);
       }
       return (start: before.length, candidates: <String>[]);
     }
   }
-  return _completeAstTail(ast, before, data);
+  return _completeAstTail(ast, before, inputShape);
 }
 
 /// Complete fields based on the AST tail node.
 ///
-/// [Identity] completes all fields, [Field] completes by prefix,
-/// [Access] evaluates the target and completes the trailing field.
-/// For [BinaryOp] and [UnaryOp], recursively descends the right-most
-/// branch - this handles `.users | filter(.age > 20 && .na<TAB>)`.
-Completions _completeAstTail(
-  LamExpr ast,
-  String before,
-  Object? data,
-) => switch (ast) {
-  Identity() => _fieldsOf(data, '', before.length - 1),
-  Field(:final name) => _fieldsOf(data, name, before.length - name.length - 1),
-  Access(:final target, :final field) => _fieldsOf(
-    _tryEvalAst(target, data),
-    field,
-    before.length - field.length - 1,
-  ),
-  BinaryOp(:final right) => _completeAstTail(right, before, data),
-  UnaryOp(:final operand) => _completeAstTail(operand, before, data),
-  Conditional(:final then_, :final else_) =>
-    else_ is Identity
-        ? _completeAstTail(then_, before, data)
-        : _completeAstTail(else_, before, data),
-  StringInterp(:final parts) when parts.isNotEmpty => _completeAstTail(
-    parts.last,
-    before,
-    data,
-  ),
-  _ => (start: before.length, candidates: <String>[]),
-};
+/// [Identity] yields all fields. [Field] matches by prefix. [Access]
+/// infers the target shape and completes the trailing field. [BinaryOp]
+/// and [UnaryOp] recurse into the right-most branch, so a tab in
+/// `.users | filter(.age > 20 && .na<TAB>)` resolves against the
+/// element shape.
+Completions _completeAstTail(LamExpr ast, String before, Shape inputShape) =>
+    switch (ast) {
+      Identity() => _fieldsOf(inputShape, '', before.length - 1),
+      Field(:final name) => _fieldsOf(
+        inputShape,
+        name,
+        before.length - name.length - 1,
+      ),
+      Access(:final target, :final field) => _fieldsOf(
+        inferShape(target, inputShape),
+        field,
+        before.length - field.length - 1,
+      ),
+      BinaryOp(:final right) => _completeAstTail(right, before, inputShape),
+      UnaryOp(:final operand) => _completeAstTail(operand, before, inputShape),
+      Conditional(:final then_, :final else_) =>
+        else_ is Identity
+            ? _completeAstTail(then_, before, inputShape)
+            : _completeAstTail(else_, before, inputShape),
+      StringInterp(:final parts) when parts.isNotEmpty => _completeAstTail(
+        parts.last,
+        before,
+        inputShape,
+      ),
+      _ => (start: before.length, candidates: <String>[]),
+    };
 
 /// Return field name completions from [target] starting with [partial].
 ///
 /// The [dotPos] is the position of the `.` in the input, used as the
-/// replacement start.
-Completions _fieldsOf(Object? target, String partial, int dotPos) {
-  if (target is! Map<String, Object?>) {
+/// replacement start. Only [SMap] shapes carry field names; any other
+/// shape (including [SAny]) produces no field candidates.
+Completions _fieldsOf(Shape target, String partial, int dotPos) {
+  if (target is! SMap) {
     return (start: dotPos + partial.length + 1, candidates: <String>[]);
   }
   final matching =
-      target.keys.where((k) => k.startsWith(partial)).toList()..sort();
+      target.fields.keys.where((k) => k.startsWith(partial)).toList()..sort();
   return (start: dotPos, candidates: <String>[for (final k in matching) '.$k']);
 }
 
-/// Resolve the target for field completion, walking into Pipe operations.
+/// Resolve the target shape for field completion, walking into [Pipe]
+/// nodes whose right-hand side is a parameterized op.
 ///
-/// When [ast] is a Pipe with a parameterized op, evaluates the inner
-/// expression against the first element of the piped collection. This
-/// handles cases like `.users | map(.address.` where the trailing `.`
-/// should complete on the evaluated `.address`, not the full pipeline result.
-Object? _resolveTarget(LamExpr? ast, Object? data) {
+/// For such pipes this infers the element shape of the pipe input and
+/// walks the inner expression against it. A query like
+/// `.users | map(.address.` resolves the trailing `.` against a single
+/// user's `address` shape rather than the pipeline result shape.
+Shape _resolveTarget(LamExpr? ast, Shape inputShape) {
+  if (ast == null) return inputShape;
   if (ast is Pipe) {
     final inner = _innerExpr(ast.op);
     if (inner != null) {
-      final collection = _tryEvalAst(ast.input, data);
-      if (collection is List<Object?> && collection.isNotEmpty) {
-        return _tryEvalAst(inner, collection.first);
+      final collection = inferShape(ast.input, inputShape);
+      if (collection is SList) {
+        return inferShape(inner, collection.element);
       }
-      return null;
+      return const SAny();
     }
   }
-  return _tryEvalAst(ast, data);
+  return inferShape(ast, inputShape);
 }
 
 /// Extract the inner expression from a parameterized pipe operation.
 ///
-/// Returns `null` for simple (no-arg) ops like [SortOp], [ReverseOp], etc.
-/// and for non-operation expressions like [ObjConstruct].
+/// Returns `null` for simple (no-arg) ops like [SortOp], [ReverseOp],
+/// etc. and for non-operation expressions like [ObjConstruct].
 LamExpr? _innerExpr(LamExpr op) => switch (op) {
   FilterOp(:final predicate) => predicate,
   MapOp(:final transform) => transform,
@@ -221,45 +230,3 @@ LamExpr? _innerExpr(LamExpr op) => switch (op) {
   HasOp(:final key) => key,
   _ => null,
 };
-
-/// Evaluate a parsed [ast] against [data], returning `null` on any error.
-///
-/// Unlike the old `_tryEval` which re-parsed a string, this evaluates a
-/// pre-parsed AST directly via [eval].
-Object? _tryEvalAst(LamExpr? ast, Object? data) {
-  if (ast == null) return data;
-  try {
-    return eval(ast, data);
-  } on Exception {
-    return null;
-  }
-}
-
-/// Reduce [data] to a shape-preserving representative.
-///
-/// Lists collapse to a single-element list containing the shape of their
-/// first element. Maps keep all keys but recurse into values. Scalars pass
-/// through unchanged.
-///
-/// The reduction is shape-preserving in the sense that type-based ops like
-/// field access, `keys`, `values`, `has`, `length`, `first`, `last` produce
-/// the right completion context on the shape. List-consuming ops like
-/// `sort_by`, `group_by`, `unique`, `reverse`, `filter`, `map` all work
-/// trivially on a one-element list: they preserve or reveal the element
-/// shape, which is all the completer needs.
-///
-/// This is the core reason completion cost is independent of data size:
-/// the AST walks over O(depth) shape tree instead of O(N) data.
-Object? _reduceToShape(Object? data) {
-  if (data is List<Object?>) {
-    if (data.isEmpty) return const <Object?>[];
-    return [_reduceToShape(data.first)];
-  }
-  if (data is Map<String, Object?>) {
-    return {
-      for (final MapEntry(:key, :value) in data.entries)
-        key: _reduceToShape(value),
-    };
-  }
-  return data;
-}

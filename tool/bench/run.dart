@@ -1,13 +1,22 @@
-/// Runs the completer benchmark across scenarios and sizes.
+/// Completer benchmark runner.
 ///
-/// Each (scenario, size) pair is run in a fresh subprocess so RSS
-/// measurements reflect only that scenario's peak memory, not accumulated
-/// heap from earlier runs.
+/// Runs the completer benchmark across a matrix of scenarios and input
+/// sizes, in fresh subprocesses so RSS measurements reflect each
+/// scenario's peak memory alone. Each `(scenario, size)` pair is
+/// repeated across N processes (`--runs N`, default 5); the reported
+/// value is the median of the per-run medians, which suppresses the
+/// per-process noise floor and makes small regressions visible.
 ///
-/// Usage: dart run tool/bench/run.dart [--tag <label>]
+/// Usage:
+///   dart run tool/bench/run.dart [--tag <label>] [--aot] [--runs N]
 ///
-/// Writes results to `bench-results-<tag>-<timestamp>.json` and prints a
-/// human-readable table to stdout.
+/// `--aot` runs the ahead-of-time compiled binary at
+/// `tool/bench/completer_bench.aot` (which must be built first via
+/// `dart compile exe`). Without the flag, the benchmark is launched
+/// via `dart run` and includes JIT warmup.
+///
+/// Results are written to `bench-results-<tag>-<timestamp>.json` and
+/// summarised on stdout.
 library;
 
 import 'dart:convert';
@@ -19,10 +28,28 @@ const _iterations = 30;
 
 Future<void> main(List<String> args) async {
   var tag = 'run';
+  var useAot = false;
+  var runs = 5;
   for (var i = 0; i < args.length; i++) {
     if (args[i] == '--tag' && i + 1 < args.length) {
       tag = args[i + 1];
     }
+    if (args[i] == '--aot') {
+      useAot = true;
+    }
+    if (args[i] == '--runs' && i + 1 < args.length) {
+      runs = int.parse(args[i + 1]);
+    }
+  }
+
+  const aotBin = 'tool/bench/completer_bench.aot';
+  if (useAot && !File(aotBin).existsSync()) {
+    stderr.writeln(
+      'AOT binary not found at $aotBin.\n'
+      'Build it first with:\n'
+      '  dart compile exe tool/bench/completer_bench.dart -o $aotBin',
+    );
+    exit(1);
   }
 
   final results = <Map<String, Object?>>[];
@@ -38,27 +65,70 @@ Future<void> main(List<String> args) async {
 
   for (final scenario in _scenarios) {
     for (final size in _sizes) {
-      final result = await Process.run('dart', [
-        'run',
-        'tool/bench/completer_bench.dart',
-        scenario,
-        '$size',
-        '$_iterations',
-      ]);
-      if (result.exitCode != 0) {
-        stderr.writeln('$scenario @ $size failed: ${result.stderr}');
-        continue;
+      // Each sample is the median over _iterations hot-loop
+      // measurements inside a single fresh process.
+      final perRunMedians = <int>[];
+      final perRunP99s = <int>[];
+      final perRunRssDeltas = <int>[];
+      var failed = false;
+
+      for (var run = 0; run < runs; run++) {
+        final ProcessResult result;
+        if (useAot) {
+          result = await Process.run(aotBin, [
+            scenario,
+            '$size',
+            '$_iterations',
+          ]);
+        } else {
+          result = await Process.run('dart', [
+            'run',
+            'tool/bench/completer_bench.dart',
+            scenario,
+            '$size',
+            '$_iterations',
+          ]);
+        }
+        if (result.exitCode != 0) {
+          stderr.writeln('$scenario @ $size run $run failed: ${result.stderr}');
+          failed = true;
+          break;
+        }
+        final line = (result.stdout as String).trim().split('\n').last;
+        final parsed = jsonDecode(line) as Map<String, Object?>;
+        perRunMedians.add(parsed['median_us'] as int);
+        perRunP99s.add(parsed['p99_us'] as int);
+        perRunRssDeltas.add(parsed['rss_delta_bytes'] as int);
       }
-      final line = (result.stdout as String).trim().split('\n').last;
-      final parsed = jsonDecode(line) as Map<String, Object?>;
-      results.add(parsed);
+      if (failed) continue;
+
+      // The reported values are the medians of the per-run series.
+      // Medians for p99 and RSS delta prevent a single GC outlier from
+      // dominating the summary.
+      final medianOfMedians = _median(perRunMedians);
+      final medianP99 = _median(perRunP99s);
+      final medianRssDelta = _median(perRunRssDeltas);
+
+      final summary = <String, Object?>{
+        'scenario': scenario,
+        'size': size,
+        'runs': runs,
+        'iterations_per_run': _iterations,
+        'median_us': medianOfMedians,
+        'p99_us': medianP99,
+        'rss_delta_bytes': medianRssDelta,
+        'run_medians_us': perRunMedians,
+        'run_p99s_us': perRunP99s,
+        'run_rss_deltas_bytes': perRunRssDeltas,
+      };
+      results.add(summary);
 
       stdout.writeln(
         '${scenario.padRight(10)} '
         '${size.toString().padLeft(8)} '
-        '${(parsed['median_us'] as int).toString().padLeft(12)} '
-        '${(parsed['p99_us'] as int).toString().padLeft(12)} '
-        '${_fmtBytes(parsed['rss_delta_bytes'] as int).padLeft(14)}',
+        '${medianOfMedians.toString().padLeft(12)} '
+        '${medianP99.toString().padLeft(12)} '
+        '${_fmtBytes(medianRssDelta).padLeft(14)}',
       );
     }
   }
@@ -69,11 +139,17 @@ Future<void> main(List<String> args) async {
     const JsonEncoder.withIndent('  ').convert({
       'tag': tag,
       'timestamp': stamp,
+      'runs_per_config': runs,
       'iterations_per_run': _iterations,
       'results': results,
     }),
   );
   stdout.writeln('\nFull results written to ${outFile.path}');
+}
+
+int _median(List<int> xs) {
+  final sorted = List<int>.of(xs)..sort();
+  return sorted[sorted.length ~/ 2];
 }
 
 String _fmtBytes(int bytes) {

@@ -112,26 +112,81 @@ void runRepl(Object? data, {OutputFormat format = OutputFormat.json}) {
 
     final stopwatch = Stopwatch()..start();
     try {
-      final result = query(trimmed, currentData);
+      final ast = parseAst(trimmed);
+      final result = evaluateAst(ast, currentData);
       stopwatch.stop();
       final elapsed = stopwatch.elapsedMilliseconds;
 
-      final output = _formatResult(
-        result,
-        outputFormat,
-        pretty: pretty,
-        raw: raw,
-      );
-      if (elapsed >= 100) {
-        stdout.writeln('[${elapsed}ms] $output');
-      } else {
-        stdout.writeln(output);
+      try {
+        final output = _formatResult(
+          result,
+          outputFormat,
+          pretty: pretty,
+          raw: raw,
+        );
+        if (elapsed >= 100) {
+          stdout.writeln('[${elapsed}ms] $output');
+        } else {
+          stdout.writeln(output);
+        }
+      } on OutputShapeError catch (e) {
+        _handleShapeError(
+          e,
+          rl,
+          ast: ast,
+          data: currentData,
+          outputFormat: outputFormat,
+          pretty: pretty,
+          raw: raw,
+        );
       }
     } on QueryError catch (e) {
       stderr.writeln('Error: ${e.message}');
     } on Exception catch (e) {
       stderr.writeln('Error: $e');
     }
+  }
+}
+
+/// Render the shape-error message, list the available remediations,
+/// and read a selection from the REPL's [ReadLine]. If the user picks
+/// a valid index, compose the user's AST with the chosen bridge,
+/// re-evaluate, and print the result. A cancel, blank line, or invalid
+/// selection leaves the REPL ready for the next query.
+void _handleShapeError(
+  OutputShapeError e,
+  ReadLine rl, {
+  required LamExpr ast,
+  required Object? data,
+  required OutputFormat outputFormat,
+  required bool pretty,
+  required bool raw,
+}) {
+  stderr.writeln('Error: ${e.message}');
+  if (e.suggestions.isEmpty) return;
+  stdout.writeln();
+  stdout.writeln('Apply a bridge?');
+  for (var i = 0; i < e.suggestions.length; i++) {
+    final s = e.suggestions[i];
+    stdout.writeln('  [${i + 1}] | ${s.display}    # ${s.explanation}');
+  }
+  stdout.writeln('  [Enter/q] cancel');
+  final pickLine = rl('pick> ')?.trim() ?? '';
+  if (pickLine.isEmpty || pickLine == 'q' || pickLine == 'Q') return;
+  final pick = int.tryParse(pickLine);
+  if (pick == null || pick < 1 || pick > e.suggestions.length) {
+    stderr.writeln('Unknown selection: "$pickLine"');
+    return;
+  }
+  final choice = e.suggestions[pick - 1];
+  final bridged = applyBridge(ast, choice.template);
+  try {
+    final result = evaluateAst(bridged, data);
+    stdout.writeln(
+      _formatResult(result, outputFormat, pretty: pretty, raw: raw),
+    );
+  } on QueryError catch (e2) {
+    stderr.writeln('Error applying "${choice.display}": ${e2.message}');
   }
 }
 
@@ -207,7 +262,8 @@ void _saveHistory(List<String> history) {
             : history;
     File(_historyPath).writeAsStringSync('${entries.join('\n')}\n');
   } on Exception {
-    // ignore
+    // History persistence is best-effort; I/O failures do not interrupt
+    // the REPL session.
   }
 }
 

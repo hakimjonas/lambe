@@ -8,6 +8,9 @@ import 'package:rumil_expressions/rumil_expressions.dart'
 
 import 'ast.dart';
 import 'errors.dart';
+import 'output_format.dart';
+import 'shape/check.dart';
+import 'shape/shape.dart';
 
 /// Evaluate a [LamExpr] AST against a JSON [ctx] value.
 ///
@@ -80,7 +83,35 @@ Object? evaluate(LamExpr expr, Object? ctx) => switch (expr) {
   FromEntriesOp() => _fromEntries(ctx),
   ToNumberOp() => _toNumber(ctx),
   TypeOp() => _typeOf(ctx),
+  As(:final target) => _as(ctx, target),
 };
+
+/// Evaluate `as(target)`. Returns [ctx] unchanged when its shape is
+/// already compatible with [target]. When exactly one curated bridge
+/// exists for the mismatch, that bridge is evaluated against [ctx] and
+/// its result returned. When no curated bridge exists, or when more
+/// than one would apply, throws [QueryError] listing the candidates.
+Object? _as(Object? ctx, OutputFormat target) {
+  final report = canWriteAs(ctx, target);
+  if (report is Writable) return ctx;
+  final nw = report as NotWritable;
+  if (nw.suggestions.isEmpty) {
+    throw QueryError(
+      'as(${target.name}): no known bridge from '
+      '${renderShape(nw.got)} to ${target.name}. ',
+    );
+  }
+  if (nw.suggestions.length > 1) {
+    final listing = nw.suggestions
+        .map((r) => '  | ${r.display}    # ${r.explanation}')
+        .join('\n');
+    throw QueryError(
+      'as(${target.name}): ambiguous bridge from '
+      '${renderShape(nw.got)}. Pick one explicitly:\n$listing',
+    );
+  }
+  return evaluate(nw.suggestions.first.template, ctx);
+}
 
 Object? _field(Object? target, String name) {
   if (target == null) return null;
@@ -212,8 +243,9 @@ List<Object?> _sortBy(Object? input, LamExpr key) {
 
 List<Map<String, Object?>> _groupBy(Object? input, LamExpr key) {
   final list = _asList(input, 'group_by');
-  // Use a canonicalized key so structurally-equal Maps/Lists group together.
-  // Preserve the original key value for the output via a side map.
+  // Group on a canonical string representation so structurally-equal
+  // Maps and Lists compare as equal. A side map preserves the original
+  // key value for the output record.
   final groups = <String, List<Object?>>{};
   final originalKeys = <String, Object?>{};
   for (final item in list) {

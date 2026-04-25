@@ -22,6 +22,7 @@ library;
 import 'package:rumil/rumil.dart';
 
 import 'ast.dart';
+import 'output_format.dart';
 
 /// Parse a query expression string into a [LamExpr] AST.
 Result<ParseError, LamExpr> parseQuery(String input) =>
@@ -39,6 +40,7 @@ Result<ParseError, LamExpr> parsePartial(String input) =>
 /// This is the canonical source of truth for pipe op names. The REPL
 /// completer uses this list for tab completion candidates.
 const pipeOpNames = <String>[
+  'as',
   'avg',
   'filter',
   'filter_keys',
@@ -240,6 +242,22 @@ Parser<ParseError, LamExpr> _paramOp(
   name,
 ).skipThen(_sym('(')).skipThen(_innerExpr).thenSkip(_closeParen).map(ctor);
 
+/// `as(format)` parser: shape-directed bridge to an output format.
+///
+/// Accepts the known [OutputFormat] names (`json`, `yaml`, `toml`,
+/// `csv`, `tsv`, `hcl`). The argument is a closed set at parse time,
+/// so unknown format names are rejected with a parse error.
+final Parser<ParseError, LamExpr> _asOp = _sym('as')
+    .skipThen(_sym('('))
+    .skipThen(
+      keywords<OutputFormat>({
+        for (final fmt in OutputFormat.values) fmt.name: fmt,
+      }).named('output format'),
+    )
+    .thenSkip(_ws)
+    .thenSkip(_closeParen)
+    .map<LamExpr>(As.new);
+
 final Parser<ParseError, LamExpr> _pipeOp =
     _paramOp('filter_values', FilterValuesOp.new) |
     _paramOp('filter_keys', FilterKeysOp.new) |
@@ -266,7 +284,8 @@ final Parser<ParseError, LamExpr> _pipeOp =
     _kw('to_entries').as<LamExpr>(const ToEntriesOp()) |
     _kw('to_number').as<LamExpr>(const ToNumberOp()) |
     _kw('from_entries').as<LamExpr>(const FromEntriesOp()) |
-    _kw('type').as<LamExpr>(const TypeOp());
+    _kw('type').as<LamExpr>(const TypeOp()) |
+    _asOp;
 
 /// The full pipe op parser, named for error messages.
 final Parser<ParseError, LamExpr> _namedPipeOp = _pipeOp.named(

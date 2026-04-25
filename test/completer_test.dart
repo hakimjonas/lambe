@@ -326,7 +326,7 @@ void main() {
       // Currently returns empty (non-list input), which is acceptable
       const text = '.scores | filter_values(.to';
       final (:start, :candidates) = complete(text, text.length, data);
-      // filter_values context is a map, not a list — no crash
+      // filter_values context is a map, not a list: no crash
       expect(candidates, isA<List<String>>());
     });
 
@@ -334,7 +334,7 @@ void main() {
       // Verify recovery doesn't fire on complete expressions
       const text = '.users | filter(.age > 30)';
       final (:start, :candidates) = complete(text, text.length, sampleData);
-      // Complete expression — no field completion context
+      // Complete expression: no field completion context
       expect(candidates, isEmpty);
     });
   });

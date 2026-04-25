@@ -30,6 +30,36 @@ export 'src/errors.dart';
 export 'src/input.dart'
     show Format, detectFormat, sniffFormat, parseInput, mdToNative;
 export 'src/output.dart' show OutputFormat, formatOutput, inferSchema;
+export 'src/shape/shape.dart'
+    show
+        Shape,
+        SAny,
+        SNull,
+        SBool,
+        SNum,
+        SString,
+        SList,
+        SMap,
+        shapeOf,
+        renderShape;
+export 'src/shape/check.dart'
+    show
+        ShapeRequirement,
+        AnyShape,
+        MustBeMap,
+        MustBeList,
+        requirementFor,
+        ShapeReport,
+        Writable,
+        NotWritable,
+        Remediation,
+        canWriteAs,
+        canWriteShapeAs;
+export 'src/shape/explain.dart'
+    show ExplainReport, ExplainStage, explain, renderExplain;
+export 'src/shape/infer.dart' show inferShape;
+export 'src/shape/synthesize.dart'
+    show synthesize, synthesizeWithLabels, applyBridge;
 
 /// Parse and evaluate a query expression against [data].
 ///
@@ -39,15 +69,30 @@ export 'src/output.dart' show OutputFormat, formatOutput, inferSchema;
 /// evaluation. Map keys that are not strings throw [QueryError].
 ///
 /// Throws [QueryError] on evaluation errors, or if the query fails to parse.
-Object? query(String expression, Object? data) {
+Object? query(String expression, Object? data) =>
+    evaluateAst(parseAst(expression), data);
+
+/// Parse an expression string to its [LamExpr] AST.
+///
+/// Throws [QueryError] on parse failure. Exposed so callers that want to
+/// compose ASTs (e.g. applying a [Remediation.template] via [applyBridge])
+/// can reuse the same parse path as [query].
+LamExpr parseAst(String expression) {
   final result = parser_.parseQuery(expression);
-  final ast = switch (result) {
+  return switch (result) {
     Success<ParseError, LamExpr>(:final value) => value,
     Partial<ParseError, LamExpr>() =>
       throw QueryError(_formatParseErrors(expression, result.errors)),
     Failure<ParseError, LamExpr>() =>
       throw QueryError(_formatParseErrors(expression, result.errors)),
   };
+}
+
+/// Evaluate a parsed [ast] against [data].
+///
+/// Performs the same data normalization as [query]. Throws [QueryError]
+/// on evaluation errors.
+Object? evaluateAst(LamExpr ast, Object? data) {
   try {
     return eval_.evaluate(ast, _normalize(data));
   } on EvalException catch (e) {

@@ -10,7 +10,9 @@ import 'dart:io';
 
 import 'package:args/args.dart';
 import 'package:lambe/lambe.dart';
+import 'package:lambe/src/parser.dart' show parseQuery;
 import 'package:lambe/src/repl.dart' show runRepl;
+import 'package:rumil/rumil.dart' show Success, ParseError;
 
 void main(List<String> arguments) {
   final argParser =
@@ -37,6 +39,11 @@ void main(List<String> arguments) {
         ..addFlag(
           'schema',
           help: 'Show data structure without values',
+          negatable: false,
+        )
+        ..addFlag(
+          'explain',
+          help: 'Show shape trace of the query (static analysis, no execution)',
           negatable: false,
         )
         ..addFlag(
@@ -71,6 +78,7 @@ void main(List<String> arguments) {
   final isSchemaMode = args.flag('schema');
   final isAssertMode = args.flag('assert');
   final isInteractive = args.flag('interactive');
+  final isExplainMode = args.flag('explain');
 
   final rest = args.rest;
   if (rest.isEmpty && !isSchemaMode && !isInteractive) {
@@ -90,7 +98,7 @@ void main(List<String> arguments) {
   final expression = rest.isNotEmpty ? rest[0] : '.';
   final fileArgIndex =
       (isSchemaMode || isInteractive) && rest.length == 1 ? 0 : 1;
-  final String input;
+  String? input;
   String? filePath;
 
   if (rest.length > fileArgIndex) {
@@ -102,10 +110,14 @@ void main(List<String> arguments) {
     }
     input = file.readAsStringSync();
   } else if (stdin.hasTerminal) {
-    stderr.writeln('Error: no input. Provide a file or pipe data via stdin.');
-    stderr.writeln();
-    _usage(argParser);
-    exit(1);
+    // `--explain` performs static analysis and can run without input.
+    // Every other mode requires a file argument or piped stdin.
+    if (!isExplainMode) {
+      stderr.writeln('Error: no input. Provide a file or pipe data via stdin.');
+      stderr.writeln();
+      _usage(argParser);
+      exit(1);
+    }
   } else {
     final buffer = StringBuffer();
     String? line;
@@ -115,27 +127,31 @@ void main(List<String> arguments) {
     input = buffer.toString();
   }
 
-  // Determine input format
-  final Format format;
+  // Determine input format (only relevant when we have input).
+  Format? format;
   final formatArg = args.option('format');
-  if (formatArg != null) {
-    format = Format.values.byName(formatArg);
-  } else if (filePath != null) {
-    format = detectFormat(filePath) ?? sniffFormat(input);
-  } else {
-    format = sniffFormat(input);
+  if (input != null) {
+    if (formatArg != null) {
+      format = Format.values.byName(formatArg);
+    } else if (filePath != null) {
+      format = detectFormat(filePath) ?? sniffFormat(input);
+    } else {
+      format = sniffFormat(input);
+    }
   }
 
-  // Parse input
-  final Object? data;
-  try {
-    data = parseInput(input, format);
-  } on FormatException catch (e) {
-    stderr.writeln('Error: invalid ${format.name} input: ${e.message}');
-    exit(1);
-  } on QueryError catch (e) {
-    stderr.writeln('Error: $e');
-    exit(1);
+  // Parse input if we have any.
+  Object? data;
+  if (input != null && format != null) {
+    try {
+      data = parseInput(input, format);
+    } on FormatException catch (e) {
+      stderr.writeln('Error: invalid ${format.name} input: ${e.message}');
+      exit(1);
+    } on QueryError catch (e) {
+      stderr.writeln('Error: $e');
+      exit(1);
+    }
   }
 
   // -i interactive mode: start REPL
@@ -159,10 +175,36 @@ void main(List<String> arguments) {
     return;
   }
 
-  // Evaluate query
-  final Object? result;
+  // --explain mode: static shape trace, no execution
+  if (isExplainMode) {
+    final parseResult = parseQuery(expression);
+    final ast = switch (parseResult) {
+      Success<ParseError, LamExpr>(:final value) => value,
+      _ => null,
+    };
+    if (ast == null) {
+      stderr.writeln('Error: failed to parse query');
+      exit(1);
+    }
+    final inputShape = data == null ? const SAny() : shapeOf(data);
+    final report = explain(ast, inputShape);
+    stdout.write(renderExplain(report));
+    return;
+  }
+
+  // The parsed AST is retained so that, if serialization later hits an
+  // OutputShapeError, a chosen remediation can be composed with it via
+  // applyBridge without re-parsing.
+  final LamExpr queryAst;
   try {
-    result = query(expression, data);
+    queryAst = parseAst(expression);
+  } on QueryError catch (e) {
+    stderr.writeln('Error: $e');
+    exit(1);
+  }
+  Object? result;
+  try {
+    result = evaluateAst(queryAst, data);
   } on QueryError catch (e) {
     stderr.writeln('Error: $e');
     exit(1);
@@ -187,8 +229,12 @@ void main(List<String> arguments) {
   final toArg = args.option('to');
   if (toArg != null) {
     final outputFormat = OutputFormat.values.byName(toArg);
-    stdout.writeln(
-      formatOutput(result, outputFormat, pretty: args.flag('pretty')),
+    _writeWithBridge(
+      result,
+      outputFormat,
+      pretty: args.flag('pretty'),
+      queryAst: queryAst,
+      data: data,
     );
   } else if (args.flag('raw') && result is String) {
     stdout.writeln(result);
@@ -199,6 +245,74 @@ void main(List<String> arguments) {
             : const JsonEncoder();
     stdout.writeln(encoder.convert(result));
   }
+}
+
+/// Write [result] as [fmt]. On [OutputShapeError] with an interactive
+/// terminal, prompts the user to apply one of the available
+/// remediations. Non-interactive invocations print the error and exit
+/// with status 1.
+void _writeWithBridge(
+  Object? result,
+  OutputFormat fmt, {
+  required bool pretty,
+  required LamExpr queryAst,
+  required Object? data,
+}) {
+  try {
+    stdout.writeln(formatOutput(result, fmt, pretty: pretty));
+    return;
+  } on OutputShapeError catch (e) {
+    if (!(stdin.hasTerminal && stdout.hasTerminal)) {
+      stderr.writeln('Error: ${e.message}');
+      exit(1);
+    }
+    final choice = _promptForRemediation(e);
+    if (choice == null) {
+      stderr.writeln('Error: ${e.message}');
+      exit(1);
+    }
+    // Re-evaluate with the chosen bridge applied to the user's AST,
+    // then serialize. A failure here is not re-prompted: curated
+    // bridges are verified at load, so any error at this point is
+    // surfaced directly.
+    final bridged = applyBridge(queryAst, choice.template);
+    try {
+      final Object? newResult = evaluateAst(bridged, data);
+      stdout.writeln(formatOutput(newResult, fmt, pretty: pretty));
+    } on QueryError catch (e2) {
+      stderr.writeln('Error applying "${choice.display}": ${e2.message}');
+      exit(1);
+    }
+  } on QueryError catch (e) {
+    stderr.writeln('Error: ${e.message}');
+    exit(1);
+  }
+}
+
+/// Interactive prompt for the remediations carried by an
+/// [OutputShapeError].
+///
+/// Prints the numbered suggestions, reads a line from stdin, and
+/// returns the chosen [Remediation]. Returns `null` if the user enters
+/// `q`, a blank line, EOF, or an index outside the valid range.
+Remediation? _promptForRemediation(OutputShapeError err) {
+  stdout.writeln(err.message);
+  stdout.writeln();
+  stdout.writeln('Apply a bridge?');
+  for (var i = 0; i < err.suggestions.length; i++) {
+    final s = err.suggestions[i];
+    stdout.writeln('  [${i + 1}] | ${s.display}    # ${s.explanation}');
+  }
+  stdout.writeln('  [q] cancel');
+  stdout.write('> ');
+  final line = stdin.readLineSync()?.trim() ?? '';
+  if (line.isEmpty || line == 'q' || line == 'Q') return null;
+  final pick = int.tryParse(line);
+  if (pick == null || pick < 1 || pick > err.suggestions.length) {
+    stderr.writeln('Unknown selection: "$line"');
+    return null;
+  }
+  return err.suggestions[pick - 1];
 }
 
 /// Print usage information to stderr.

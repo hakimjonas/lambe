@@ -1,3 +1,82 @@
+## 0.6.0
+
+Shape-aware output with interactive bridging. Lambe now infers the
+structural shape of query results, reports incompatibilities with
+target output formats as structured errors, and can bridge common
+mismatches through a new language combinator or through interactive
+prompts.
+
+### Added
+- **`Shape` ADT.** A sealed hierarchy (`SAny`, `SNull`, `SBool`,
+  `SNum`, `SString`, `SList`, `SMap`) describing the structural kind
+  of a value. `shapeOf(value)` infers the shape of any JSON-shaped
+  value in time proportional to structure depth, using bounded
+  sampling on lists. `renderShape(shape)` produces the canonical
+  human-readable form (`list<map<a: number, b: string>>`).
+- **`canWriteAs(value, format)` and `canWriteShapeAs(shape, format)`.**
+  Return a `ShapeReport` (`Writable` or `NotWritable`). The
+  `NotWritable` case carries the mismatched shape, the format's
+  requirement, and a list of `Remediation` records describing
+  curated query-fragments that bridge the mismatch.
+- **`inferShape(ast, inputShape)`.** A structural interpreter over
+  `LamExpr`. Given the shape of the value `.` refers to, returns the
+  shape the query would produce. Every pipeline operator has a rule;
+  the interpreter falls back to `SAny` where output cannot be
+  determined without runtime values.
+- **`synthesize(from, target)` and `synthesizeWithLabels(from, target)`.**
+  Produce AST fragments (or full `Remediation` records) that bridge
+  `from` to `target`'s shape requirement. `applyBridge(user, bridge)`
+  composes a user query with a bridge fragment into a single AST via
+  `Pipe`, avoiding string manipulation.
+- **`as(format)` combinator.** A new pipeline operator written
+  directly in the query language:
+  `.users | as(toml)` produces a TOML-compatible value if exactly one
+  curated bridge applies, and throws with the candidate list
+  otherwise. Accepts `json`, `yaml`, `toml`, `csv`, `tsv`, `hcl`.
+- **`--explain` CLI flag.** Prints the inferred shape at each pipe
+  stage of a query, plus the set of output formats the final shape
+  can be serialized as. Performs static analysis only; does not
+  execute the query. Works with or without input data.
+- **Interactive suggestion prompts.** When `lam --to <fmt>` would
+  produce an `OutputShapeError` on an interactive terminal, the CLI
+  now lists the available remediations and applies the chosen one.
+  The REPL shows the same prompt inline and retries the query with
+  the selected bridge.
+- **Structured MCP error payload.** The `lambe_query` MCP tool now
+  returns shape-mismatch errors as a JSON object with `error`,
+  `message`, `format`, `got_shape`, `original_expression`, and a
+  `suggestions` array (each entry with `id`, `label`,
+  `template_text`, `apply_as`, `explanation`). Agents can respond by
+  calling the tool again with an `apply_as` query verbatim.
+- **`parseAst(expression)` and `evaluateAst(ast, data)` library
+  entry points.** The existing `query(expression, data)` is now
+  defined as `evaluateAst(parseAst(expression), data)`. Callers that
+  parse once and evaluate against multiple inputs, or that compose a
+  parsed AST with a remediation via `applyBridge`, should use these
+  directly.
+- **`OutputShapeError` subclass of `QueryError`.** Carries the
+  structured `NotWritable` report with getters for `format`, `got`,
+  `required`, and `suggestions`. Existing `catch (QueryError)`
+  handlers continue to work; the new subclass is available for code
+  that wants to render suggestions programmatically.
+
+### Changed
+- **Completer migrated to shape-based inference.** The REPL's tab
+  completer now walks the parsed AST over a single inferred `Shape`
+  tree rather than over a reduced value. Behaviour is unchanged (the
+  same candidates are returned for every case). Benchmark medians
+  are within run-to-run noise of the previous release.
+- **CLI error messages for unwritable output.** `lam --to <fmt>` now
+  reports shape mismatches with a short teaching message and a list
+  of candidate bridges appended with `|`, rather than a raw runtime
+  exception.
+
+### Fixed
+- **AOT benchmark harness.** `tool/bench/run.dart` gained `--aot` and
+  `--runs N` flags. The AOT path removes JIT warmup from the
+  measurement; the multi-run median of medians suppresses
+  per-process noise so smaller regressions are visible.
+
 ## 0.5.0
 
 ### Added

@@ -1,8 +1,18 @@
 # Lambë
 
-Query JSON, YAML, TOML, HCL, CSV, TSV, and Markdown with a composable pipeline DSL.
+*Query structured data, get errors with suggested fixes, and reshape results to the format you need.*
 
-Built on [Rumil](https://pub.dev/packages/rumil) parser combinators with left-recursive grammar support.
+Lambë is a query language for JSON, YAML, TOML, HCL, CSV, TSV, and Markdown. Queries compose through a pipe operator, the same way a shell pipeline does. What's different: when a query produces a result your target format cannot serialize, Lambë infers the shape, explains the mismatch, and lists the curated query fragments that bridge it. The `as(fmt)` operator lets you ask for the bridge directly in the query language; `--explain` shows the shape at every pipe stage without running anything.
+
+```
+$ lam --to toml '.dependencies | keys' pubspec.yaml
+Error: TOML output requires a map at the root, got list<string>.
+Try appending one of:
+  | {items: .}    # Produces a map with one entry named "items".
+
+$ lam --to toml '.dependencies | keys | as(toml)' pubspec.yaml
+items = ["rumil", "rumil_parsers", "rumil_expressions"]
+```
 
 *Lambë (pronounced "lam-beh") means "language" in Quenya (Tolkien's elvish). The package name is `lambe` for ASCII compatibility.*
 
@@ -25,6 +35,57 @@ dart compile exe bin/lam.dart -o lam
 ```
 
 See [Getting started](doc/getting-started.md) for all installation options.
+
+## Shape-aware output
+
+Lambë checks the result of your query against the shape the target format can serialize. When they match, output is produced. When they don't, the error names the required shape and lists query fragments that would bridge it. In an interactive terminal, Lambë offers to apply the chosen fragment and retry in place.
+
+```
+$ lam --to toml '.name' pubspec.yaml
+TOML output requires a map at the root, got string.
+Try appending one of:
+  | {value: .}    # Produces a map with one entry named "value".
+
+Apply a bridge?
+  [1] | {value: .}    # Produces a map with one entry named "value".
+  [q] cancel
+> 1
+value = "rumil"
+```
+
+The same flow applies to CSV and TSV (which require a list of records at the root) and HCL (which requires a map). Suggestions are curated query fragments parsed to AST at construction, so the text you see is the code that runs.
+
+### `as(fmt)` — bridging in the query language
+
+When the shape of the target format is known up front, `as(fmt)` performs the bridge inside the query. The combinator is a no-op when the input already satisfies the target, applies a single curated bridge when one exists, and lists the candidates when more than one could apply.
+
+```
+$ lam --to toml '.dependencies | as(toml)' pubspec.yaml
+rumil = "^0.5.0"
+rumil_parsers = "^0.5.0"
+rumil_expressions = "^0.5.0"
+
+$ lam --to csv '.dependencies | as(csv)' pubspec.yaml
+key,value
+rumil,^0.5.0
+rumil_parsers,^0.5.0
+rumil_expressions,^0.5.0
+```
+
+`as` accepts `json`, `yaml`, `toml`, `csv`, `tsv`, and `hcl`.
+
+### `--explain` — see the shape at every pipe stage
+
+`--explain` walks the pipe backbone of a query and reports the shape at each stage, followed by the set of output formats the final shape can be serialized as. It performs static analysis only and does not evaluate the query; pass a data file to seed with real shape information, or omit it to trace against an unknown input.
+
+```
+$ lam --explain '.dependencies | keys' pubspec.yaml
+.dependencies  : map<rumil: string, rumil_parsers: string, rumil_expressions: string>
+| keys         : list<string>
+
+Writable as: json, yaml, csv, tsv
+Not writable as: toml, hcl
+```
 
 ## Query Syntax
 
@@ -77,6 +138,7 @@ Operations follow `|` and transform the piped value:
 . | flatten                    flatten one level of nesting
 . | to_entries                 map to [{key, value}] pairs
 . | filter_values(. > 5)       filter a map's values
+. | as(toml)                   bridge to an output format
 ```
 
 See the full list in [Pipeline Operations](#pipeline-operations) below.
@@ -103,6 +165,9 @@ lam '.users | map({name, senior: .age > 65})' data.json
 # String interpolation
 lam '.users | map("\(.name) is \(.age)")' data.json
 
+# Shape trace
+lam --explain '.users | map(.name)' data.json
+
 # Schema inference
 lam --schema data.json
 
@@ -113,6 +178,7 @@ lam --assert '.replicas >= 2' deployment.yaml
 # Format conversion
 lam --to yaml '.config' data.json
 lam --to csv '.users | map({name, age})' data.json
+lam --to toml '.config | as(toml)' data.json
 
 # Query any format (auto-detected from extension)
 lam '. | filter(.status != "closed")' issues.csv
@@ -130,7 +196,7 @@ lam -i data.json
 ```
 
 ```
-lambe v0.5.0 - type :help for commands, :q to quit
+lambe v0.6.0 - type :help for commands, :q to quit
 Data loaded: {3 fields, 42 users}
 
 lambe> .users | filter(.age > 30) | map(.name)
@@ -146,9 +212,7 @@ lambe> :to yaml
 Output format: yaml
 ```
 
-Type queries at the `lambe>` prompt. REPL commands start with `:` to distinguish them from queries: `:schema`, `:to yaml`, `:load file.json`, `:history`, `:help`, `:quit`.
-
-Tab completion works on field names (`.us<TAB>`) and pipeline operations (`| fil<TAB>`). Also supports syntax highlighting, persistent history (`~/.lambe_history`), Ctrl+R reverse search, and multi-line input with `\` continuation.
+When a query produces a result the current output format cannot serialize, the REPL lists the available bridges inline; pressing the number of a suggestion applies it and prints the bridged output. Tab completion works on field names (`.us<TAB>`) and pipeline operations (`| fil<TAB>`). The REPL also supports syntax highlighting, persistent history (`~/.lambe_history`), Ctrl+R reverse search, and multi-line input with `\` continuation.
 
 ## Library
 
@@ -165,9 +229,9 @@ final version = queryJson('.version', '{"version": "1.0.0"}');
 final host = queryString('.database.host', tomlString, format: Format.toml);
 
 // Parse once, evaluate many times
-final ast = parse('.users | filter(.active) | map(.name)');
-final result1 = eval(ast.valueOrNull!, dataset1);
-final result2 = eval(ast.valueOrNull!, dataset2);
+final ast = parseAst('.users | filter(.active) | map(.name)');
+final result1 = evaluateAst(ast, dataset1);
+final result2 = evaluateAst(ast, dataset2);
 
 // Format conversion
 final yaml = formatOutput(data, OutputFormat.yaml);
@@ -175,6 +239,38 @@ final csv = formatOutput(users, OutputFormat.csv);
 
 // Schema inference
 final schema = inferSchema(data);
+```
+
+### Shape and bridging API
+
+```dart
+// Infer the structural shape of a value
+final shape = shapeOf(data);
+// e.g. SMap({'users': SList(SMap({'name': SString(), 'age': SNum()}))})
+
+// Check whether a value can be written in a given format
+final report = canWriteAs(result, OutputFormat.toml);
+switch (report) {
+  case Writable():
+    stdout.writeln(formatOutput(result, OutputFormat.toml));
+  case NotWritable(:final suggestions):
+    for (final r in suggestions) {
+      print('${r.label}: | ${r.display} — ${r.explanation}');
+    }
+}
+
+// Compose a user query with a bridge fragment
+final bridges = synthesize(shape, OutputFormat.csv);
+if (bridges.isNotEmpty) {
+  final composed = applyBridge(userAst, bridges.first);
+  final bridged = evaluateAst(composed, data);
+}
+
+// Static shape trace
+final trace = explain(parseAst('.users | map(.name)'), shapeOf(data));
+for (final stage in trace.stages) {
+  print('${stage.source}: ${renderShape(stage.shape)}');
+}
 ```
 
 ## Supported Formats
@@ -190,6 +286,8 @@ final schema = inferSchema(data);
 | Markdown | yes | — | CommonMark 0.31.2 (652/652) |
 
 Parsers from [rumil_parsers](https://pub.dev/packages/rumil_parsers), tested against official spec suites.
+
+Markdown is input-only in this release. The Markdown AST is a presentation tree rather than a data structure, so there is no general-purpose mapping from arbitrary query results back to Markdown text. Projections of a Markdown document (lists of headings, counts, filtered sections) emit as JSON, YAML, CSV, or TSV through the usual `--to` flag.
 
 ## Pipeline Operations
 
@@ -221,6 +319,7 @@ Parsers from [rumil_parsers](https://pub.dev/packages/rumil_parsers), tested aga
 | `filter_values` | `. \| filter_values(. > 5)` | Filter map values |
 | `map_values` | `. \| map_values(. * 2)` | Transform map values |
 | `filter_keys` | `. \| filter_keys(. != "secret")` | Filter map keys |
+| `as` | `. \| as(toml)` | Bridge to an output format's shape |
 
 ## AI Integration
 
@@ -241,7 +340,7 @@ Install, then add `.mcp.json` to your project:
 }
 ```
 
-This gives AI assistants three tools: `lambe_query` (extract/filter/transform), `lambe_schema` (structure inspection), `lambe_assert` (validation).
+This gives AI assistants three tools: `lambe_query` (extract/filter/transform), `lambe_schema` (structure inspection), `lambe_assert` (validation). When `lambe_query` encounters a shape mismatch with the requested output format, the error response includes a structured `suggestions` array: each entry carries a `template_text`, an `apply_as` (the complete query formed by appending the template to the original expression), and a one-line `explanation`. Agents can call the tool again with an `apply_as` verbatim.
 
 ### For AI Coding Agents
 
@@ -283,6 +382,8 @@ expect(data, lamHas('.users[0].address.city'));
 See [DESIGN.md](DESIGN.md) for architecture and design decisions.
 
 ## Part of the Arda Ecosystem
+
+Built on [Rumil](https://pub.dev/packages/rumil) parser combinators with left-recursive grammar support.
 
 - [Rumil](https://pub.dev/packages/rumil) - parser combinators with left recursion
 - [Rumil Parsers](https://pub.dev/packages/rumil_parsers) - format parsers for JSON, YAML, TOML, XML, CSV, HCL, Proto3, Markdown

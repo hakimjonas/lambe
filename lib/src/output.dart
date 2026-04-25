@@ -6,27 +6,10 @@ import 'dart:convert';
 import 'package:rumil_parsers/rumil_parsers.dart';
 
 import 'errors.dart';
+import 'output_format.dart';
+import 'shape/check.dart';
 
-/// Supported output formats for `--to`.
-enum OutputFormat {
-  /// JSON output (default).
-  json,
-
-  /// YAML output.
-  yaml,
-
-  /// TOML output (root must be a map).
-  toml,
-
-  /// CSV output (root must be a list of maps or list of lists).
-  csv,
-
-  /// TSV output (tab-separated, same structure as CSV).
-  tsv,
-
-  /// HCL output (root must be a map).
-  hcl,
-}
+export 'output_format.dart' show OutputFormat;
 
 /// Format [value] as a string in the given [format].
 ///
@@ -81,55 +64,51 @@ String _toYaml(Object? value) {
 }
 
 String _toToml(Object? value) {
-  if (value is! Map<String, Object?>) {
-    throw QueryError(
-      'TOML output requires a map at the root level, got ${value.runtimeType}',
-    );
-  }
+  final report = canWriteAs(value, OutputFormat.toml);
+  if (report is NotWritable) throw OutputShapeError(report);
+  final map = value as Map<String, Object?>;
   final doc = <String, TomlValue>{
-    for (final MapEntry(:key, value: v) in value.entries)
+    for (final MapEntry(:key, value: v) in map.entries)
       key: nativeToAst(v, tomlBuilder),
   };
   return serializeToml(doc);
 }
 
 String _toCsv(Object? value, String delimiter) {
+  final fmt = delimiter == '\t' ? OutputFormat.tsv : OutputFormat.csv;
+  final report = canWriteAs(value, fmt);
+  if (report is NotWritable) throw OutputShapeError(report);
+  final list = value as List<Object?>;
   final config = DelimitedConfig(delimiter: delimiter);
-  if (value is List<Object?>) {
-    if (value.isEmpty) return '';
+  if (list.isEmpty) return '';
 
-    if (value.first is Map<String, Object?>) {
-      final maps = value.cast<Map<String, Object?>>();
-      final headers = maps.first.keys.toList();
-      final rows = [
-        for (final map in maps) [for (final h in headers) '${map[h] ?? ''}'],
-      ];
-      return serializeCsvWithHeaders(headers, rows, config: config);
-    }
-
-    if (value.first is List) {
-      final rows = [
-        for (final row in value) [for (final cell in row as List) '$cell'],
-      ];
-      return serializeCsv(rows, config: config);
-    }
-
-    return serializeCsv([
-      for (final item in value) ['$item'],
-    ], config: config);
+  if (list.first is Map<String, Object?>) {
+    final maps = list.cast<Map<String, Object?>>();
+    final headers = maps.first.keys.toList();
+    final rows = [
+      for (final map in maps) [for (final h in headers) '${map[h] ?? ''}'],
+    ];
+    return serializeCsvWithHeaders(headers, rows, config: config);
   }
 
-  throw QueryError('CSV/TSV output requires a list, got ${value.runtimeType}');
+  if (list.first is List) {
+    final rows = [
+      for (final row in list) [for (final cell in row as List) '$cell'],
+    ];
+    return serializeCsv(rows, config: config);
+  }
+
+  return serializeCsv([
+    for (final item in list) ['$item'],
+  ], config: config);
 }
 
 String _toHcl(Object? value) {
-  if (value is! Map<String, Object?>) {
-    throw QueryError(
-      'HCL output requires a map at the root level, got ${value.runtimeType}',
-    );
-  }
+  final report = canWriteAs(value, OutputFormat.hcl);
+  if (report is NotWritable) throw OutputShapeError(report);
+  final map = value as Map<String, Object?>;
   final doc = <(String, HclValue)>[
-    for (final MapEntry(:key, value: v) in value.entries)
+    for (final MapEntry(:key, value: v) in map.entries)
       (key, nativeToAst(v, hclBuilder)),
   ];
   return serializeHcl(doc);

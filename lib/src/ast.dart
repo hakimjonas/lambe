@@ -1,6 +1,8 @@
 /// Query expression AST types.
 library;
 
+import 'output_format.dart';
+
 /// A query expression node.
 sealed class LamExpr {
   /// Base constructor.
@@ -352,6 +354,23 @@ final class Slice extends LamExpr {
 
   /// Creates a slice on [target] from [start] to [end].
   const Slice(this.target, this.start, this.end);
+}
+
+/// Shape-directed bridge to an output format: `as(toml)`, `as(csv)`.
+///
+/// At runtime the evaluator infers the shape of the current context and
+/// checks it against the target format's requirement. If the shape is
+/// already compatible, [As] returns the context unchanged. If exactly
+/// one curated remediation exists for the mismatch, it is applied. If
+/// the combination has no curated remediation, or more than one,
+/// evaluation throws a [QueryError] listing the available candidates
+/// so the caller can pick one explicitly.
+final class As extends LamExpr {
+  /// The target output format the pipeline should fit.
+  final OutputFormat target;
+
+  /// Creates an `as(target)` combinator.
+  const As(this.target);
 }
 
 /// Conditional expression: `if cond then a else b`.

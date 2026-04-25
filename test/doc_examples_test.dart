@@ -216,7 +216,7 @@ List<(String, String)> _extractDartStringExpressions(String dart) {
 }
 
 /// Asserts [expr] parses. Evaluation errors from fixture-shape mismatches
-/// are tolerated — the test's purpose is to catch parse failures, which
+/// are tolerated: the test's purpose is to catch parse failures, which
 /// indicate phantom features or typos in docs.
 void _expectParsesAndEvals(String expr, Object? fixture) {
   final parseResult = parse(expr);
