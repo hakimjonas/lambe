@@ -338,4 +338,128 @@ void main() {
       expect(candidates, isEmpty);
     });
   });
+
+  // Each test in this group corresponds to a row in the whitespace
+  // investigation (see PLAN_COMPLETER_WHITESPACE_FIX.md and the probe
+  // in tool/probe_completer.dart). The cases are authored against
+  // current behaviour and expected behaviour; all the "expected"
+  // cases currently fail on HEAD. The group exists to pin behaviour
+  // so that the fix is verifiably correct and no regression
+  // reintroduces the bug.
+  group('Trailing whitespace regression', () {
+    // --- Identity tail -------------------------------------------
+    test('trailing space after identity: start points at the dot', () {
+      final (:start, :candidates) = complete('. ', 2, sampleData);
+      expect(start, 0);
+      expect(candidates, containsAll(['.config', '.users', '.version']));
+    });
+
+    // --- Field tail ----------------------------------------------
+    test('trailing space after field: start points at the dot', () {
+      final (:start, :candidates) = complete('.users ', 7, sampleData);
+      expect(start, 0);
+      expect(candidates, ['.users']);
+    });
+
+    test('trailing tab after field: start points at the dot', () {
+      final (:start, :candidates) = complete('.users\t', 7, sampleData);
+      expect(start, 0);
+      expect(candidates, ['.users']);
+    });
+
+    test('trailing newline after field: start points at the dot', () {
+      final (:start, :candidates) = complete('.users\n', 7, sampleData);
+      expect(start, 0);
+      expect(candidates, ['.users']);
+    });
+
+    test('multiple trailing spaces after field', () {
+      final (:start, :candidates) = complete('.users   ', 9, sampleData);
+      expect(start, 0);
+      expect(candidates, ['.users']);
+    });
+
+    test('mixed trailing whitespace after field', () {
+      final (:start, :candidates) = complete('.users \t ', 9, sampleData);
+      expect(start, 0);
+      expect(candidates, ['.users']);
+    });
+
+    // --- Access tail ---------------------------------------------
+    test('trailing space after access: start at the last dot', () {
+      final (:start, :candidates) = complete(
+        '.config.database ',
+        17,
+        sampleData,
+      );
+      expect(start, 7);
+      expect(candidates, ['.database']);
+    });
+
+    // --- Inside parameterized ops --------------------------------
+    test('trailing space after field inside filter()', () {
+      // Cursor between the space and the closing paren.
+      final (:start, :candidates) = complete(
+        '.users | filter(.age )',
+        21,
+        sampleData,
+      );
+      expect(start, 16);
+      expect(candidates, ['.age']);
+    });
+
+    test('trailing space after field inside map()', () {
+      // Cursor between the space and the closing paren.
+      final (:start, :candidates) = complete(
+        '.users | map(.name )',
+        19,
+        sampleData,
+      );
+      expect(start, 13);
+      expect(candidates, ['.name']);
+    });
+
+    // --- Pipe-op path with trailing whitespace -------------------
+    // When the user has typed `| <partial-op> ` and presses Tab, the
+    // intent is unambiguous: complete the partial op. The returned
+    // `start` must point at the first character of the partial name,
+    // not past it, and candidates must be the pipeline ops matching
+    // the partial (not field candidates).
+    test('trailing space after partial pipe op: pipe-op path applies', () {
+      final (:start, :candidates) = complete('.users | fil ', 13, sampleData);
+      expect(start, 9);
+      expect(candidates, ['filter', 'filter_keys', 'filter_values']);
+    });
+
+    test('multiple trailing spaces after partial pipe op', () {
+      final (:start, :candidates) = complete('.users | fil   ', 15, sampleData);
+      expect(start, 9);
+      expect(candidates, ['filter', 'filter_keys', 'filter_values']);
+    });
+
+    // --- Parity: no-trailing-whitespace variants must not regress
+    // These already pass on HEAD. They are here so the fix cannot
+    // break them in pursuit of the regression cases above.
+    test('no trailing whitespace after field still works', () {
+      final (:start, :candidates) = complete('.users', 6, sampleData);
+      expect(start, 0);
+      expect(candidates, ['.users']);
+    });
+
+    test('no trailing whitespace inside filter() still works', () {
+      final (:start, :candidates) = complete(
+        '.users | filter(.age',
+        20,
+        sampleData,
+      );
+      expect(start, 16);
+      expect(candidates, ['.age']);
+    });
+
+    test('pipe-op partial without trailing whitespace', () {
+      final (:start, :candidates) = complete('.users | fil', 12, sampleData);
+      expect(start, 9);
+      expect(candidates, ['filter', 'filter_keys', 'filter_values']);
+    });
+  });
 }

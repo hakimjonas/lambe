@@ -61,15 +61,15 @@ When the shape of the target format is known up front, `as(fmt)` performs the br
 
 ```
 $ lam --to toml '.dependencies | as(toml)' pubspec.yaml
-rumil = "^0.5.0"
-rumil_parsers = "^0.5.0"
-rumil_expressions = "^0.5.0"
+rumil = "^0.6.0"
+rumil_parsers = "^0.6.0"
+rumil_expressions = "^0.6.0"
 
 $ lam --to csv '.dependencies | as(csv)' pubspec.yaml
 key,value
-rumil,^0.5.0
-rumil_parsers,^0.5.0
-rumil_expressions,^0.5.0
+rumil,^0.6.0
+rumil_parsers,^0.6.0
+rumil_expressions,^0.6.0
 ```
 
 `as` accepts `json`, `yaml`, `toml`, `csv`, `tsv`, and `hcl`.
@@ -196,7 +196,7 @@ lam -i data.json
 ```
 
 ```
-lambe v0.6.0 - type :help for commands, :q to quit
+lambe v0.6.1 - type :help for commands, :q to quit
 Data loaded: {3 fields, 42 users}
 
 lambe> .users | filter(.age > 30) | map(.name)

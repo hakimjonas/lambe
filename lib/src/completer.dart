@@ -3,9 +3,9 @@
 /// The completer uses [parsePartial] with `.recover()` to obtain the
 /// AST of a valid prefix (including inner expressions of parameterized
 /// pipe ops), then resolves the completion context by walking that AST
-/// over an inferred [Shape] tree. Regex is only applied to the
-/// unparsed remainder; string literals are already consumed by the
-/// parser.
+/// over an inferred [Shape] tree. Unparsed-remainder classification
+/// uses small Rumil parsers (no regex), so whitespace handling is
+/// uniform across space, tab, CR, and LF.
 ///
 /// Completion cost is bounded by the structural depth of the input
 /// data and the size of the query, not by the number of elements in
@@ -43,17 +43,58 @@ const _replCommands = <String>[
 /// Output format names for `:to` command completion.
 const _outputFormats = <String>['csv', 'hcl', 'json', 'toml', 'tsv', 'yaml'];
 
-/// Matches a pipe operator followed by a partial op name at end of string.
-final _pipeRx = RegExp(r'^\|\s*(\w*)$');
+/// Identifier: letter or underscore, then alphanumerics and underscores.
+///
+/// Re-derives the parser's `_identNoWs` rather than importing a
+/// private name.
+final Parser<ParseError, String> _ident = (letter() | char('_'))
+    .zip((alphaNum() | char('_')).many)
+    .map((pair) => pair.$1 + pair.$2.join());
 
-/// Matches a trailing field access (e.g., `.name` or `.`).
-final _fieldTailRx = RegExp(r'\.(\w*)$');
+/// Raw whitespace: space, tab, carriage return, or newline.
+final Parser<ParseError, void> _wsRaw = satisfy(
+  (c) => c == ' ' || c == '\t' || c == '\r' || c == '\n',
+  'whitespace',
+).many.as<void>(null);
+
+/// Pipe-op context: `|` then optional whitespace then optional
+/// partial op name then optional trailing whitespace then end-of-input.
+///
+/// Yields `(partialStart, partial)` where `partialStart` is the offset
+/// within the parsed remainder at which the replacement begins (the
+/// first character after the `|` and its whitespace). The partial is
+/// `''` when the user has typed only `|` or `| `.
+final Parser<ParseError, (int, String)> _pipeCtx = char('|')
+    .skipThen(_wsRaw)
+    .skipThen(position<ParseError>())
+    .zip(_ident.optional)
+    .thenSkip(_wsRaw)
+    .thenSkip(eof())
+    .map((pair) => (pair.$1, pair.$2 ?? ''));
+
+/// Field-tail context: `.` then optional partial field name then
+/// optional trailing whitespace then end-of-input.
+///
+/// Yields `(dotOffset, partial)` where `dotOffset` is the offset of
+/// the `.` within the parsed remainder.
+final Parser<ParseError, (int, String)> _fieldTailCtx = position<ParseError>()
+    .thenSkip(char('.'))
+    .zip(_ident.optional)
+    .thenSkip(_wsRaw)
+    .thenSkip(eof())
+    .map((pair) => (pair.$1, pair.$2 ?? ''));
 
 /// Compute tab completions for [text] at [cursor] position against [data].
 ///
 /// Uses [parsePartial] to parse the valid expression prefix (with
-/// `.recover()` preserving inner expressions in pipe ops), then inspects
-/// the AST and any unparsed remainder to determine completion context.
+/// `.recover()` preserving inner expressions in pipe ops), then classifies
+/// the unparsed remainder (pipe-op context or field-tail context) via
+/// small Rumil parsers. Falls through to AST-tail-based completion when
+/// the remainder classifies as neither.
+///
+/// Contract: the returned `start` is the offset in `text` where the
+/// user's typed prefix begins. Callers replace `text[start, cursor)`
+/// with the chosen candidate.
 Completions complete(String text, int cursor, Object? data) {
   final before = text.substring(0, cursor);
 
@@ -67,16 +108,23 @@ Completions complete(String text, int cursor, Object? data) {
     Failure() => 0,
   };
 
-  final remainder = before.substring(consumed);
-  final trimmed = remainder.trimLeft();
-  final trimOff = consumed + remainder.length - trimmed.length;
+  // `parsePartial` wraps `_expr` in `_ws ... _ws`, so `consumed` may
+  // overshoot the AST's last significant character when the user has
+  // typed trailing whitespace. Walk back to recover the true AST-end
+  // offset; the AST-tail path computes replacement `start` from it.
+  var astEnd = consumed;
+  while (astEnd > 0 && _isWs(before.codeUnitAt(astEnd - 1))) {
+    astEnd--;
+  }
 
-  final pipeMatch = _pipeRx.firstMatch(trimmed);
-  if (pipeMatch != null) {
-    final partial = pipeMatch.group(1)!;
-    final start = trimOff + pipeMatch.end - partial.length;
+  final remainder = before.substring(consumed);
+
+  final pipeRes = _pipeCtx.run(remainder);
+  if (pipeRes case Success<ParseError, (int, String)>(
+    value: (final partialStart, final partial),
+  )) {
     return (
-      start: start,
+      start: consumed + partialStart,
       candidates: <String>[
         for (final op in pipelineOps)
           if (op.startsWith(partial)) op,
@@ -88,19 +136,22 @@ Completions complete(String text, int cursor, Object? data) {
   // against this shape rather than against the value.
   final rootShape = shapeOf(data);
 
-  final fMatch = _fieldTailRx.firstMatch(trimmed);
-  if (fMatch != null && fMatch.start == 0) {
-    final partial = fMatch.group(1)!;
-    final dotPos = trimOff + fMatch.start;
+  final fieldRes = _fieldTailCtx.run(remainder);
+  if (fieldRes case Success<ParseError, (int, String)>(
+    value: (final dotOff, final partial),
+  ) when dotOff == 0) {
+    final dotPos = consumed + dotOff;
     return _fieldsOf(_resolveTarget(ast, rootShape), partial, dotPos);
   }
 
   if (ast != null) {
-    return _completionContext(ast, before, rootShape);
+    return _completionContext(ast, astEnd, rootShape);
   }
 
   return (start: cursor, candidates: <String>[]);
 }
+
+bool _isWs(int c) => c == 0x20 || c == 0x09 || c == 0x0a || c == 0x0d;
 
 Completions _completeCommand(String before) {
   if (before.startsWith(':to ')) {
@@ -125,23 +176,28 @@ Completions _completeCommand(String before) {
 
 /// Walk the AST to find the innermost completion context.
 ///
+/// [astEnd] is the offset in the original input just past the last
+/// non-whitespace character of the parsed AST. The tail path uses it
+/// to position `start` at the dot preceding the user's partial token,
+/// independently of any trailing whitespace the user has typed.
+///
 /// For [Pipe] nodes whose right-hand side is a parameterized op
 /// (`filter`, `map`, and so on), this recurses into the inner
 /// expression against the element shape of the pipe input. A query
 /// such as `.users | filter(.address.ci` resolves the trailing
 /// identifier against the shape of one user's `address`.
-Completions _completionContext(LamExpr ast, String before, Shape inputShape) {
+Completions _completionContext(LamExpr ast, int astEnd, Shape inputShape) {
   if (ast is Pipe) {
     final inner = _innerExpr(ast.op);
     if (inner != null) {
       final collection = inferShape(ast.input, inputShape);
       if (collection is SList) {
-        return _completionContext(inner, before, collection.element);
+        return _completionContext(inner, astEnd, collection.element);
       }
-      return (start: before.length, candidates: <String>[]);
+      return (start: astEnd, candidates: <String>[]);
     }
   }
-  return _completeAstTail(ast, before, inputShape);
+  return _completeAstTail(ast, astEnd, inputShape);
 }
 
 /// Complete fields based on the AST tail node.
@@ -151,32 +207,31 @@ Completions _completionContext(LamExpr ast, String before, Shape inputShape) {
 /// and [UnaryOp] recurse into the right-most branch, so a tab in
 /// `.users | filter(.age > 20 && .na<TAB>)` resolves against the
 /// element shape.
-Completions _completeAstTail(LamExpr ast, String before, Shape inputShape) =>
-    switch (ast) {
-      Identity() => _fieldsOf(inputShape, '', before.length - 1),
-      Field(:final name) => _fieldsOf(
-        inputShape,
-        name,
-        before.length - name.length - 1,
-      ),
-      Access(:final target, :final field) => _fieldsOf(
-        inferShape(target, inputShape),
-        field,
-        before.length - field.length - 1,
-      ),
-      BinaryOp(:final right) => _completeAstTail(right, before, inputShape),
-      UnaryOp(:final operand) => _completeAstTail(operand, before, inputShape),
-      Conditional(:final then_, :final else_) =>
-        else_ is Identity
-            ? _completeAstTail(then_, before, inputShape)
-            : _completeAstTail(else_, before, inputShape),
-      StringInterp(:final parts) when parts.isNotEmpty => _completeAstTail(
-        parts.last,
-        before,
-        inputShape,
-      ),
-      _ => (start: before.length, candidates: <String>[]),
-    };
+Completions _completeAstTail(
+  LamExpr ast,
+  int astEnd,
+  Shape inputShape,
+) => switch (ast) {
+  Identity() => _fieldsOf(inputShape, '', astEnd - 1),
+  Field(:final name) => _fieldsOf(inputShape, name, astEnd - name.length - 1),
+  Access(:final target, :final field) => _fieldsOf(
+    inferShape(target, inputShape),
+    field,
+    astEnd - field.length - 1,
+  ),
+  BinaryOp(:final right) => _completeAstTail(right, astEnd, inputShape),
+  UnaryOp(:final operand) => _completeAstTail(operand, astEnd, inputShape),
+  Conditional(:final then_, :final else_) =>
+    else_ is Identity
+        ? _completeAstTail(then_, astEnd, inputShape)
+        : _completeAstTail(else_, astEnd, inputShape),
+  StringInterp(:final parts) when parts.isNotEmpty => _completeAstTail(
+    parts.last,
+    astEnd,
+    inputShape,
+  ),
+  _ => (start: astEnd, candidates: <String>[]),
+};
 
 /// Return field name completions from [target] starting with [partial].
 ///
