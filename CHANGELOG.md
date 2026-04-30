@@ -1,3 +1,32 @@
+## 0.6.1
+
+Tab completion fix: trailing whitespace in the REPL query no longer
+corrupts the replacement offset. Typing `.dependencies`, a space, then
+Tab now completes against `.dependencies` instead of producing
+`..dependencies`.
+
+### Fixed
+
+- Completer: the replacement `start` offset is now correct when the
+  query has trailing whitespace (space, tab, CR, LF, or any mixture).
+  Previously `.users ` + Tab returned `start: 1` instead of `start: 0`,
+  which caused the REPL and the arda-web playground to splice the
+  candidate in the wrong position.
+- Completer: `??`, `?.`, and `??=` were previously split across
+  multiple tokens in the unparsed-remainder classifier. They now match
+  as single operators before falling through.
+
+### Changed
+
+- Completer: unparsed-remainder classification no longer uses regex.
+  Two small Rumil parsers (`_pipeCtx`, `_fieldTailCtx`) handle
+  pipe-op and field-tail contexts, with `position()` for offset
+  tracking. Whitespace handling is uniform across space, tab, CR,
+  and LF.
+- Dependencies: `rumil`, `rumil_parsers`, `rumil_expressions` bumped
+  to `^0.6.0`. Rumil 0.6.0 adds the `position()` primitive used by
+  the completer fix.
+
 ## 0.6.0
 
 Shape-aware output with interactive bridging. Lambe now infers the
