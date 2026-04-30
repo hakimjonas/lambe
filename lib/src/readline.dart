@@ -10,9 +10,14 @@ import 'dart:io';
 /// Callback for tab completion.
 ///
 /// Takes the current input [text] and [cursor] position. Returns a record
-/// with the replacement [start] position and a sorted list of [candidates].
+/// with the replacement range `[start, end)` and a sorted list of
+/// [candidates]. Callers splice with
+/// `text.replaceRange(start, end, candidate)`.
 typedef CompleteCallback =
-    ({int start, List<String> candidates}) Function(String text, int cursor);
+    ({int start, int end, List<String> candidates}) Function(
+      String text,
+      int cursor,
+    );
 
 /// Minimal readline with history and tab completion.
 ///
@@ -273,13 +278,12 @@ class ReadLine {
     if (complete == null) return cursor;
 
     final text = String.fromCharCodes(buf);
-    final (:start, :candidates) = complete(text, cursor);
+    final (:start, :end, :candidates) = complete(text, cursor);
     if (candidates.isEmpty) return cursor;
 
     if (candidates.length == 1) {
       final replacement = candidates.first;
-      final newText =
-          '${text.substring(0, start)}$replacement${text.substring(cursor)}';
+      final newText = text.replaceRange(start, end, replacement);
       buf
         ..clear()
         ..addAll(newText.codeUnits);
@@ -290,9 +294,8 @@ class ReadLine {
 
     final prefix = _commonPrefix(candidates);
     var newCursor = cursor;
-    if (prefix.length > cursor - start) {
-      final newText =
-          '${text.substring(0, start)}$prefix${text.substring(cursor)}';
+    if (prefix.length > end - start) {
+      final newText = text.replaceRange(start, end, prefix);
       buf
         ..clear()
         ..addAll(newText.codeUnits);

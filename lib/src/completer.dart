@@ -19,8 +19,18 @@ import 'package:rumil/rumil.dart';
 import '../lambe.dart';
 import 'parser.dart' as parser_;
 
-/// Completion result: replacement [start] position and [candidates].
-typedef Completions = ({int start, List<String> candidates});
+/// Completion result: the half-open range `[start, end)` in the
+/// original input that should be replaced with a chosen candidate,
+/// and the list of [candidates].
+///
+/// Callers splice with `text.replaceRange(start, end, candidate)`.
+/// The range ends at the last non-whitespace character of the user's
+/// partial token, not at the cursor — so trailing whitespace typed
+/// after a complete token is preserved on accept.
+///
+/// When [candidates] is empty, [start] and [end] both equal the
+/// cursor position; no splice should occur.
+typedef Completions = ({int start, int end, List<String> candidates});
 
 /// All pipeline operation names, sorted alphabetically.
 ///
@@ -92,9 +102,12 @@ final Parser<ParseError, (int, String)> _fieldTailCtx = position<ParseError>()
 /// small Rumil parsers. Falls through to AST-tail-based completion when
 /// the remainder classifies as neither.
 ///
-/// Contract: the returned `start` is the offset in `text` where the
-/// user's typed prefix begins. Callers replace `text[start, cursor)`
-/// with the chosen candidate.
+/// Contract: the returned `start`/`end` delimit the range in [text]
+/// that the caller should replace with the chosen candidate. `end` is
+/// positioned at the last non-whitespace character of the partial
+/// token, so trailing whitespace between the token and the cursor is
+/// preserved on accept. When `candidates` is empty, `start` and `end`
+/// both equal [cursor] and no splice should occur.
 Completions complete(String text, int cursor, Object? data) {
   final before = text.substring(0, cursor);
 
@@ -111,7 +124,7 @@ Completions complete(String text, int cursor, Object? data) {
   // `parsePartial` wraps `_expr` in `_ws ... _ws`, so `consumed` may
   // overshoot the AST's last significant character when the user has
   // typed trailing whitespace. Walk back to recover the true AST-end
-  // offset; the AST-tail path computes replacement `start` from it.
+  // offset; the AST-tail path computes replacement `start`/`end` from it.
   var astEnd = consumed;
   while (astEnd > 0 && _isWs(before.codeUnitAt(astEnd - 1))) {
     astEnd--;
@@ -123,8 +136,10 @@ Completions complete(String text, int cursor, Object? data) {
   if (pipeRes case Success<ParseError, (int, String)>(
     value: (final partialStart, final partial),
   )) {
+    final tokenStart = consumed + partialStart;
     return (
-      start: consumed + partialStart,
+      start: tokenStart,
+      end: tokenStart + partial.length,
       candidates: <String>[
         for (final op in pipelineOps)
           if (op.startsWith(partial)) op,
@@ -148,7 +163,7 @@ Completions complete(String text, int cursor, Object? data) {
     return _completionContext(ast, astEnd, rootShape);
   }
 
-  return (start: cursor, candidates: <String>[]);
+  return (start: cursor, end: cursor, candidates: <String>[]);
 }
 
 bool _isWs(int c) => c == 0x20 || c == 0x09 || c == 0x0a || c == 0x0d;
@@ -158,6 +173,7 @@ Completions _completeCommand(String before) {
     final prefix = before.substring(4);
     return (
       start: 4,
+      end: 4 + prefix.length,
       candidates: <String>[
         for (final f in _outputFormats)
           if (f.startsWith(prefix)) f,
@@ -167,6 +183,7 @@ Completions _completeCommand(String before) {
   final partial = before.substring(1);
   return (
     start: 1,
+    end: 1 + partial.length,
     candidates: <String>[
       for (final cmd in _replCommands)
         if (cmd.startsWith(partial)) cmd,
@@ -194,7 +211,7 @@ Completions _completionContext(LamExpr ast, int astEnd, Shape inputShape) {
       if (collection is SList) {
         return _completionContext(inner, astEnd, collection.element);
       }
-      return (start: astEnd, candidates: <String>[]);
+      return (start: astEnd, end: astEnd, candidates: <String>[]);
     }
   }
   return _completeAstTail(ast, astEnd, inputShape);
@@ -230,21 +247,28 @@ Completions _completeAstTail(
     astEnd,
     inputShape,
   ),
-  _ => (start: astEnd, candidates: <String>[]),
+  _ => (start: astEnd, end: astEnd, candidates: <String>[]),
 };
 
 /// Return field name completions from [target] starting with [partial].
 ///
 /// The [dotPos] is the position of the `.` in the input, used as the
-/// replacement start. Only [SMap] shapes carry field names; any other
-/// shape (including [SAny]) produces no field candidates.
+/// replacement start. The replacement end is just past the last char
+/// of the partial token (`dotPos + 1 + partial.length`). Only [SMap]
+/// shapes carry field names; any other shape (including [SAny])
+/// produces no field candidates.
 Completions _fieldsOf(Shape target, String partial, int dotPos) {
+  final tokenEnd = dotPos + 1 + partial.length;
   if (target is! SMap) {
-    return (start: dotPos + partial.length + 1, candidates: <String>[]);
+    return (start: tokenEnd, end: tokenEnd, candidates: <String>[]);
   }
   final matching =
       target.fields.keys.where((k) => k.startsWith(partial)).toList()..sort();
-  return (start: dotPos, candidates: <String>[for (final k in matching) '.$k']);
+  return (
+    start: dotPos,
+    end: tokenEnd,
+    candidates: <String>[for (final k in matching) '.$k'],
+  );
 }
 
 /// Resolve the target shape for field completion, walking into [Pipe]

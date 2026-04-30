@@ -1,4 +1,4 @@
-.TH "LAM" "1" "April 2026" "Lambë 0.6.1" ""
+.TH "LAM" "1" "April 2026" "Lambë 0.6.2" ""
 .SH AUTHOR
 Hakim Jonas Ghoula
 .SH NAME
@@ -12,6 +12,8 @@ lam - query structured data files
 .SH DESCRIPTION
 .PP
 Query JSON, YAML, TOML, HCL, CSV, TSV, and Markdown files using a composable pipeline DSL. Format is auto-detected from file extension.
+.PP
+Lambe infers the structural shape of query results and reports incompatibilities with target output formats. Use \fB--explain\fR to trace the shape at each pipeline stage, or the \fBas\fR(\fIfmt\fR) combinator inside a query to bridge common mismatches.
 .PP
 If no file is given, reads from standard input.
 .SH OPTIONS
@@ -33,6 +35,9 @@ Output format. One of: json, yaml, toml, csv, tsv, hcl. Default is json.
 .TP
 \fB--schema\fR
 Show the data structure with type names instead of values.
+.TP
+\fB--explain\fR
+Trace the shape of values flowing through each pipeline stage. Static analysis only; does not execute the query. Reports which output formats the final shape can be serialized as.
 .TP
 \fB--assert\fR
 Evaluate the expression and exit with code 0 if the result is true, 1 if false.
@@ -128,6 +133,12 @@ Map to [{key, value}].
 \fBfrom_entries\fR
 [{key, value}] to map.
 .TP
+\fBto_number\fR
+Parse a string as a number. Pass-through for existing numbers.
+.TP
+\fBtype\fR
+Runtime type of the value as a string: "null", "boolean", "number", "string", "array", or "object".
+.TP
 \fBfilter_values\fR(\fIpred\fR)
 Filter a map's values.
 .TP
@@ -136,6 +147,9 @@ Transform a map's values.
 .TP
 \fBfilter_keys\fR(\fIpred\fR)
 Filter a map's keys.
+.TP
+\fBas\fR(\fIfmt\fR)
+Shape-directed bridge to an output format. No-op when the current shape already satisfies \fIfmt\fR. Applies a single curated bridge when one exists. Errors with a list of candidates when more than one could apply. Valid \fIfmt\fR: json, yaml, toml, csv, tsv, hcl.
 .SH NULL PROPAGATION
 .PP
 Navigation on null returns null: \fB.missing\fR returns null, \fB.missing.nested\fR returns null.
@@ -213,6 +227,18 @@ Schema inspection:
 lam --schema deployment.yaml
 .fi
 .PP
+Shape trace for a pipeline:
+.PP
+.nf
+lam --explain '.users | filter(.age > 30) | map(.name)' data.json
+.fi
+.PP
+Bridge to an output format inside the query:
+.PP
+.nf
+lam --to toml '.dependencies | as(toml)' pubspec.yaml
+.fi
+.PP
 CI validation:
 .PP
 .nf
@@ -232,8 +258,10 @@ lam -i data.json
 .fi
 .SH SEE ALSO
 .PP
-\fBjq\fR(1)
+\fBjq\fR(1) — the established JSON query tool. Lambe shares its pipeline aesthetic and extends to multi-format input with shape-aware output.
+.SH BUGS
 .PP
-Project: https://github.com/hakimjonas/lambe
+Report issues at https://github.com/hakimjonas/lambe/issues.
+.SH HOMEPAGE
 .PP
-Documentation: https://pub.dev/packages/lambe
+https://ardaproject.org/lambe
