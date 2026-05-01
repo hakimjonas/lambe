@@ -1,7 +1,7 @@
 ---
 title: LAM
 section: 1
-source: Lambë 0.6.1
+source: Lambë 0.7.0
 author: Hakim Jonas Ghoula
 date: April 2026
 ---
@@ -19,6 +19,8 @@ lam - query structured data files
 # DESCRIPTION
 
 Query JSON, YAML, TOML, HCL, CSV, TSV, and Markdown files using a composable pipeline DSL. Format is auto-detected from file extension.
+
+Lambe infers the structural shape of query results and reports incompatibilities with target output formats. Use **--explain** to trace the shape at each pipeline stage, or the **as**(*fmt*) combinator inside a query to bridge common mismatches.
 
 If no file is given, reads from standard input.
 
@@ -41,6 +43,9 @@ If no file is given, reads from standard input.
 
 **--schema**
 :   Show the data structure with type names instead of values.
+
+**--explain**
+:   Trace the shape of values flowing through each pipeline stage. Static analysis only; does not execute the query. Reports which output formats the final shape can be serialized as.
 
 **--assert**
 :   Evaluate the expression and exit with code 0 if the result is true, 1 if false.
@@ -148,6 +153,12 @@ Queries start with **.** (the current document) and chain operations with **|**.
 **from_entries**
 :   [{key, value}] to map.
 
+**to_number**
+:   Parse a string as a number. Pass-through for existing numbers.
+
+**type**
+:   Runtime type of the value as a string: "null", "boolean", "number", "string", "array", or "object".
+
 **filter_values**(*pred*)
 :   Filter a map's values.
 
@@ -156,6 +167,9 @@ Queries start with **.** (the current document) and chain operations with **|**.
 
 **filter_keys**(*pred*)
 :   Filter a map's keys.
+
+**as**(*fmt*)
+:   Shape-directed bridge to an output format. No-op when the current shape already satisfies *fmt*. Applies a single curated bridge when one exists. Errors with a list of candidates when more than one could apply. Valid *fmt*: json, yaml, toml, csv, tsv, hcl.
 
 # NULL PROPAGATION
 
@@ -228,6 +242,14 @@ Schema inspection:
 
     lam --schema deployment.yaml
 
+Shape trace for a pipeline:
+
+    lam --explain '.users | filter(.age > 30) | map(.name)' data.json
+
+Bridge to an output format inside the query:
+
+    lam --to toml '.dependencies | as(toml)' pubspec.yaml
+
 CI validation:
 
     lam --assert '.version != "0.0.0"' package.json
@@ -242,8 +264,12 @@ Interactive exploration:
 
 # SEE ALSO
 
-**jq**(1)
+**jq**(1) — the established JSON query tool. Lambe shares its pipeline aesthetic and extends to multi-format input with shape-aware output.
 
-Project: https://github.com/hakimjonas/lambe
+# BUGS
 
-Documentation: https://pub.dev/packages/lambe
+Report issues at <https://github.com/hakimjonas/lambe/issues>.
+
+# HOMEPAGE
+
+<https://ardaproject.org/lambe>

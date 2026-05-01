@@ -1,3 +1,95 @@
+## 0.7.0
+
+Shape-gated tab completion, single-source-of-truth pipe-op metadata,
+and `inferShape` correctness fixes. Builds on the 0.6.0 shape work:
+the completer now uses the same shape machinery that powers
+`--explain` and `as(fmt)` to hide candidates that would throw at
+runtime.
+
+### Added
+
+- **Shape-gated pipe-op completion.** `.x | <TAB>` filters the
+  candidate list by the inferred input shape. A map input hides
+  list-only ops (`flatten`, `sort`, `sum`, `first`); a list input
+  hides map-only ops (`filter_keys`, `has`, `map_values`,
+  `to_entries`). Ops that accept any input (`as`, `type`) are
+  offered everywhere. When the shape inference is `SAny`, every op
+  is offered — rejection only happens when the op can be proven
+  incompatible.
+- **Single source of truth for pipe-op metadata.**
+  `lib/src/shape/pipe_ops.dart` owns, for each of the 27 pipe ops:
+  canonical name, input-shape acceptance predicate, output-shape
+  inference rule, and parse metadata. The parser builds its
+  `zeroArg` and `oneArg` alternatives from this table (`custom`
+  grammar like `as(fmt)` is still hand-written); the completer
+  consults it for candidate filtering; `inferShape` dispatches
+  pipe-op cases through it. Adding a new op with standard grammar
+  is a single spec entry plus an AST case (compile-enforced via
+  sealed `LamExpr`) plus an evaluator case (compile-enforced).
+- **`PipeOpInfo`, `PipeOpParseKind`, `pipeOpSpecs`,
+  `pipeOpInfoFor`, `pipeOpInfoForName`, `acceptsInputShape`,
+  `inferPipeOpShape`.** Exported from `package:lambe/lambe.dart` so
+  tools can reason about op metadata without parsing a query.
+  `pipeOpSpecs` is the iteration-friendly view,
+  `pipeOpInfoFor(astNode)` resolves by AST type,
+  `pipeOpInfoForName(str)` resolves by name. The `PipeOpInfo`
+  record shape may gain additional fields in future minor releases
+  as the shape machinery evolves (e.g. richer element-level
+  predicates, documentation strings). Callers that only need
+  stable access should prefer the helper functions
+  (`acceptsInputShape`, `inferPipeOpShape`, `pipeOpInfoForName`)
+  over destructuring `PipeOpInfo` records directly.
+- **Consistency test matrix.** `test/pipe_ops_consistency_test.dart`
+  runs every pipe op against a representative value of every
+  concrete shape kind and cross-checks the spec's `accepts`
+  predicate with the evaluator's actual runtime behavior. Drift
+  between spec and evaluator fails loudly instead of silently.
+
+### Fixed
+
+- **`inferShape` no longer lies on structurally incompatible input.**
+  `flatten`, `sort`, `reverse`, `unique`, `filter_values`, `length`
+  previously returned the input shape unchanged when given something
+  the runtime evaluator would reject (e.g. `flatten` on a map).
+  They now widen to `SAny`, so `--explain` reports the truth and
+  downstream inference doesn't propagate impossible shapes.
+- **Re-assertion filter.** Candidates whose text exactly matches
+  what's already typed in `[start, end)` are filtered out before
+  returning. Accepting such a candidate is a no-op on the text but
+  moves the cursor backward, which users read as "Tab erased what
+  I typed." Tab on fully-typed tokens is now a silent no-op.
+
+### Changed
+
+- **Parser pipe-op rules generated from the spec table.**
+  `lib/src/parser.dart`'s `_pipeOp` is built by iterating
+  `pipeOpSpecs` longest-name-first and dispatching on
+  `PipeOpParseKind`. The hand-written alternation for the 26
+  non-custom ops is gone. `as(fmt)` remains hand-written because
+  its grammar takes a closed keyword set.
+- **`pipeOpNames` re-exported from `shape/pipe_ops.dart`.** The
+  parser, the completer, and the misspelling-suggestion logic all
+  read from the same derived list.
+
+### Breaking
+
+- **`Completions` typedef now carries an `end` field.** Callers
+  that destructured as `(:start, :candidates)` must destructure as
+  `(:start, :end, :candidates)` and splice with
+  `text.replaceRange(start, end, candidate)` instead of
+  `text.replaceRange(start, cursor, candidate)`. The new field
+  lets callers splice `[start, end)` and preserve any trailing
+  whitespace the user typed after a complete token, which the
+  previous `start..cursor` splice consumed.
+
+### Docs
+
+- **`ROADMAP.md`.** Publishes the 0.7.0 / 0.8.0 / 0.9.0 plan plus
+  explicit non-goals (no Turing-completeness, no streaming, no jq
+  feature parity).
+- Removed `PLAN_COMPLETER_WHITESPACE_FIX.md` (shipped) and
+  `ISSUES.md` (items resolved or tracked on GitHub).
+
 ## 0.6.1
 
 Tab completion fix: trailing whitespace in the REPL query no longer

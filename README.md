@@ -196,7 +196,7 @@ lam -i data.json
 ```
 
 ```
-lambe v0.6.1 - type :help for commands, :q to quit
+lambe v0.7.0 - type :help for commands, :q to quit
 Data loaded: {3 fields, 42 users}
 
 lambe> .users | filter(.age > 30) | map(.name)
