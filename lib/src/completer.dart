@@ -34,8 +34,9 @@ typedef Completions = ({int start, int end, List<String> candidates});
 
 /// All pipeline operation names, sorted alphabetically.
 ///
-/// Re-exported from the parser (the canonical source of truth).
-const pipelineOps = parser_.pipeOpNames;
+/// Re-exported from `shape/pipe_ops.dart` (the single source of truth
+/// for pipe-op metadata).
+final List<String> pipelineOps = parser_.pipeOpNames;
 
 /// REPL command names, sorted alphabetically.
 const _replCommands = <String>[
@@ -150,24 +151,28 @@ Completions _completeRaw(String text, int cursor, Object? data) {
 
   final remainder = before.substring(consumed);
 
+  // Infer the root shape once; downstream resolution walks the AST
+  // against this shape rather than against the value.
+  final rootShape = shapeOf(data);
+
   final pipeRes = _pipeCtx.run(remainder);
   if (pipeRes case Success<ParseError, (int, String)>(
     value: (final partialStart, final partial),
   )) {
     final tokenStart = consumed + partialStart;
+    // Shape flowing into this pipe stage is the output shape of
+    // whatever preceded `|`. When no AST is available we're at the
+    // top level, so the input is the root value.
+    final stageInput = ast == null ? rootShape : inferShape(ast, rootShape);
     return (
       start: tokenStart,
       end: tokenStart + partial.length,
       candidates: <String>[
         for (final op in pipelineOps)
-          if (op.startsWith(partial)) op,
+          if (op.startsWith(partial) && acceptsInputShape(op, stageInput)) op,
       ],
     );
   }
-
-  // Infer the root shape once; downstream resolution walks the AST
-  // against this shape rather than against the value.
-  final rootShape = shapeOf(data);
 
   final fieldRes = _fieldTailCtx.run(remainder);
   if (fieldRes case Success<ParseError, (int, String)>(

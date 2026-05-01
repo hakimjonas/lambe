@@ -58,6 +58,16 @@ export 'src/shape/check.dart'
 export 'src/shape/explain.dart'
     show ExplainReport, ExplainStage, explain, renderExplain;
 export 'src/shape/infer.dart' show inferShape;
+export 'src/shape/pipe_ops.dart'
+    show
+        PipeOpInfo,
+        PipeOpParseKind,
+        acceptsInputShape,
+        inferPipeOpShape,
+        pipeOpInfoFor,
+        pipeOpInfoForName,
+        pipeOpNames,
+        pipeOpSpecs;
 export 'src/shape/synthesize.dart'
     show synthesize, synthesizeWithLabels, applyBridge;
 

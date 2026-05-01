@@ -23,6 +23,7 @@ import 'package:rumil/rumil.dart';
 
 import 'ast.dart';
 import 'output_format.dart';
+import 'shape/pipe_ops.dart' as shape_ops;
 
 /// Parse a query expression string into a [LamExpr] AST.
 Result<ParseError, LamExpr> parseQuery(String input) =>
@@ -37,37 +38,11 @@ Result<ParseError, LamExpr> parsePartial(String input) =>
 
 /// All pipeline operation names, sorted alphabetically.
 ///
-/// This is the canonical source of truth for pipe op names. The REPL
-/// completer uses this list for tab completion candidates.
-const pipeOpNames = <String>[
-  'as',
-  'avg',
-  'filter',
-  'filter_keys',
-  'filter_values',
-  'first',
-  'flatten',
-  'from_entries',
-  'group_by',
-  'has',
-  'keys',
-  'last',
-  'length',
-  'map',
-  'map_values',
-  'max',
-  'min',
-  'reverse',
-  'sort',
-  'sort_by',
-  'sum',
-  'to_entries',
-  'to_number',
-  'type',
-  'unique',
-  'unique_by',
-  'values',
-];
+/// Re-exported from `shape/pipe_ops.dart`, which is the single source
+/// of truth for pipe-op metadata (name, input-shape acceptance,
+/// output-shape rule). Reading `pipeOpNames` derives from that table;
+/// adding a new op means editing the spec table only.
+final List<String> pipeOpNames = shape_ops.pipeOpNames;
 
 final Parser<ParseError, void> _ws = satisfy(
   (c) => c == ' ' || c == '\t' || c == '\r' || c == '\n',
@@ -258,34 +233,40 @@ final Parser<ParseError, LamExpr> _asOp = _sym('as')
     .thenSkip(_closeParen)
     .map<LamExpr>(As.new);
 
-final Parser<ParseError, LamExpr> _pipeOp =
-    _paramOp('filter_values', FilterValuesOp.new) |
-    _paramOp('filter_keys', FilterKeysOp.new) |
-    _paramOp('filter', FilterOp.new) |
-    _paramOp('map_values', MapValuesOp.new) |
-    _paramOp('map', MapOp.new) |
-    _paramOp('sort_by', SortByOp.new) |
-    _kw('sort').as<LamExpr>(const SortOp()) |
-    _paramOp('group_by', GroupByOp.new) |
-    _paramOp('unique_by', UniqueByOp.new) |
-    _kw('unique').as<LamExpr>(const UniqueOp()) |
-    _kw('flatten').as<LamExpr>(const FlattenOp()) |
-    _kw('reverse').as<LamExpr>(const ReverseOp()) |
-    _kw('keys').as<LamExpr>(const KeysOp()) |
-    _kw('values').as<LamExpr>(const ValuesOp()) |
-    _kw('length').as<LamExpr>(const LengthOp()) |
-    _kw('first').as<LamExpr>(const FirstOp()) |
-    _kw('last').as<LamExpr>(const LastOp()) |
-    _kw('sum').as<LamExpr>(const SumOp()) |
-    _kw('avg').as<LamExpr>(const AvgOp()) |
-    _kw('min').as<LamExpr>(const MinOp()) |
-    _kw('max').as<LamExpr>(const MaxOp()) |
-    _paramOp('has', HasOp.new) |
-    _kw('to_entries').as<LamExpr>(const ToEntriesOp()) |
-    _kw('to_number').as<LamExpr>(const ToNumberOp()) |
-    _kw('from_entries').as<LamExpr>(const FromEntriesOp()) |
-    _kw('type').as<LamExpr>(const TypeOp()) |
-    _asOp;
+/// The pipe-op parser.
+///
+/// Built by iterating over [shape_ops.pipeOpSpecs] (longest-name-first,
+/// so `sort_by` is tried before `sort`). Each spec contributes one
+/// alternative whose shape depends on [shape_ops.PipeOpParseKind]:
+///
+/// - `zeroArg` → `_kw(name).as(zeroArgCtor())`
+/// - `oneArg`  → `_paramOp(name, oneArgCtor)`
+/// - `custom`  → hand-written rule (currently only `as(fmt)`, which
+///   takes a closed keyword set rather than an arbitrary expression).
+///
+/// Adding a new non-custom op requires only a new spec in
+/// `pipe_ops.dart`; the parser picks it up automatically. Custom ops
+/// still need an explicit rule here.
+final Parser<ParseError, LamExpr> _pipeOp = _buildPipeOp();
+
+Parser<ParseError, LamExpr> _buildPipeOp() {
+  final alternatives = <Parser<ParseError, LamExpr>>[];
+  for (final spec in shape_ops.pipeOpSpecs) {
+    switch (spec.parseKind) {
+      case shape_ops.PipeOpParseKind.zeroArg:
+        alternatives.add(_kw(spec.name).as<LamExpr>(spec.zeroArgCtor!()));
+      case shape_ops.PipeOpParseKind.oneArg:
+        alternatives.add(_paramOp(spec.name, spec.oneArgCtor!));
+      case shape_ops.PipeOpParseKind.custom:
+        // Handled below.
+        break;
+    }
+  }
+  // Custom ops: hand-written rules, in the order the grammar wants
+  // to try them. Currently just `as(fmt)`.
+  alternatives.add(_asOp);
+  return alternatives.reduce((a, b) => a | b);
+}
 
 /// The full pipe op parser, named for error messages.
 final Parser<ParseError, LamExpr> _namedPipeOp = _pipeOp.named(

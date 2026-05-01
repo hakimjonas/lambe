@@ -81,19 +81,27 @@ void main() {
   });
 
   group('Pipeline operation completion', () {
-    test('all ops after |', () {
+    test('shape-filtered ops after | over a list', () {
+      // .users is list<map<…>>, so list-consuming ops are offered
+      // along with universal ones. Map-only ops (filter_keys, has,
+      // map_values, to_entries) are filtered out.
       final (:start, :end, :candidates) = complete('.users | ', 9, sampleData);
-      expect(candidates.length, pipelineOps.length);
-      expect(candidates, pipelineOps);
+      expect(candidates, containsAll(['filter', 'map', 'sort', 'flatten']));
+      expect(
+        candidates,
+        isNot(anyOf(contains('filter_keys'), contains('has'))),
+      );
     });
 
-    test('partial match after |', () {
+    test('partial match after | filters by input shape', () {
+      // .users is a list. `filter` applies; `filter_keys` and
+      // `filter_values` require a map, so they are dropped.
       final (:start, :end, :candidates) = complete(
         '.users | fil',
         12,
         sampleData,
       );
-      expect(candidates, ['filter', 'filter_keys', 'filter_values']);
+      expect(candidates, ['filter']);
     });
 
     test('single match after |', () {
@@ -270,23 +278,30 @@ void main() {
 
   group('String-with-pipe regression', () {
     test('pipe inside string literal does not confuse pipe detection', () {
+      // `.users | map(.name + " | ")` has shape list<string>, so only
+      // `filter` is offered for `fil` (filter_keys/filter_values are map-only).
       const text = '.users | map(.name + " | ") | fil';
       final (:start, :end, :candidates) = complete(
         text,
         text.length,
         sampleData,
       );
-      expect(candidates, ['filter', 'filter_keys', 'filter_values']);
+      expect(candidates, ['filter']);
     });
 
     test('pipe in filter predicate string does not confuse completion', () {
+      // `.users | filter(...)` output shape is list<map>, so list-
+      // consuming and universal ops are offered, but map-only ops are
+      // filtered out.
       const text = '.users | filter(.name != "admin|root") | ';
       final (:start, :end, :candidates) = complete(
         text,
         text.length,
         sampleData,
       );
-      expect(candidates.length, pipelineOps.length);
+      expect(candidates, containsAll(['filter', 'map', 'sort']));
+      expect(candidates, isNot(contains('filter_keys')));
+      expect(candidates, isNot(contains('has')));
     });
 
     test('empty input returns empty', () {
@@ -526,6 +541,7 @@ void main() {
     // "fil" is partial: the filter keeps filter/filter_keys/filter_values
     // because none of them equal "fil" exactly.
     test('trailing space after partial pipe op: pipe-op path applies', () {
+      // .users is a list; only `filter` passes the shape filter.
       final (:start, :end, :candidates) = complete(
         '.users | fil ',
         13,
@@ -533,7 +549,7 @@ void main() {
       );
       expect(start, 9);
       expect(end, 12);
-      expect(candidates, ['filter', 'filter_keys', 'filter_values']);
+      expect(candidates, ['filter']);
     });
 
     test('multiple trailing spaces after partial pipe op', () {
@@ -544,7 +560,7 @@ void main() {
       );
       expect(start, 9);
       expect(end, 12);
-      expect(candidates, ['filter', 'filter_keys', 'filter_values']);
+      expect(candidates, ['filter']);
     });
 
     // --- Parity: no-trailing-whitespace variants --------------
@@ -568,6 +584,7 @@ void main() {
     );
 
     test('pipe-op partial without trailing whitespace: offers matches', () {
+      // .users is a list; only `filter` passes the shape filter.
       final (:start, :end, :candidates) = complete(
         '.users | fil',
         12,
@@ -575,7 +592,7 @@ void main() {
       );
       expect(start, 9);
       expect(end, 12);
-      expect(candidates, ['filter', 'filter_keys', 'filter_values']);
+      expect(candidates, ['filter']);
     });
   });
 
@@ -725,16 +742,16 @@ void main() {
       expect(r.candidates, isEmpty);
     });
 
-    test(
-      'fully-typed pipeline op: its exact match filtered, prefix-matches kept',
-      () {
-        // ".users | filter" matches three ops: filter, filter_keys, filter_values.
-        // The filter strips "filter" (exact match on typed text) but keeps
-        // the others. Accepting either extends the typed text usefully.
-        final r = complete('.users | filter', 15, sampleData);
-        expect(r.candidates, ['filter_keys', 'filter_values']);
-      },
-    );
+    test('fully-typed pipeline op: its exact match filtered, shape-invalid '
+        'prefix-matches also filtered', () {
+      // ".users | filter" prefix-matches filter, filter_keys,
+      // filter_values. But .users is a list, so filter_keys and
+      // filter_values fail the shape filter. "filter" itself fails
+      // the re-assertion filter (exact match on typed text).
+      // Net result: no candidates.
+      final r = complete('.users | filter', 15, sampleData);
+      expect(r.candidates, isEmpty);
+    });
 
     test('partial pipeline op: unambiguous match passes filter', () {
       // "rev" is a partial; "reverse" is offered.
@@ -757,6 +774,154 @@ void main() {
       // Typed token is `h`, neither `help` nor any other cmd equals `h`.
       final r = complete(':h', 2, null);
       expect(r.candidates, ['help', 'history']);
+    });
+  });
+
+  // Completion candidates are filtered by input shape so the user is
+  // never offered a pipe op that would throw at evaluation. SAny inputs
+  // (unknown shape) fall back to offering every op — rejection only
+  // happens when we can prove the op would fail.
+  group('Shape-gated pipe-op candidates', () {
+    test('map input hides list-only ops', () {
+      // .config is a map; `flatten` expects a list and must not appear.
+      final r = complete('.config | ', 10, sampleData);
+      expect(r.candidates, isNot(contains('flatten')));
+      expect(r.candidates, isNot(contains('sum')));
+      expect(r.candidates, isNot(contains('sort')));
+      expect(r.candidates, isNot(contains('first')));
+      expect(r.candidates, isNot(contains('filter')));
+      expect(r.candidates, isNot(contains('map')));
+      expect(r.candidates, isNot(contains('group_by')));
+    });
+
+    test('map input offers map-only, universal, and both-collection ops', () {
+      final r = complete('.config | ', 10, sampleData);
+      expect(
+        r.candidates,
+        containsAll(<String>[
+          'filter_keys',
+          'filter_values',
+          'has',
+          'map_values',
+          'to_entries',
+          'keys',
+          'values',
+          'length',
+          'type',
+          'as',
+        ]),
+      );
+    });
+
+    test('list input hides map-only ops', () {
+      // .users is list<map>; map-specific ops must not appear.
+      final r = complete('.users | ', 9, sampleData);
+      expect(r.candidates, isNot(contains('filter_keys')));
+      expect(r.candidates, isNot(contains('filter_values')));
+      expect(r.candidates, isNot(contains('has')));
+      expect(r.candidates, isNot(contains('map_values')));
+      expect(r.candidates, isNot(contains('to_entries')));
+    });
+
+    test('list input offers list, universal, and both-collection ops', () {
+      final r = complete('.users | ', 9, sampleData);
+      expect(
+        r.candidates,
+        containsAll(<String>[
+          'filter',
+          'flatten',
+          'first',
+          'last',
+          'map',
+          'reverse',
+          'sort',
+          'sort_by',
+          'group_by',
+          'unique',
+          'keys',
+          'values',
+          'length',
+          'type',
+          'as',
+        ]),
+      );
+    });
+
+    test('string input hides list-only and map-only ops', () {
+      // .version is a string; only `length`, `to_number`, `type`, `as`
+      // apply. Everything else is filtered.
+      final r = complete('.version | ', 11, sampleData);
+      expect(
+        r.candidates,
+        containsAll(<String>['length', 'to_number', 'type', 'as']),
+      );
+      expect(r.candidates, isNot(contains('filter')));
+      expect(r.candidates, isNot(contains('flatten')));
+      expect(r.candidates, isNot(contains('keys')));
+      expect(r.candidates, isNot(contains('has')));
+      expect(r.candidates, isNot(contains('length_values')));
+    });
+
+    test('null data offers only universally-accepting ops', () {
+      // shapeOf(null) is SNull, a concrete shape. Only `as` and `type`
+      // accept any input, so those are the only candidates. Every
+      // other op would throw at runtime.
+      final r = complete('. | ', 4, null);
+      expect(r.candidates, ['as', 'type']);
+    });
+
+    test('SAny from inside map() does not filter', () {
+      // Inside filter/map on .users (list<map>), the element is
+      // `map<name:string, age:number, active:bool>`. The predicate
+      // should recognise this as a map and filter appropriately.
+      // This guards against accidentally widening to SAny too early.
+      final r = complete('.users | map(. | ', 17, sampleData);
+      // Inside map(), the input shape is the element shape. For the
+      // top-level pipe (which is what this completes), the pipe is
+      // inside map's inner expression — but the completer resolves
+      // the pipe-op context on the outer remainder, not the inner.
+      // So this tests the end-to-end wiring rather than inner-op
+      // filtering.
+      expect(r.candidates, isNotEmpty);
+    });
+
+    test('map input with partial match filters to shape-valid prefixes', () {
+      // "fil" against a map: filter is list-only (dropped), filter_keys
+      // and filter_values are map-ops (kept).
+      final r = complete('.config | fil', 13, sampleData);
+      expect(r.candidates, ['filter_keys', 'filter_values']);
+    });
+
+    test('.dependencies | flatten motivating case: flatten dropped', () {
+      // The case the user hit: an SMap is offered `flatten`, which
+      // then fails at runtime with "flatten: expected list, got map".
+      final data = <String, Object?>{
+        'dependencies': <String, Object?>{'a': '1.0.0', 'b': '2.0.0'},
+      };
+      final r = complete('.dependencies | ', 16, data);
+      expect(r.candidates, isNot(contains('flatten')));
+      expect(r.candidates, isNot(contains('sum')));
+      expect(r.candidates, isNot(contains('first')));
+    });
+
+    test('post-pipe stage uses output shape of preceding expression', () {
+      // `.users | map(.name)` is list<string>. Post-pipe, string-valid
+      // list ops are offered, but list-of-map ops like `group_by` on a
+      // string element still technically passes (list shape check only)
+      // — that's expected: we don't validate element types.
+      final r = complete('.users | map(.name) | ', 22, sampleData);
+      expect(r.candidates, contains('first'));
+      expect(r.candidates, contains('unique'));
+      expect(r.candidates, isNot(contains('filter_keys')));
+      expect(r.candidates, isNot(contains('has')));
+    });
+
+    test('partial match stays shape-filtered across pipes', () {
+      // After `.users | map(.name)` the shape is list<string>.
+      // Prefix "fil": only `filter` (list) matches; filter_keys and
+      // filter_values are map-only and must be filtered.
+      final r = complete('.users | map(.name) | fil', 25, sampleData);
+      expect(r.candidates, ['filter']);
     });
   });
 }
