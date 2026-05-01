@@ -136,16 +136,25 @@ final class NotWritable extends ShapeReport {
 /// pipe. Given user query `.users` and remediation template `{items: .}`,
 /// the composed query is `.users | {items: .}`.
 ///
-/// [display] is the human-readable source string, suitable for showing in
-/// CLI output, a REPL, or a web interface. [template] is the same source
-/// parsed to a [LamExpr], allowing composition through [applyBridge]
-/// without string manipulation.
+/// [display] is what the user sees and pastes. [template] is the AST
+/// that actually runs. They are usually identical: [Remediation.new]
+/// sets `display = source`. The [Remediation.withDisplay] factory
+/// decouples them, letting a remediation surface an intent-level form
+/// (such as `as(csv)`) while running a raw fragment (such as
+/// `to_entries`). Safe because `as(fmt)` at runtime consults this
+/// same curated table and resolves to the raw template.
 final class Remediation {
   /// Short human-readable label, for example `"Wrap under a key"`.
   final String label;
 
-  /// The query fragment as source text. Always equal to the source that
-  /// was parsed to produce [template].
+  /// The query fragment as text. Shown in CLI output, the REPL, or a
+  /// web interface, and appended to the user's query via
+  /// `$expression | ${display}`.
+  ///
+  /// Usually identical to [template]'s source. May differ when a
+  /// remediation surfaces an intent-level form (e.g. `as(csv)`) while
+  /// running a raw fragment (e.g. `to_entries`) underneath. See
+  /// [Remediation.withDisplay].
   final String display;
 
   /// The query fragment parsed to a [LamExpr]. Composable with a user
@@ -163,7 +172,8 @@ final class Remediation {
     required this.explanation,
   });
 
-  /// Parse [source] as a query fragment and build a [Remediation].
+  /// Parse [source] as a query fragment and build a [Remediation] whose
+  /// [display] equals [source].
   ///
   /// Throws [ArgumentError] if [source] does not parse. This validates
   /// curated templates at construction time so invalid suggestions
@@ -171,6 +181,25 @@ final class Remediation {
   factory Remediation({
     required String label,
     required String source,
+    required String explanation,
+  }) => Remediation.withDisplay(
+    label: label,
+    source: source,
+    display: source,
+    explanation: explanation,
+  );
+
+  /// Build a [Remediation] whose [display] differs from its runtime
+  /// [source].
+  ///
+  /// Used to surface a readable intent (such as `as(csv)`) while the
+  /// runtime AST is a raw fragment (such as `to_entries`). [source]
+  /// is parsed and validated exactly as in [Remediation.new];
+  /// [display] is opaque user-facing text and is not parsed.
+  factory Remediation.withDisplay({
+    required String label,
+    required String source,
+    required String display,
     required String explanation,
   }) {
     final result = parser_.parseQuery(source);
@@ -181,7 +210,7 @@ final class Remediation {
     };
     return Remediation._(
       label: label,
-      display: source,
+      display: display,
       template: ast,
       explanation: explanation,
     );
@@ -220,7 +249,8 @@ List<Remediation> _suggestionsFor(Shape got, OutputFormat format) => switch ((
   format,
 )) {
   // List to a map-root format.
-  (SList _, OutputFormat.toml) || (SList _, OutputFormat.hcl) => [_wrapItems],
+  (SList _, OutputFormat.toml) ||
+  (SList _, OutputFormat.hcl) => [_wrapItems(format)],
   // Scalar or null to a map-root format.
   (SString _, OutputFormat.toml) ||
   (SString _, OutputFormat.hcl) ||
@@ -229,10 +259,10 @@ List<Remediation> _suggestionsFor(Shape got, OutputFormat format) => switch ((
   (SBool _, OutputFormat.toml) ||
   (SBool _, OutputFormat.hcl) ||
   (SNull _, OutputFormat.toml) ||
-  (SNull _, OutputFormat.hcl) => [_wrapValue],
+  (SNull _, OutputFormat.hcl) => [_wrapValue(format)],
   // Map to a list-root format.
   (SMap _, OutputFormat.csv) ||
-  (SMap _, OutputFormat.tsv) => [_toEntriesAsRows],
+  (SMap _, OutputFormat.tsv) => [_toEntriesAsRows(format)],
   // Scalar or null to a list-root format.
   (SString _, OutputFormat.csv) ||
   (SString _, OutputFormat.tsv) ||
@@ -241,33 +271,70 @@ List<Remediation> _suggestionsFor(Shape got, OutputFormat format) => switch ((
   (SBool _, OutputFormat.csv) ||
   (SBool _, OutputFormat.tsv) ||
   (SNull _, OutputFormat.csv) ||
-  (SNull _, OutputFormat.tsv) => [_wrapValueThenEntries],
+  (SNull _, OutputFormat.tsv) => [_wrapValueThenEntries(format)],
   // No curated suggestion for this combination.
   _ => const <Remediation>[],
 };
 
-// Curated remediations. Not `const` because each constructor runs the
-// parser to validate the template.
-final Remediation _wrapItems = Remediation(
-  label: 'Wrap under a key',
-  source: '{items: .}',
-  explanation: 'Produces a map with one entry named "items".',
+// Curated remediations.
+//
+// The four canonical template ASTs are parsed lazily on first use
+// (Dart initializes top-level `final`s on first read) and reused
+// across every format that shares the same curated bridge. The
+// factories below build a per-format `Remediation` from the shared
+// AST, setting `display` to `as(<format>)` so the user sees the
+// intent form. At runtime `as(<format>)` consults this same table
+// and resolves to the raw template, which is why displaying the
+// intent form is safe.
+
+final LamExpr _wrapItemsAst = _parseTemplate('{items: .}');
+final LamExpr _wrapValueAst = _parseTemplate('{value: .}');
+final LamExpr _toEntriesAst = _parseTemplate('to_entries');
+final LamExpr _wrapValueThenEntriesAst = _parseTemplate(
+  '{value: .} | to_entries',
 );
 
-final Remediation _wrapValue = Remediation(
+LamExpr _parseTemplate(String source) {
+  final result = parser_.parseQuery(source);
+  return switch (result) {
+    Success(value: final v) => v,
+    _ =>
+      throw StateError('Curated remediation template failed to parse: $source'),
+  };
+}
+
+Remediation _wrapItems(OutputFormat format) => Remediation._(
   label: 'Wrap under a key',
-  source: '{value: .}',
-  explanation: 'Produces a map with one entry named "value".',
+  display: 'as(${format.name})',
+  template: _wrapItemsAst,
+  explanation:
+      'Wraps the list under a single-entry map '
+      '(equivalent to `{items: .}`).',
 );
 
-final Remediation _toEntriesAsRows = Remediation(
+Remediation _wrapValue(OutputFormat format) => Remediation._(
+  label: 'Wrap under a key',
+  display: 'as(${format.name})',
+  template: _wrapValueAst,
+  explanation:
+      'Wraps the scalar under a single-entry map '
+      '(equivalent to `{value: .}`).',
+);
+
+Remediation _toEntriesAsRows(OutputFormat format) => Remediation._(
   label: 'Convert entries to rows',
-  source: 'to_entries',
-  explanation: 'Produces a list of {key, value} rows.',
+  display: 'as(${format.name})',
+  template: _toEntriesAst,
+  explanation:
+      'Wraps each map entry as a {key, value} row '
+      '(equivalent to `to_entries`).',
 );
 
-final Remediation _wrapValueThenEntries = Remediation(
+Remediation _wrapValueThenEntries(OutputFormat format) => Remediation._(
   label: 'Wrap as a single-row list',
-  source: '{value: .} | to_entries',
-  explanation: 'Produces a one-row list with one column named "value".',
+  display: 'as(${format.name})',
+  template: _wrapValueThenEntriesAst,
+  explanation:
+      'Wraps the scalar as a one-row list with a "value" column '
+      '(equivalent to `{value: .} | to_entries`).',
 );

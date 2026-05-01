@@ -56,7 +56,8 @@ void main() {
         final nw = report as NotWritable;
         expect(nw.got, isA<SString>());
         expect(nw.suggestions, isNotEmpty);
-        expect(nw.suggestions.first.display, contains('{'));
+        // Display surfaces the intent-level `as(<fmt>)` form.
+        expect(nw.suggestions.first.display, 'as(${fmt.name})');
       });
 
       test('${fmt.name} rejects a number with suggestions', () {
@@ -100,8 +101,9 @@ void main() {
         expect(nw.got, isA<SMap>());
         expect(nw.required, isA<MustBeList>());
         expect(nw.suggestions, isNotEmpty);
-        // First suggestion should be to_entries for map → list of rows.
-        expect(nw.suggestions.first.display, contains('to_entries'));
+        // Display is the intent-level `as(<fmt>)` form; the template
+        // that actually runs is still `to_entries`.
+        expect(nw.suggestions.first.display, 'as(${fmt.name})');
       });
 
       test('${fmt.name} rejects a scalar with suggestions', () {

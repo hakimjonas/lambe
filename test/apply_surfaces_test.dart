@@ -48,20 +48,28 @@ void main() {
       expect(() => formatOutput(newResult, OutputFormat.toml), returnsNormally);
     });
 
-    test('map to CSV is bridged by to_entries', () {
-      final data = <String, Object?>{
-        'deps': <String, Object?>{'a': '1.0', 'b': '2.0'},
-      };
-      final userAst = parseAst('.deps');
-      final result = evaluateAst(userAst, data);
+    test(
+      'map to CSV is bridged by to_entries template, displayed as as(csv)',
+      () {
+        final data = <String, Object?>{
+          'deps': <String, Object?>{'a': '1.0', 'b': '2.0'},
+        };
+        final userAst = parseAst('.deps');
+        final result = evaluateAst(userAst, data);
 
-      final err = _shapeError(() => formatOutput(result, OutputFormat.csv));
-      final bridged = applyBridge(userAst, err.suggestions.first.template);
-      final newResult = evaluateAst(bridged, data);
-      expect(canWriteAs(newResult, OutputFormat.csv), isA<Writable>());
+        final err = _shapeError(() => formatOutput(result, OutputFormat.csv));
+        final bridged = applyBridge(userAst, err.suggestions.first.template);
+        final newResult = evaluateAst(bridged, data);
+        expect(canWriteAs(newResult, OutputFormat.csv), isA<Writable>());
 
-      expect(err.suggestions.first.display, contains('to_entries'));
-    });
+        // Display surfaces the intent-level `as(csv)` form; the
+        // template is still the raw `to_entries` AST, so the
+        // applyBridge() call above composes the same query a
+        // pre-0.7.1 caller would have produced.
+        expect(err.suggestions.first.display, 'as(csv)');
+        expect(err.suggestions.first.explanation, contains('to_entries'));
+      },
+    );
 
     test('list to TOML is bridged by {items: .}', () {
       final data = <String, Object?>{

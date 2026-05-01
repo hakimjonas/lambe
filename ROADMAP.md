@@ -20,6 +20,16 @@ Shape-gated completion and spec-driven op dispatch.
 
 One breaking change: the `Completions` typedef gained an `end` field (see CHANGELOG). All other additions are additive.
 
+## 0.7.1 — shipped
+
+UX polish on top of 0.7.0. Remediation suggestions now surface the intent-level `as(<format>)` form in every bridge-offering surface.
+
+- **`as(<format>)` in error suggestions.** CLI errors, REPL prompts, MCP responses, and the playground now show `| as(csv)` / `| as(toml)` / etc. instead of `| to_entries` / `| {items: .}`. The explanation names the raw fragment underneath.
+- **`Remediation.display` and `Remediation.template` decouple.** New `Remediation.withDisplay()` factory lets the display text differ from the runtime AST's source. Template still runs the raw fragment; `applyBridge()` consumers see no behavior change.
+- **Curated template ASTs are parsed lazily on first use.** The four canonical sources are shared across format-parameterized factories instead of re-parsed on every shape error.
+
+No breaking changes.
+
 ## 0.8.0 — next
 
 Extend the shape story to sub-expressions and polish parser errors.
