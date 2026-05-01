@@ -195,7 +195,7 @@ For exploring unfamiliar data, use interactive mode:
 
 ```bash
 $ lam -i data.json
-lambe v0.7.0 - type :help for commands, :q to quit
+lambe v0.7.1 - type :help for commands, :q to quit
 Data loaded: {2 fields, 3 users}
 
 lambe>
@@ -250,7 +250,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  lambe: ^0.6.0
+  lambe: ^0.7.0
 ```
 
 ## Next steps

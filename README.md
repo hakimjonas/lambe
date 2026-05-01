@@ -8,7 +8,7 @@ Lambë is a query language for JSON, YAML, TOML, HCL, CSV, TSV, and Markdown. Qu
 $ lam --to toml '.dependencies | keys' pubspec.yaml
 Error: TOML output requires a map at the root, got list<string>.
 Try appending one of:
-  | {items: .}    # Produces a map with one entry named "items".
+  | as(toml)    # Wraps the list under a single-entry map (equivalent to `{items: .}`).
 
 $ lam --to toml '.dependencies | keys | as(toml)' pubspec.yaml
 items = ["rumil", "rumil_parsers", "rumil_expressions"]
@@ -44,16 +44,18 @@ Lambë checks the result of your query against the shape the target format can s
 $ lam --to toml '.name' pubspec.yaml
 TOML output requires a map at the root, got string.
 Try appending one of:
-  | {value: .}    # Produces a map with one entry named "value".
+  | as(toml)    # Wraps the scalar under a single-entry map (equivalent to `{value: .}`).
 
 Apply a bridge?
-  [1] | {value: .}    # Produces a map with one entry named "value".
+  [1] | as(toml)    # Wraps the scalar under a single-entry map (equivalent to `{value: .}`).
   [q] cancel
 > 1
 value = "rumil"
 ```
 
-The same flow applies to CSV and TSV (which require a list of records at the root) and HCL (which requires a map). Suggestions are curated query fragments parsed to AST at construction, so the text you see is the code that runs.
+The same flow applies to CSV and TSV (which require a list of records at the root) and HCL (which requires a map).
+
+Suggestions surface the intent-level `as(<format>)` form. The explanation names the raw fragment (`{value: .}`, `to_entries`, etc.) the bridge composes, so `--explain` and manual composition stay available to anyone who wants them.
 
 ### `as(fmt)` — bridging in the query language
 
@@ -196,7 +198,7 @@ lam -i data.json
 ```
 
 ```
-lambe v0.7.0 - type :help for commands, :q to quit
+lambe v0.7.1 - type :help for commands, :q to quit
 Data loaded: {3 fields, 42 users}
 
 lambe> .users | filter(.age > 30) | map(.name)

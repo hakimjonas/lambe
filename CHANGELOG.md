@@ -1,3 +1,34 @@
+## 0.7.1
+
+Polish release on top of 0.7.0. Error-message remediation
+suggestions now surface the intent-level `as(<format>)` form,
+aligning every bridge-offering surface (CLI, REPL, MCP, playground)
+with the 0.6.0 shape story. The template that runs is unchanged,
+so the composed `$expression | as(csv)` query produces the same
+result as before.
+
+### Changed
+
+- **Error suggestions use `as(<format>)` as the display form.** The
+  suggestion shown in CLI errors, REPL prompts, MCP responses, and
+  the playground is now `| as(csv)` / `| as(toml)` / etc. instead
+  of the raw `| to_entries` / `| {items: .}` fragment. The
+  explanation names the underlying mechanism for transparency —
+  e.g. "Wraps each map entry as a {key, value} row (equivalent to
+  `to_entries`)".
+- **`Remediation.display` and `Remediation.template` can now
+  differ.** The `Remediation()` constructor still sets
+  `display = source`. A new `Remediation.withDisplay()` factory
+  decouples them, used internally to surface `as(<format>)` while
+  the runtime AST stays as the raw fragment. Callers that only
+  read `Remediation.template` (e.g. through `applyBridge()`) see
+  no behavior change.
+- **Curated template ASTs are parsed lazily on first use.** The
+  four canonical sources (`{items: .}`, `{value: .}`, `to_entries`,
+  `{value: .} | to_entries`) are parsed once per isolate and
+  shared across format-parameterized factories, instead of
+  re-parsing on every shape error.
+
 ## 0.7.0
 
 Shape-gated tab completion, single-source-of-truth pipe-op metadata,
