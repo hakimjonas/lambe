@@ -108,7 +108,25 @@ final Parser<ParseError, (int, String)> _fieldTailCtx = position<ParseError>()
 /// token, so trailing whitespace between the token and the cursor is
 /// preserved on accept. When `candidates` is empty, `start` and `end`
 /// both equal [cursor] and no splice should occur.
+///
+/// Candidates whose value equals the text already in `[start, end)`
+/// are filtered out before returning, because accepting them would be
+/// a no-op on the text and only move the cursor backward. If the only
+/// candidate was such a re-assertion, an empty candidate list is
+/// returned.
 Completions complete(String text, int cursor, Object? data) {
+  final raw = _completeRaw(text, cursor, data);
+  if (raw.candidates.isEmpty) return raw;
+  final typed = text.substring(raw.start, raw.end);
+  final filtered = <String>[
+    for (final c in raw.candidates)
+      if (c != typed) c,
+  ];
+  if (filtered.length == raw.candidates.length) return raw;
+  return (start: raw.start, end: raw.end, candidates: filtered);
+}
+
+Completions _completeRaw(String text, int cursor, Object? data) {
   final before = text.substring(0, cursor);
 
   if (before.startsWith(':')) return _completeCommand(before);

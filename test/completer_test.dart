@@ -250,10 +250,15 @@ void main() {
       expect(candidates, ['schema']);
     });
 
-    test('command prefix q matches q and quit', () {
-      final (:start, :end, :candidates) = complete(':q', 2, null);
-      expect(candidates, ['q', 'quit']);
-    });
+    test(
+      'command prefix q matches quit (q itself is filtered as already typed)',
+      () {
+        final (:start, :end, :candidates) = complete(':q', 2, null);
+        // 'q' is a re-assertion candidate (equals text[1, 2)) and gets
+        // filtered. 'quit' remains as the useful completion.
+        expect(candidates, ['quit']);
+      },
+    );
 
     test('all commands on bare colon', () {
       final (:start, :end, :candidates) = complete(':', 1, null);
@@ -436,83 +441,90 @@ void main() {
   // reintroduces the bug.
   group('Trailing whitespace regression', () {
     // --- Identity tail -------------------------------------------
-    test('trailing space after identity: start points at the dot', () {
+    test('trailing space after identity: offers all root fields', () {
+      // ". " with cursor at 2: the typed token is "." (just the dot).
+      // "." is not equal to any candidate like ".config", so all
+      // candidates pass the re-assertion filter.
       final (:start, :end, :candidates) = complete('. ', 2, sampleData);
       expect(start, 0);
+      expect(end, 1);
       expect(candidates, containsAll(['.config', '.users', '.version']));
     });
 
     // --- Field tail ----------------------------------------------
-    test('trailing space after field: start points at the dot', () {
+    // These cases previously asserted `candidates: [".users"]`. With
+    // the re-assertion filter, a fully-typed ".users" (no matter how
+    // much trailing whitespace follows) has no useful completion:
+    // the only candidate equals what's already typed.
+    test('trailing space after fully-typed field: no candidates', () {
       final (:start, :end, :candidates) = complete('.users ', 7, sampleData);
       expect(start, 0);
-      expect(candidates, ['.users']);
+      expect(end, 6);
+      expect(candidates, isEmpty);
     });
 
-    test('trailing tab after field: start points at the dot', () {
+    test('trailing tab after fully-typed field: no candidates', () {
       final (:start, :end, :candidates) = complete('.users\t', 7, sampleData);
-      expect(start, 0);
-      expect(candidates, ['.users']);
+      expect(candidates, isEmpty);
     });
 
-    test('trailing newline after field: start points at the dot', () {
+    test('trailing newline after fully-typed field: no candidates', () {
       final (:start, :end, :candidates) = complete('.users\n', 7, sampleData);
-      expect(start, 0);
-      expect(candidates, ['.users']);
+      expect(candidates, isEmpty);
     });
 
-    test('multiple trailing spaces after field', () {
+    test('multiple trailing spaces after fully-typed field: no candidates', () {
       final (:start, :end, :candidates) = complete('.users   ', 9, sampleData);
-      expect(start, 0);
-      expect(candidates, ['.users']);
+      expect(candidates, isEmpty);
     });
 
-    test('mixed trailing whitespace after field', () {
-      final (:start, :end, :candidates) = complete('.users \t ', 9, sampleData);
-      expect(start, 0);
-      expect(candidates, ['.users']);
-    });
+    test(
+      'mixed trailing whitespace after fully-typed field: no candidates',
+      () {
+        final (:start, :end, :candidates) = complete(
+          '.users \t ',
+          9,
+          sampleData,
+        );
+        expect(candidates, isEmpty);
+      },
+    );
 
     // --- Access tail ---------------------------------------------
-    test('trailing space after access: start at the last dot', () {
+    test('trailing space after fully-typed access: no candidates', () {
       final (:start, :end, :candidates) = complete(
         '.config.database ',
         17,
         sampleData,
       );
-      expect(start, 7);
-      expect(candidates, ['.database']);
+      expect(candidates, isEmpty);
     });
 
     // --- Inside parameterized ops --------------------------------
-    test('trailing space after field inside filter()', () {
+    test('trailing space after fully-typed field inside filter()', () {
       // Cursor between the space and the closing paren.
+      // `.age` is fully typed, so the filter drops the re-assertion.
       final (:start, :end, :candidates) = complete(
         '.users | filter(.age )',
         21,
         sampleData,
       );
-      expect(start, 16);
-      expect(candidates, ['.age']);
+      expect(candidates, isEmpty);
     });
 
-    test('trailing space after field inside map()', () {
+    test('trailing space after fully-typed field inside map()', () {
       // Cursor between the space and the closing paren.
       final (:start, :end, :candidates) = complete(
         '.users | map(.name )',
         19,
         sampleData,
       );
-      expect(start, 13);
-      expect(candidates, ['.name']);
+      expect(candidates, isEmpty);
     });
 
     // --- Pipe-op path with trailing whitespace -------------------
-    // When the user has typed `| <partial-op> ` and presses Tab, the
-    // intent is unambiguous: complete the partial op. The returned
-    // `start` must point at the first character of the partial name,
-    // not past it, and candidates must be the pipeline ops matching
-    // the partial (not field candidates).
+    // "fil" is partial: the filter keeps filter/filter_keys/filter_values
+    // because none of them equal "fil" exactly.
     test('trailing space after partial pipe op: pipe-op path applies', () {
       final (:start, :end, :candidates) = complete(
         '.users | fil ',
@@ -520,6 +532,7 @@ void main() {
         sampleData,
       );
       expect(start, 9);
+      expect(end, 12);
       expect(candidates, ['filter', 'filter_keys', 'filter_values']);
     });
 
@@ -530,35 +543,38 @@ void main() {
         sampleData,
       );
       expect(start, 9);
+      expect(end, 12);
       expect(candidates, ['filter', 'filter_keys', 'filter_values']);
     });
 
-    // --- Parity: no-trailing-whitespace variants must not regress
-    // These already pass on HEAD. They are here so the fix cannot
-    // break them in pursuit of the regression cases above.
-    test('no trailing whitespace after field still works', () {
+    // --- Parity: no-trailing-whitespace variants --------------
+    test('no trailing whitespace after fully-typed field: no candidates', () {
       final (:start, :end, :candidates) = complete('.users', 6, sampleData);
       expect(start, 0);
-      expect(candidates, ['.users']);
+      expect(end, 6);
+      expect(candidates, isEmpty);
     });
 
-    test('no trailing whitespace inside filter() still works', () {
-      final (:start, :end, :candidates) = complete(
-        '.users | filter(.age',
-        20,
-        sampleData,
-      );
-      expect(start, 16);
-      expect(candidates, ['.age']);
-    });
+    test(
+      'no trailing whitespace, fully-typed inside filter(): no candidates',
+      () {
+        final (:start, :end, :candidates) = complete(
+          '.users | filter(.age',
+          20,
+          sampleData,
+        );
+        expect(candidates, isEmpty);
+      },
+    );
 
-    test('pipe-op partial without trailing whitespace', () {
+    test('pipe-op partial without trailing whitespace: offers matches', () {
       final (:start, :end, :candidates) = complete(
         '.users | fil',
         12,
         sampleData,
       );
       expect(start, 9);
+      expect(end, 12);
       expect(candidates, ['filter', 'filter_keys', 'filter_values']);
     });
   });
@@ -677,15 +693,70 @@ void main() {
       expect(r.end, 4);
     });
 
+    test('splice semantics: partial token + trailing ws preserves the ws', () {
+      // Use `.us   ` so the candidate (`.users`) differs from the
+      // typed token (`.us`) and survives the re-assertion filter.
+      const text = '.us   ';
+      final r = complete(text, text.length, sampleData);
+      expect(r.candidates, ['.users']);
+      final accepted = text.replaceRange(r.start, r.end, r.candidates.first);
+      expect(accepted, '.users   ');
+    });
+  });
+
+  // The re-assertion filter: if a candidate's text equals what's
+  // already typed in the [start, end) range, it's filtered out.
+  // Accepting a re-assertion candidate is a no-op on the text and
+  // would only move the cursor backward — actively surprising.
+  group('Re-assertion filter', () {
+    test('fully-typed field: filtered out, empty candidates', () {
+      final r = complete('.users', 6, sampleData);
+      expect(r.candidates, isEmpty);
+    });
+
+    test('partial field: candidate passes filter', () {
+      final r = complete('.us', 3, sampleData);
+      expect(r.candidates, ['.users']);
+    });
+
+    test('.dependencies jd: filtered because .dependencies already typed', () {
+      final data = <String, Object?>{'dependencies': <String, Object?>{}};
+      final r = complete('.dependencies jd', 16, data);
+      expect(r.candidates, isEmpty);
+    });
+
     test(
-      'splice semantics: text.replaceRange(start, end, cand) leaves trailing ws',
+      'fully-typed pipeline op: its exact match filtered, prefix-matches kept',
       () {
-        const text = '.users   ';
-        final r = complete(text, text.length, sampleData);
-        expect(r.candidates, ['.users']);
-        final accepted = text.replaceRange(r.start, r.end, r.candidates.first);
-        expect(accepted, '.users   ');
+        // ".users | filter" matches three ops: filter, filter_keys, filter_values.
+        // The filter strips "filter" (exact match on typed text) but keeps
+        // the others. Accepting either extends the typed text usefully.
+        final r = complete('.users | filter', 15, sampleData);
+        expect(r.candidates, ['filter_keys', 'filter_values']);
       },
     );
+
+    test('partial pipeline op: unambiguous match passes filter', () {
+      // "rev" is a partial; "reverse" is offered.
+      final r = complete('.users | rev', 12, sampleData);
+      expect(r.candidates, ['reverse']);
+    });
+
+    test(':quit filters out itself', () {
+      final r = complete(':quit', 5, null);
+      expect(r.candidates, isEmpty);
+    });
+
+    test(':q filters q but keeps quit', () {
+      final r = complete(':q', 2, null);
+      expect(r.candidates, ['quit']);
+    });
+
+    test('multiple candidates: filter only drops the exact-match one', () {
+      // `:h` matches `help` only; `h` itself is not a full command.
+      // Typed token is `h`, neither `help` nor any other cmd equals `h`.
+      final r = complete(':h', 2, null);
+      expect(r.candidates, ['help', 'history']);
+    });
   });
 }

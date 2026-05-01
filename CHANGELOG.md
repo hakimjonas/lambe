@@ -1,38 +1,19 @@
 ## 0.6.2
 
-Completer replacement range: the `Completions` typedef now carries
-both `start` and `end`, so callers can splice a candidate over the
-typed token only, preserving any trailing whitespace the user typed
-between the token and the cursor.
+Completer replacement range and re-assertion filter: the `Completions`
+typedef now carries both `start` and `end` so callers can splice a
+candidate over the typed token only, preserving any trailing
+whitespace the user typed. Candidates that exactly match what's
+already typed in `[start, end)` are filtered out, so Tab no longer
+moves the cursor backward to re-assert text that's already there.
 
 ### Breaking
 
-- `Completions` typedef gained a new required field `end`. Callers
-  that destructured as `(:start, :candidates)` must now destructure
-  as `(:start, :end, :candidates)` and splice with
-  `text.replaceRange(start, end, candidate)` instead of
-  `text.replaceRange(start, cursor, candidate)`.
-- `end` is the position just past the last non-whitespace character
-  of the partial token. For `.users   ` (three trailing spaces) with
-  cursor at position 9, `complete` now returns `start: 0, end: 6` —
-  accepting a candidate replaces `.users` and leaves the spaces.
-
-### Why
-
-Before 0.6.2, accepting a completion with trailing whitespace between
-the token and the cursor silently erased that whitespace. A user who
-typed `.users` and added a space (intending to start a pipe expression
-next) would see the space disappear on Tab. The library's contract
-conflated "where to place the candidate" with "how much text to
-replace." The new `end` field separates them.
-
-### Tests
-
-- 18 new tests covering the `start`/`end` contract, including a
-  splice-semantics test that verifies `text.replaceRange(start, end,
-  candidate)` preserves trailing whitespace after accepting a single
-  candidate.
-- 76 total completer tests passing (was 58 at 0.6.1).
+`Completions` typedef gained a required `end` field. Callers that
+destructured as `(:start, :candidates)` must now destructure as
+`(:start, :end, :candidates)` and splice with
+`text.replaceRange(start, end, candidate)` instead of
+`text.replaceRange(start, cursor, candidate)`.
 
 ## 0.6.1
 
