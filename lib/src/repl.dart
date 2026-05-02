@@ -180,6 +180,9 @@ void _handleShapeError(
   required CellPolicy flattenCells,
 }) {
   stderr.writeln('Error: ${e.message}');
+  for (final h in e.hints) {
+    stderr.writeln('Or run ${h.replCommand}: ${h.explanation}');
+  }
   if (e.suggestions.isEmpty) return;
   stdout.writeln();
   stdout.writeln('Apply a bridge?');

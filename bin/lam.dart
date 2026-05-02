@@ -275,11 +275,13 @@ void _writeWithBridge(
   } on OutputShapeError catch (e) {
     if (!(stdin.hasTerminal && stdout.hasTerminal)) {
       stderr.writeln('Error: ${e.message}');
+      _writeHintsCli(e.hints);
       exit(1);
     }
     final choice = _promptForRemediation(e);
     if (choice == null) {
       stderr.writeln('Error: ${e.message}');
+      _writeHintsCli(e.hints);
       exit(1);
     }
     // Re-evaluate with the chosen bridge applied to the user's AST,
@@ -307,6 +309,14 @@ void _writeWithBridge(
   }
 }
 
+/// Render [hints] in CLI form to stderr, one per line, after the
+/// shape-error message. Silent when no hints are present.
+void _writeHintsCli(List<Hint> hints) {
+  for (final h in hints) {
+    stderr.writeln('Or pass ${h.cliFlag}: ${h.explanation}');
+  }
+}
+
 /// Interactive prompt for the remediations carried by an
 /// [OutputShapeError].
 ///
@@ -315,6 +325,9 @@ void _writeWithBridge(
 /// `q`, a blank line, EOF, or an index outside the valid range.
 Remediation? _promptForRemediation(OutputShapeError err) {
   stdout.writeln(err.message);
+  for (final h in err.hints) {
+    stdout.writeln('Or pass ${h.cliFlag}: ${h.explanation}');
+  }
   stdout.writeln();
   stdout.writeln('Apply a bridge?');
   for (var i = 0; i < err.suggestions.length; i++) {

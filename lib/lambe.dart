@@ -55,6 +55,7 @@ export 'src/shape/check.dart'
         Writable,
         NotWritable,
         Remediation,
+        Hint,
         canWriteAs,
         canWriteShapeAs;
 export 'src/shape/explain.dart'

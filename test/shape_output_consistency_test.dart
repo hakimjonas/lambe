@@ -162,12 +162,12 @@ void main() {
           if (isListRoot && isDelimited) {
             expect(
               report.hints,
-              isNotEmpty,
+              hasLength(1),
               reason:
                   'List-root rejection under csv/tsv refuse should surface '
                   'the --flatten-cells hint for $label -> ${fmt.name}.',
             );
-            expect(report.hints.first, contains('--flatten-cells'));
+            expect(report.hints.first.cliFlag, '--flatten-cells json');
           } else {
             expect(
               report.hints,

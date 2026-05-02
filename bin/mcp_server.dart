@@ -231,10 +231,14 @@ base class LambeServer extends MCPServer with ToolsSupport {
   /// `suggestions` carries a 1-based `id`, a `label`, a `template_text`
   /// (the query-fragment source), an `apply_as` (the complete query
   /// formed by appending the template to the original expression via
-  /// `|`), and an `explanation`. `hints` is a list of strings
-  /// describing environmental remedies (tool parameters, CLI flags)
-  /// that would resolve the mismatch without changing the query;
-  /// empty when no such remedy exists.
+  /// `|`), and an `explanation`.
+  ///
+  /// `hints` describes environmental remedies (tool parameters) that
+  /// would resolve the mismatch without changing the query. Each hint
+  /// carries a `label`, a `parameter`/`value` pair naming an argument
+  /// of this MCP tool, and an `explanation`. CLI-flag and REPL-command
+  /// forms are omitted because they do not apply to an agent calling
+  /// the MCP server. Empty when no such remedy exists.
   String _renderShapeErrorPayload(OutputShapeError e, String expression) =>
       const JsonEncoder.withIndent('  ').convert({
         'error': 'output_shape_mismatch',
@@ -252,7 +256,15 @@ base class LambeServer extends MCPServer with ToolsSupport {
               'explanation': e.suggestions[i].explanation,
             },
         ],
-        'hints': e.hints,
+        'hints': [
+          for (final h in e.hints)
+            {
+              'label': h.label,
+              'parameter': h.mcpParameter.$1,
+              'value': h.mcpParameter.$2,
+              'explanation': h.explanation,
+            },
+        ],
       });
 
   final _schemaTool = Tool(

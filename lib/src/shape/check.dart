@@ -184,12 +184,14 @@ final class NotWritable extends ShapeReport {
   /// Query-fragment suggestions that would produce a compatible shape.
   final List<Remediation> suggestions;
 
-  /// Environmental guidance for the consumer (CLI flags, REPL
-  /// settings, MCP parameters) that would resolve the mismatch without
-  /// altering the query. Populated when a configuration knob exists;
-  /// empty otherwise. Suggestions modify the query, hints modify the
-  /// invocation.
-  final List<String> hints;
+  /// Environmental guidance for the consumer that would resolve the
+  /// mismatch without altering the query. Each [Hint] carries the
+  /// invocation-syntax for every supported surface (CLI flag, REPL
+  /// command, MCP parameter); surfaces render the form that applies
+  /// to them.
+  ///
+  /// Suggestions modify the query; hints modify the invocation.
+  final List<Hint> hints;
 
   /// Creates a [NotWritable] report.
   const NotWritable({
@@ -198,6 +200,45 @@ final class NotWritable extends ShapeReport {
     required this.required,
     required this.suggestions,
     this.hints = const [],
+  });
+}
+
+/// An environmental remedy: a flag, setting, or parameter change that
+/// would resolve a shape mismatch without modifying the query.
+///
+/// One [Hint] can be rendered as a CLI flag (`--flatten-cells json`),
+/// a REPL command (`:flatten-cells json`), or an MCP parameter
+/// (`flatten_cells=json`). Consumers pick the form that matches their
+/// surface, so the message seen by an end user is never cluttered with
+/// the other surfaces' syntax.
+final class Hint {
+  /// Short human-readable label, for example `"Flatten non-scalar
+  /// cells"`. Suitable for menu items or UI chips.
+  final String label;
+
+  /// CLI flag form, including value: `"--flatten-cells json"`.
+  final String cliFlag;
+
+  /// REPL command form, including value: `":flatten-cells json"`.
+  final String replCommand;
+
+  /// MCP tool parameter as a `(name, value)` pair:
+  /// `('flatten_cells', 'json')`. Consumers serialize this into their
+  /// own tool-argument format.
+  final (String, String) mcpParameter;
+
+  /// One-line description of the change's effect, for example
+  /// `"Encodes list- or map-valued cells as JSON strings inline."`.
+  /// Must read naturally as a sentence after "Or" or "With".
+  final String explanation;
+
+  /// Creates a [Hint].
+  const Hint({
+    required this.label,
+    required this.cliFlag,
+    required this.replCommand,
+    required this.mcpParameter,
+    required this.explanation,
   });
 }
 
@@ -333,9 +374,9 @@ ShapeReport canWriteShapeAs(
 /// [CellPolicy.refuse] where the root is already a list, so only the
 /// cells are the problem. Switching to [CellPolicy.json] would accept
 /// the value as-is. Hints are surfaced via [NotWritable.hints] and
-/// rendered in [OutputShapeError]'s message, REPL, and MCP payload by
-/// their respective consumers.
-List<String> _hintsFor(Shape got, OutputFormat format, CellPolicy policy) {
+/// rendered into their surface's native form (CLI flag, REPL command,
+/// MCP parameter) by each consumer.
+List<Hint> _hintsFor(Shape got, OutputFormat format, CellPolicy policy) {
   if (policy != CellPolicy.refuse) return const [];
   if (format != OutputFormat.csv && format != OutputFormat.tsv) {
     return const [];
@@ -344,9 +385,13 @@ List<String> _hintsFor(Shape got, OutputFormat format, CellPolicy policy) {
   // At this point the list root is fine; the rejection must be
   // element-level. Flipping to json would accept.
   return const [
-    'Or pass --flatten-cells json (CLI) / :flatten-cells json (REPL) / '
-        'flatten_cells=json (MCP) to encode non-scalar cells as JSON '
-        'strings inline.',
+    Hint(
+      label: 'Flatten non-scalar cells',
+      cliFlag: '--flatten-cells json',
+      replCommand: ':flatten-cells json',
+      mcpParameter: ('flatten_cells', 'json'),
+      explanation: 'Encodes list- or map-valued cells as JSON strings inline.',
+    ),
   ];
 }
 

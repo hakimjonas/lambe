@@ -130,18 +130,24 @@ void main() {
   });
 
   group('NotWritable.hints surface the --flatten-cells escape hatch', () {
-    test('csv refuse + non-flat list-of-maps: hint points at the flag', () {
-      final v = <Object?>[
-        {
-          'k': <Object?>[1, 2],
-        },
-      ];
-      final report = canWriteAs(v, OutputFormat.csv) as NotWritable;
-      expect(report.hints, isNotEmpty);
-      expect(report.hints.first, contains('--flatten-cells'));
-      expect(report.hints.first, contains(':flatten-cells'));
-      expect(report.hints.first, contains('flatten_cells'));
-    });
+    test(
+      'csv refuse + non-flat list-of-maps: hint carries all three forms',
+      () {
+        final v = <Object?>[
+          {
+            'k': <Object?>[1, 2],
+          },
+        ];
+        final report = canWriteAs(v, OutputFormat.csv) as NotWritable;
+        expect(report.hints, hasLength(1));
+        final h = report.hints.first;
+        expect(h.cliFlag, '--flatten-cells json');
+        expect(h.replCommand, ':flatten-cells json');
+        expect(h.mcpParameter, ('flatten_cells', 'json'));
+        expect(h.label, isNotEmpty);
+        expect(h.explanation, isNotEmpty);
+      },
+    );
 
     test('csv under json policy accepts the value, no hint to produce', () {
       final v = <Object?>[
@@ -173,7 +179,10 @@ void main() {
       },
     );
 
-    test('OutputShapeError.message includes the hint text', () {
+    test('OutputShapeError.message does NOT bake hint text', () {
+      // Hints are structured data; each surface renders the form that
+      // applies to it. The baked message stays neutral so a REPL user
+      // does not see --flatten-cells CLI syntax and vice versa.
       final v = <Object?>[
         {
           'k': <Object?>[1, 2],
@@ -183,8 +192,10 @@ void main() {
         formatOutput(v, OutputFormat.csv);
         fail('expected OutputShapeError');
       } on OutputShapeError catch (e) {
-        expect(e.message, contains('--flatten-cells'));
-        expect(e.hints, isNotEmpty);
+        expect(e.message, isNot(contains('--flatten-cells')));
+        expect(e.message, isNot(contains(':flatten-cells')));
+        expect(e.message, isNot(contains('flatten_cells')));
+        expect(e.hints, hasLength(1));
       }
     });
   });

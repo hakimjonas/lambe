@@ -47,9 +47,13 @@ class OutputShapeError extends QueryError {
   /// Query-fragment suggestions that would produce a compatible shape.
   List<Remediation> get suggestions => report.suggestions;
 
-  /// Environmental hints (CLI flags, REPL settings, MCP parameters)
-  /// that would resolve the mismatch without altering the query.
-  List<String> get hints => report.hints;
+  /// Structured environmental remedies (invocation-level changes that
+  /// would resolve the mismatch). Each [Hint] carries the CLI, REPL,
+  /// and MCP syntax; consumers render the form that applies to their
+  /// surface. [message] does NOT include hints, so that a REPL user
+  /// does not see `--flatten-cells` CLI syntax and an MCP agent does
+  /// not see REPL colon-commands.
+  List<Hint> get hints => report.hints;
 
   static String _render(NotWritable r) {
     final buf = StringBuffer();
@@ -67,10 +71,6 @@ class OutputShapeError extends QueryError {
         buf.write('    # ');
         buf.write(s.explanation);
       }
-    }
-    for (final h in r.hints) {
-      buf.write('\n');
-      buf.write(h);
     }
     return buf.toString();
   }
