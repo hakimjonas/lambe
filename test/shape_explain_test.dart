@@ -145,4 +145,119 @@ void main() {
       expect(text, contains('toml'));
     });
   });
+
+  group('explain: predicate warnings for provably-empty filters', () {
+    const userListShape = SMap({
+      'users': SList(
+        SMap({'name': SString(), 'age': SNum(), 'active': SBool()}),
+      ),
+    });
+
+    test('filter(.missing) warns: field not in element shape', () {
+      final report = explain(
+        _parse('.users | filter(.missing)'),
+        userListShape,
+      );
+      expect(report.warnings, hasLength(1));
+      final w = report.warnings.first;
+      expect(w.stageIndex, 1);
+      expect(w.message, contains('.missing does not exist'));
+      expect(w.message, contains('filter will always be empty'));
+    });
+
+    test('filter(.name) warns: field exists but is not boolean', () {
+      final report = explain(_parse('.users | filter(.name)'), userListShape);
+      expect(report.warnings, hasLength(1));
+      expect(report.warnings.first.message, contains('shape string'));
+    });
+
+    test('filter(.active) does not warn: field is boolean', () {
+      final report = explain(_parse('.users | filter(.active)'), userListShape);
+      expect(report.warnings, isEmpty);
+    });
+
+    test('filter(.age > 25) does not warn: comparison yields bool', () {
+      final report = explain(
+        _parse('.users | filter(.age > 25)'),
+        userListShape,
+      );
+      expect(report.warnings, isEmpty);
+    });
+
+    test('filter(true) does not warn: literal bool', () {
+      final report = explain(_parse('.users | filter(true)'), userListShape);
+      expect(report.warnings, isEmpty);
+    });
+
+    test('filter on SAny input does not warn: cannot prove anything', () {
+      final report = explain(_parse('.users | filter(.missing)'), const SAny());
+      expect(report.warnings, isEmpty);
+    });
+
+    test('sort_by(.missing) does not warn: only filter* is gated this way', () {
+      final report = explain(
+        _parse('.users | sort_by(.missing)'),
+        userListShape,
+      );
+      expect(report.warnings, isEmpty);
+    });
+
+    test('filter_values warns when predicate is not bool', () {
+      final report = explain(
+        _parse('.deps | filter_values(.)'),
+        const SMap({
+          'deps': SMap({'a': SString(), 'b': SString()}),
+        }),
+      );
+      expect(report.warnings, hasLength(1));
+      expect(report.warnings.first.message, contains('filter_values'));
+    });
+
+    test('filter_keys warns: keys are strings, not bool', () {
+      final report = explain(
+        _parse('.deps | filter_keys(.)'),
+        const SMap({
+          'deps': SMap({'a': SString()}),
+        }),
+      );
+      expect(report.warnings, hasLength(1));
+      expect(report.warnings.first.message, contains('filter_keys'));
+    });
+
+    test('nested missing field .address.missing warns', () {
+      final report = explain(
+        _parse('.users | filter(.address.missing)'),
+        const SMap({
+          'users': SList(
+            SMap({
+              'address': SMap({'city': SString(), 'zip': SString()}),
+            }),
+          ),
+        }),
+      );
+      expect(report.warnings, hasLength(1));
+      expect(
+        report.warnings.first.message,
+        contains('.address.missing does not exist'),
+      );
+    });
+
+    test('renderExplain prints warnings between stages and writability', () {
+      final report = explain(
+        _parse('.users | filter(.missing)'),
+        userListShape,
+      );
+      final text = renderExplain(report);
+      expect(text, contains('Warning:'));
+      expect(text, contains('filter(.missing)'));
+      expect(text, contains('does not exist'));
+      expect(text, contains('Writable as:'));
+    });
+
+    test('no warnings: renderExplain contains no Warning: line', () {
+      final report = explain(_parse('.users | filter(.active)'), userListShape);
+      final text = renderExplain(report);
+      expect(text, isNot(contains('Warning:')));
+    });
+  });
 }
