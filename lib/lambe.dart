@@ -32,6 +32,8 @@ export 'src/input.dart'
 export 'src/mcp_payload.dart' show renderMcpShapeErrorPayload;
 export 'src/output.dart'
     show OutputFormat, CellPolicy, formatOutput, inferSchema;
+export 'src/schema/loader.dart'
+    show loadSchemaFromFile, loadSchemaForData, mergeSchemaWithData;
 export 'src/schema/parser.dart' show parseJsonSchema;
 export 'src/shape/shape.dart'
     show
