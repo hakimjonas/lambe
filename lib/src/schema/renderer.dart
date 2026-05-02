@@ -20,6 +20,22 @@ import '../shape/shape.dart';
 /// Pretty-prints with 2-space indent by default. For a compact form
 /// suitable for embedding in another JSON payload (e.g. an MCP tool
 /// response), pass `pretty: false`.
+///
+/// ### Lossy positions
+///
+/// [SOptional] inside [SMap] encodes faithfully (missing entry in
+/// `required`) and round-trips through [parseJsonSchema].
+///
+/// [SOptional] anywhere else — at the root, inside a list's
+/// `element`, or nested — is **flattened to its inner shape**. Our
+/// JSON Schema subset has no idiom for "optional at this position,"
+/// so the optionality signal is dropped. Callers composing shapes
+/// via inference (for example, a query result whose outermost shape
+/// is [SOptional]) should be aware: the rendered schema does not
+/// preserve the "may be absent" information.
+///
+/// Shapes produced by [parseJsonSchema] only put [SOptional] inside
+/// [SMap] fields, so the round-trip invariant holds for those.
 String renderJsonSchema(Shape shape, {bool pretty = true}) {
   final payload = _encode(shape);
   final encoder =
