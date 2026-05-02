@@ -16,11 +16,13 @@ export 'output_format.dart' show OutputFormat;
 /// For JSON, uses pretty-printing with 2-space indent by default.
 /// For YAML, uses block style.
 /// For TOML/HCL, requires the root value to be a `Map<String, Object?>`.
-/// For CSV/TSV, requires a list of maps (uses keys as headers), a list of
-/// lists, or a list of scalars. Every cell must be a scalar — null,
-/// bool, num, or string. List-of-maps or list-of-lists with non-scalar
-/// cells throws [OutputShapeError]; a non-scalar cell that slips past
-/// shape inference (for example via [SAny]) throws [QueryError] at
+/// For CSV/TSV, requires a list of maps, a list of lists, or a list of
+/// scalars. For a list of maps, headers are the union of keys across
+/// all rows in first-seen order; a row missing a key renders as an
+/// empty cell. Every cell value must be a scalar — null, bool, num,
+/// or string. List-of-maps or list-of-lists with non-scalar cells
+/// throws [OutputShapeError]; a non-scalar cell that slips past shape
+/// inference (for example via [SAny]) throws [QueryError] at
 /// serialization time.
 String formatOutput(Object? value, OutputFormat format, {bool pretty = true}) =>
     switch (format) {
@@ -89,10 +91,13 @@ String _toCsv(Object? value, String delimiter) {
 
   if (list.first is Map<String, Object?>) {
     final maps = list.cast<Map<String, Object?>>();
-    final headers = maps.first.keys.toList();
+    final headers = _unionHeaders(maps);
     final rows = [
       for (final map in maps)
-        [for (final h in headers) _scalarCell(map[h], fmt)],
+        [
+          for (final h in headers)
+            map.containsKey(h) ? _scalarCell(map[h], fmt) : '',
+        ],
     ];
     return serializeCsvWithHeaders(headers, rows, config: config);
   }
@@ -133,6 +138,24 @@ String _describeCellKind(Object cell) {
   if (cell is List) return 'list';
   if (cell is Map) return 'map';
   return cell.runtimeType.toString();
+}
+
+/// Collect the union of keys across [maps] preserving first-seen order.
+///
+/// The first map's keys appear first in their insertion order; each
+/// subsequent map contributes any keys not already present, in the
+/// order they first appear. Rows missing a key render as an empty cell
+/// rather than silently dropping the column — symmetric with how the
+/// writer refuses non-scalar cells elsewhere.
+List<String> _unionHeaders(List<Map<String, Object?>> maps) {
+  final seen = <String>{};
+  final headers = <String>[];
+  for (final map in maps) {
+    for (final key in map.keys) {
+      if (seen.add(key)) headers.add(key);
+    }
+  }
+  return headers;
 }
 
 String _toHcl(Object? value) {

@@ -47,6 +47,14 @@ final _representatives = <String, Object?>{
     <Object?>[1, 2, 3],
     <Object?>[4, 5, 6],
   ],
+  'list of maps with disjoint scalar keys': <Object?>[
+    {'a': 1},
+    {'b': 2},
+  ],
+  'list of maps with overlapping but non-identical scalar keys': <Object?>[
+    {'a': 1, 'b': 2},
+    {'b': 3, 'c': 4},
+  ],
   'empty map': <String, Object?>{},
   'map of scalars': <String, Object?>{'a': 1, 'b': 'x'},
   'map with a list field': <String, Object?>{

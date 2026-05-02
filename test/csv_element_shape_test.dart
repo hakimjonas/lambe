@@ -145,4 +145,76 @@ void main() {
       }
     });
   });
+
+  group('CSV/TSV preserve every column across heterogeneous-keyed rows', () {
+    test('disjoint keys: both columns appear, rows fill with empties', () {
+      final v = <Object?>[
+        {'a': 1},
+        {'b': 2},
+      ];
+      final out = formatOutput(v, OutputFormat.csv);
+      expect(out, contains('a,b'));
+      expect(out, contains('1,'));
+      expect(out, contains(',2'));
+    });
+
+    test('overlapping keys: union in first-seen order', () {
+      final v = <Object?>[
+        {'a': 1, 'b': 2},
+        {'b': 3, 'c': 4},
+      ];
+      final out = formatOutput(v, OutputFormat.csv);
+      expect(out.split(RegExp(r'\r?\n')).first, 'a,b,c');
+    });
+
+    test('row missing a key renders as empty, not a dropped cell', () {
+      final v = <Object?>[
+        {'a': 1, 'b': 2},
+        {'a': 3},
+      ];
+      final out = formatOutput(v, OutputFormat.csv);
+      final lines = out.split(RegExp(r'\r?\n'));
+      expect(lines[0], 'a,b');
+      expect(lines[1], '1,2');
+      expect(lines[2], '3,');
+    });
+
+    test('homogeneous list-of-maps output unchanged by the union pass', () {
+      final v = <Object?>[
+        {'a': 1, 'b': 2},
+        {'a': 3, 'b': 4},
+      ];
+      final out = formatOutput(v, OutputFormat.csv);
+      final lines = out.split(RegExp(r'\r?\n'));
+      expect(lines[0], 'a,b');
+      expect(lines[1], '1,2');
+      expect(lines[2], '3,4');
+    });
+
+    test(
+      'null value and absent key both render as empty, indistinguishable',
+      () {
+        final nullValue = <Object?>[
+          {'a': 1, 'b': null},
+        ];
+        final absentKey = <Object?>[
+          {'a': 1, 'b': 2},
+          {'a': 3},
+        ];
+        final nullOut = formatOutput(nullValue, OutputFormat.csv);
+        final absentOut = formatOutput(absentKey, OutputFormat.csv);
+        expect(nullOut.split(RegExp(r'\r?\n'))[1], '1,');
+        expect(absentOut.split(RegExp(r'\r?\n'))[2], '3,');
+      },
+    );
+
+    test('tsv also gets the union-headers treatment', () {
+      final v = <Object?>[
+        {'a': 1},
+        {'b': 2},
+      ];
+      final out = formatOutput(v, OutputFormat.tsv);
+      expect(out.split(RegExp(r'\r?\n')).first, 'a\tb');
+    });
+  });
 }
