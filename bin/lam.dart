@@ -43,9 +43,18 @@ void main(List<String> arguments) {
           allowed: ['refuse', 'json'],
           defaultsTo: 'refuse',
         )
-        ..addFlag(
+        ..addOption(
           'schema',
-          help: 'Show data structure without values',
+          help:
+              'Path to a JSON Schema subset file. Threads the declared '
+              'shape through inference and explain. If omitted, a '
+              'sibling <datafile>.schema.json is used when present.',
+        )
+        ..addFlag(
+          'print-shape',
+          help:
+              'Print the inferred shape of the data as a JSON Schema. '
+              'Renames the 0.8.0 --schema flag with the same meaning.',
           negatable: false,
         )
         ..addFlag(
@@ -103,8 +112,9 @@ void main(List<String> arguments) {
     return;
   }
 
-  // --schema mode: no expression needed, just file
-  final isSchemaMode = args.flag('schema');
+  // --print-shape mode: no expression needed, just file.
+  final isPrintShapeMode = args.flag('print-shape');
+  final schemaPath = args.option('schema');
   final isAssertMode = args.flag('assert');
   final isInteractive = args.flag('interactive');
   // --explain-trivial and --explain-json imply --explain, so enable
@@ -115,7 +125,7 @@ void main(List<String> arguments) {
   var isNdjsonMode = args.flag('ndjson');
 
   final rest = args.rest;
-  if (rest.isEmpty && !isSchemaMode && !isInteractive) {
+  if (rest.isEmpty && !isPrintShapeMode && !isInteractive) {
     stderr.writeln('Error: missing query expression.');
     stderr.writeln();
     _usage(argParser);
@@ -131,7 +141,7 @@ void main(List<String> arguments) {
 
   final expression = rest.isNotEmpty ? rest[0] : '.';
   final fileArgIndex =
-      (isSchemaMode || isInteractive) && rest.length == 1 ? 0 : 1;
+      (isPrintShapeMode || isInteractive) && rest.length == 1 ? 0 : 1;
 
   // Auto-enable ndjson mode when the file extension suggests it, even
   // without an explicit --ndjson flag. Consistent with the existing
@@ -148,7 +158,11 @@ void main(List<String> arguments) {
       stderr.writeln('Error: --ndjson cannot be combined with --interactive.');
       exit(1);
     }
-    if (isSchemaMode) {
+    if (isPrintShapeMode) {
+      stderr.writeln('Error: --ndjson cannot be combined with --print-shape.');
+      exit(1);
+    }
+    if (schemaPath != null) {
       stderr.writeln('Error: --ndjson cannot be combined with --schema.');
       exit(1);
     }
@@ -241,10 +255,17 @@ void main(List<String> arguments) {
     return;
   }
 
-  // --schema mode: show structure and exit
-  if (isSchemaMode) {
-    final schema = inferSchema(data);
-    stdout.writeln(const JsonEncoder.withIndent('  ').convert(schema));
+  // --print-shape mode: emit the inferred shape as JSON Schema.
+  if (isPrintShapeMode) {
+    if (schemaPath != null) {
+      stderr.writeln(
+        'Error: --print-shape prints the inferred shape of the data; '
+        '--schema has nothing to contribute.',
+      );
+      exit(1);
+    }
+    final shape = data == null ? const SAny() : shapeOf(data);
+    stdout.writeln(renderJsonSchema(shape));
     return;
   }
 
@@ -257,7 +278,25 @@ void main(List<String> arguments) {
       stderr.writeln('Error: ${e.message}');
       exit(1);
     }
-    final inputShape = data == null ? const SAny() : shapeOf(data);
+    // Initial shape: schema when provided (explicit or auto-detected
+    // sibling), merged with shapeOf(data). Falls back to SAny / data
+    // shape when no schema is available.
+    final dataShape = data == null ? const SAny() : shapeOf(data);
+    final Shape inputShape;
+    try {
+      final schema = loadSchemaForData(
+        explicitSchemaPath: schemaPath,
+        dataPath:
+            data != null && rest.length > fileArgIndex
+                ? rest[fileArgIndex]
+                : null,
+      );
+      inputShape =
+          schema == null ? dataShape : mergeSchemaWithData(schema, dataShape);
+    } on QueryError catch (e) {
+      stderr.writeln('Error: ${e.message}');
+      exit(1);
+    }
     final cellPolicy = CellPolicy.values.byName(args.option('flatten-cells')!);
     final report = explain(
       ast,
@@ -271,6 +310,25 @@ void main(List<String> arguments) {
       stdout.write(renderExplain(report));
     }
     return;
+  }
+
+  // If a schema is in effect, validate it against the data before
+  // evaluating. mergeSchemaWithData throws on concrete-type
+  // disagreement; this gives structural validation as a side effect
+  // of --schema.
+  if (data != null) {
+    try {
+      final schema = loadSchemaForData(
+        explicitSchemaPath: schemaPath,
+        dataPath: rest.length > fileArgIndex ? rest[fileArgIndex] : null,
+      );
+      if (schema != null) {
+        mergeSchemaWithData(schema, shapeOf(data));
+      }
+    } on QueryError catch (e) {
+      stderr.writeln('Error: ${e.message}');
+      exit(1);
+    }
   }
 
   // The parsed AST is retained so that, if serialization later hits an

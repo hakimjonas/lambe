@@ -36,8 +36,11 @@ Output format. One of: json, yaml, toml, csv, tsv, hcl. Default is json.
 \fB--flatten-cells\fR \fIPOLICY\fR
 CSV/TSV policy for non-scalar cells. \fBrefuse\fR (default) rejects list- or map-valued cells with a shape error. \fBjson\fR encodes them as JSON strings inline; the shape check correspondingly widens to accept any list at the root. Ignored for other output formats.
 .TP
-\fB--schema\fR
-Show the data structure with type names instead of values.
+\fB--schema\fR \fIPATH\fR
+Path to a JSON Schema subset file. Threads the declared shape through inference and \fB--explain\fR, validates data against the schema at load time (errors on concrete-type disagreement), and fills in shape details the sampled data doesn't cover (empty-list elements, optional fields). Auto-detected as a sibling \fB.schema.json\fR if omitted. Accepts \fBtype\fR, \fBproperties\fR, \fBitems\fR, and \fBrequired\fR; rejects structural combinators (allOf/oneOf/$ref) and value-level constraints (minimum/pattern/enum/etc) with a per-keyword error.
+.TP
+\fB--print-shape\fR
+Print the inferred shape of the data as a JSON Schema subset document. Replaces the 0.8.0 \fB--schema\fR flag with the same meaning, renamed because \fB--schema\fR now takes a path value.
 .TP
 \fB--explain\fR
 Trace the shape of values flowing through each pipeline stage. Static analysis only; does not execute the query. Reports which output formats the final shape can be serialized as. Flags provably-empty filters and runtime-rejection mismatches.
@@ -55,7 +58,7 @@ Evaluate the expression and exit with code 0 if the result is true, 1 if false.
 Start the interactive REPL. Requires a file argument.
 .TP
 \fB--ndjson\fR
-Treat input as ndjson or jsonl: one JSON document per line, evaluated independently with no state shared between lines. Emits one compact JSON result per line on stdout. Auto-enabled when the file extension is \fB.ndjson\fR or \fB.jsonl\fR. Cannot combine with \fB--interactive\fR, \fB--schema\fR, \fB--assert\fR, or \fB--explain\fR. Output must be JSON (\fB--to json\fR or default); other \fB--to\fR values are refused.
+Treat input as ndjson or jsonl: one JSON document per line, evaluated independently with no state shared between lines. Emits one compact JSON result per line on stdout. Auto-enabled when the file extension is \fB.ndjson\fR or \fB.jsonl\fR. Cannot combine with \fB--interactive\fR, \fB--schema\fR, \fB--print-shape\fR, \fB--assert\fR, or \fB--explain\fR. Output must be JSON (\fB--to json\fR or default); other \fB--to\fR values are refused.
 .TP
 \fB-h\fR, \fB--help\fR
 Show usage information.
@@ -239,7 +242,7 @@ lam --to yaml '.config' data.json
 Schema inspection:
 .PP
 .nf
-lam --schema deployment.yaml
+lam --print-shape deployment.yaml
 .fi
 .PP
 Shape trace for a pipeline:

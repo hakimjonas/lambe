@@ -44,8 +44,11 @@ If no file is given, reads from standard input.
 **--flatten-cells** *POLICY*
 :   CSV/TSV policy for non-scalar cells. **refuse** (default) rejects list- or map-valued cells with a shape error. **json** encodes them as JSON strings inline; the shape check correspondingly widens to accept any list at the root. Ignored for other output formats.
 
-**--schema**
-:   Show the data structure with type names instead of values.
+**--schema** *PATH*
+:   Path to a JSON Schema subset file. Threads the declared shape through inference and **--explain**, validates data against the schema at load time (errors on concrete-type disagreement), and fills in shape details the sampled data doesn't cover (empty-list elements, optional fields). Auto-detected as a sibling **<datafile>.schema.json** if omitted. Accepts **type**, **properties**, **items**, and **required**; rejects structural combinators (allOf/oneOf/$ref) and value-level constraints (minimum/pattern/enum/etc) with a per-keyword error.
+
+**--print-shape**
+:   Print the inferred shape of the data as a JSON Schema subset document. Replaces the 0.8.0 **--schema** flag with the same meaning, renamed because **--schema** now takes a path value.
 
 **--explain**
 :   Trace the shape of values flowing through each pipeline stage. Static analysis only; does not execute the query. Reports which output formats the final shape can be serialized as. Flags provably-empty filters and runtime-rejection mismatches.
@@ -63,7 +66,7 @@ If no file is given, reads from standard input.
 :   Start the interactive REPL. Requires a file argument.
 
 **--ndjson**
-:   Treat input as ndjson or jsonl: one JSON document per line, evaluated independently with no state shared between lines. Emits one compact JSON result per line on stdout. Auto-enabled when the file extension is **.ndjson** or **.jsonl**. Cannot combine with **--interactive**, **--schema**, **--assert**, or **--explain**. Output must be JSON (**--to json** or default); other **--to** values are refused.
+:   Treat input as ndjson or jsonl: one JSON document per line, evaluated independently with no state shared between lines. Emits one compact JSON result per line on stdout. Auto-enabled when the file extension is **.ndjson** or **.jsonl**. Cannot combine with **--interactive**, **--schema**, **--print-shape**, **--assert**, or **--explain**. Output must be JSON (**--to json** or default); other **--to** values are refused.
 
 **-h**, **--help**
 :   Show usage information.
@@ -255,7 +258,7 @@ Format conversion:
 
 Schema inspection:
 
-    lam --schema deployment.yaml
+    lam --print-shape deployment.yaml
 
 Shape trace for a pipeline:
 
