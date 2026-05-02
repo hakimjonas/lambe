@@ -24,10 +24,12 @@ base class LambeServer extends MCPServer with ToolsSupport {
         implementation: Implementation(name: 'lambe', version: lambeVersion),
         instructions:
             'Lambé is a multi-format query language for structured data. '
-            'Use the query tool to find, extract, filter, transform, or look up '
+            'Use lambe_query to find, extract, filter, transform, or look up '
             'values from JSON, YAML, TOML, HCL, CSV, TSV, or Markdown files. '
-            'Use the schema tool to understand data structure before querying. '
-            'Use the assert tool to validate or check conditions on data.\n\n'
+            'Use lambe_print_shape to understand data structure before '
+            'querying (returns JSON Schema). '
+            'Use lambe_check to validate data against a JSON Schema. '
+            'Use lambe_assert to validate or check conditions on data.\n\n'
             'Common patterns:\n'
             '  .database.host                          — extract a value\n'
             '  .users | filter(.age > 30) | map(.name) — filter and project\n'
@@ -73,7 +75,8 @@ base class LambeServer extends MCPServer with ToolsSupport {
             '    — code blocks for one language\n',
       ) {
     registerTool(_queryTool, _handleQuery);
-    registerTool(_schemaTool, _handleSchema);
+    registerTool(_printShapeTool, _handlePrintShape);
+    registerTool(_checkTool, _handleCheck);
     registerTool(_assertTool, _handleAssert);
   }
 
@@ -176,6 +179,17 @@ base class LambeServer extends MCPServer with ToolsSupport {
               'other output formats.',
           values: ['refuse', 'json'],
         ),
+        'schema': Schema.string(
+          description:
+              'Optional inline JSON Schema subset (as a string) '
+              'describing the expected shape of data. When provided, '
+              'the data is validated against the schema before the '
+              'query runs; a concrete-type disagreement returns an '
+              'error. Accepts type, properties, items, required. '
+              'Rejects structural combinators, value-level '
+              'constraints, references, and additionalProperties with '
+              'a per-keyword error.',
+        ),
       },
       required: ['expression', 'data'],
     ),
@@ -188,9 +202,19 @@ base class LambeServer extends MCPServer with ToolsSupport {
     final formatStr = args['format'] as String?;
     final outputFormatStr = args['output_format'] as String?;
     final flattenCellsStr = args['flatten_cells'] as String?;
+    final schemaStr = args['schema'] as String?;
 
     try {
       final format = formatStr != null ? Format.values.byName(formatStr) : null;
+
+      // Validate data against schema first, if provided. A structural
+      // disagreement returns an error before the query runs.
+      if (schemaStr != null) {
+        final schema = parseJsonSchema(schemaStr);
+        final parsed = parseInput(data, format ?? sniffFormat(data));
+        mergeSchemaWithData(schema, shapeOf(parsed));
+      }
+
       final result = queryString(expression, data, format: format);
       final outputFormat =
           outputFormatStr != null
@@ -226,14 +250,17 @@ base class LambeServer extends MCPServer with ToolsSupport {
   // See `renderMcpShapeErrorPayload` in package:lambe/lambe.dart for
   // the payload shape this server emits on output-shape mismatches.
 
-  final _schemaTool = Tool(
-    name: 'lambe_schema',
+  final _printShapeTool = Tool(
+    name: 'lambe_print_shape',
     description:
         'Use this tool to understand the structure of unfamiliar data before '
-        'writing queries. Returns type names (string, number, boolean, null) '
-        'instead of actual values. Use when the user says "show me the '
-        'structure", "what fields are in this", or "what does this data look '
-        'like".',
+        'writing queries. Returns a JSON Schema subset document '
+        '(type/properties/items/required) describing the inferred shape. Use '
+        'when the user says "show me the structure", "what fields are in '
+        'this", or "what does this data look like". The output round-trips '
+        'with the `schema` parameter on lambe_query and with lambe_check. '
+        'Renamed from the 0.8.0 lambe_schema tool; output format changed '
+        'from type-name strings to JSON Schema.',
     inputSchema: Schema.object(
       properties: {
         'data': Schema.string(
@@ -250,7 +277,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
     ),
   );
 
-  FutureOr<CallToolResult> _handleSchema(CallToolRequest request) {
+  FutureOr<CallToolResult> _handlePrintShape(CallToolRequest request) {
     final args = request.arguments!;
     final data = args['data'] as String;
     final formatStr = args['format'] as String?;
@@ -258,16 +285,70 @@ base class LambeServer extends MCPServer with ToolsSupport {
     try {
       final format = formatStr != null ? Format.values.byName(formatStr) : null;
       final parsed = parseInput(data, format ?? sniffFormat(data));
-      final schema = inferSchema(parsed);
       return CallToolResult(
-        content: [
-          TextContent(text: const JsonEncoder.withIndent('  ').convert(schema)),
-        ],
+        content: [TextContent(text: renderJsonSchema(shapeOf(parsed)))],
       );
     } on QueryError catch (e) {
       return CallToolResult(
         content: [TextContent(text: 'Error: ${e.message}')],
         isError: true,
+      );
+    }
+  }
+
+  final _checkTool = Tool(
+    name: 'lambe_check',
+    description:
+        'Validate data against a JSON Schema subset. Use this when the user '
+        'wants to verify that data matches an expected shape without '
+        'running a query — API response shape checks, CI contract '
+        'validation, "does this match the spec". Returns '
+        '{"ok": true} on agreement, or '
+        '{"ok": false, "error": "..."} naming the disagreement path. '
+        'Accepts the same JSON Schema subset as lambe_query\'s schema '
+        'parameter: type, properties, items, required. Structural '
+        'combinators, value-level constraints, and references are '
+        'rejected per-keyword.',
+    inputSchema: Schema.object(
+      properties: {
+        'schema': Schema.string(
+          description: 'Inline JSON Schema subset as a string.',
+        ),
+        'data': Schema.string(
+          description:
+              'The input data as a string (JSON, YAML, TOML, HCL, CSV, TSV, '
+              'or Markdown).',
+        ),
+        'format': UntitledSingleSelectEnumSchema(
+          description: 'Input format. Auto-detected if omitted.',
+          values: ['json', 'yaml', 'toml', 'hcl', 'csv', 'tsv', 'markdown'],
+        ),
+      },
+      required: ['schema', 'data'],
+    ),
+  );
+
+  FutureOr<CallToolResult> _handleCheck(CallToolRequest request) {
+    final args = request.arguments!;
+    final schemaStr = args['schema'] as String;
+    final data = args['data'] as String;
+    final formatStr = args['format'] as String?;
+
+    try {
+      final schema = parseJsonSchema(schemaStr);
+      final format = formatStr != null ? Format.values.byName(formatStr) : null;
+      final parsed = parseInput(data, format ?? sniffFormat(data));
+      mergeSchemaWithData(schema, shapeOf(parsed));
+      return CallToolResult(content: [TextContent(text: '{"ok": true}')]);
+    } on QueryError catch (e) {
+      return CallToolResult(
+        content: [
+          TextContent(
+            text: const JsonEncoder.withIndent(
+              '  ',
+            ).convert({'ok': false, 'error': e.message}),
+          ),
+        ],
       );
     }
   }

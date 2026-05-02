@@ -54,7 +54,7 @@ The `lambe_query` MCP tool is available for querying structured data. Connect wi
 lam-mcp  # stdio transport
 ```
 
-Tools: `lambe_query` (extract/filter/transform), `lambe_schema` (structure inspection), `lambe_assert` (validation).
+Tools: `lambe_query` (extract/filter/transform; optional `schema` parameter for structural validation before the query runs), `lambe_print_shape` (structure inspection — returns JSON Schema), `lambe_check` (validate data against a JSON Schema), `lambe_assert` (boolean assertion on a query).
 
 ### In Dart Code
 
