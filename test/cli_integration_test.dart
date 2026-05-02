@@ -454,4 +454,157 @@ void main() {
       expect(err, contains('--explain'));
     });
   });
+
+  group('--print-shape: JSON Schema output', () {
+    test('emits valid JSON Schema for a typical object', () async {
+      final file = File('${tmp.path}/data.json')
+        ..writeAsStringSync('{"name":"alice","age":30}');
+      final (code, out, _) = await _runLam(['--print-shape', file.path]);
+      expect(code, 0);
+      // Parse to prove it's valid JSON and has the documented shape.
+      final parsed = jsonDecode(out) as Map<String, Object?>;
+      expect(parsed['type'], 'object');
+      expect(parsed['properties'], isA<Map<String, Object?>>());
+      expect(parsed['required'], containsAll(<String>['name', 'age']));
+    });
+
+    test('output is round-trippable through --schema input', () async {
+      // print-shape data.json > data.schema.json, then running
+      // --schema data.schema.json '.' data.json must succeed.
+      final dataFile = File('${tmp.path}/data.json')
+        ..writeAsStringSync('{"a":1,"b":"x"}');
+      final (code1, out, _) = await _runLam(['--print-shape', dataFile.path]);
+      expect(code1, 0);
+
+      final schemaFile = File('${tmp.path}/regen.schema.json')
+        ..writeAsStringSync(out);
+      final (code2, _, err2) = await _runLam([
+        '--schema',
+        schemaFile.path,
+        '.a',
+        dataFile.path,
+      ]);
+      expect(
+        code2,
+        0,
+        reason:
+            'print-shape -> schema round-trip should validate '
+            'cleanly; stderr was: $err2',
+      );
+    });
+
+    test('rejects combination with --schema (redundant)', () async {
+      final data = File('${tmp.path}/d.json')..writeAsStringSync('{}');
+      final schema = File('${tmp.path}/s.json')
+        ..writeAsStringSync('{"type":"object"}');
+      final (code, _, err) = await _runLam([
+        '--print-shape',
+        '--schema',
+        schema.path,
+        data.path,
+      ]);
+      expect(code, 1);
+      expect(err, contains('--print-shape'));
+    });
+  });
+
+  group('--schema: input schema threading', () {
+    test('explicit --schema threads into --explain inputShape', () async {
+      final data = File('${tmp.path}/data.json')
+        ..writeAsStringSync('{"users":[{"name":"alice","age":30}]}');
+      // Schema declares `email` as optional on users.
+      final schema = File('${tmp.path}/s.json')..writeAsStringSync(
+        '{"type":"object","properties":{"users":{"type":"array","items":'
+        '{"type":"object","properties":{"name":{"type":"string"},'
+        '"age":{"type":"number"},"email":{"type":"string"}},'
+        '"required":["name","age"]}}},"required":["users"]}',
+      );
+      final (code, out, _) = await _runLam([
+        '--schema',
+        schema.path,
+        '--explain',
+        '.users | map(.email)',
+        data.path,
+      ]);
+      expect(code, 0);
+      // The explain output should show `email: optional<string>`
+      // in the users element shape.
+      expect(out, contains('email: optional<string>'));
+    });
+
+    test('sibling <data>.schema.json is auto-detected', () async {
+      final data = File('${tmp.path}/items.json')
+        ..writeAsStringSync('[{"id":"x","n":1}]');
+      File('${tmp.path}/items.schema.json').writeAsStringSync(
+        '{"type":"array","items":{"type":"object","properties":'
+        '{"id":{"type":"string"},"n":{"type":"number"},'
+        '"note":{"type":"string"}},"required":["id","n"]}}',
+      );
+      final (code, out, _) = await _runLam(['--explain', '.', data.path]);
+      expect(code, 0);
+      // Auto-detected schema adds `note: optional<string>` to element.
+      expect(out, contains('note: optional<string>'));
+    });
+
+    test('schema disagreement exits 1 with a path-annotated error', () async {
+      final data = File('${tmp.path}/d.json')..writeAsStringSync('{"age":30}');
+      final schema = File('${tmp.path}/s.json')..writeAsStringSync(
+        '{"type":"object","properties":{"age":{"type":"string"}},'
+        '"required":["age"]}',
+      );
+      final (code, _, err) = await _runLam([
+        '--schema',
+        schema.path,
+        '.',
+        data.path,
+      ]);
+      expect(code, 1);
+      expect(err, contains('disagreement'));
+      expect(err, contains(r'$.age'));
+      expect(err, contains('string'));
+      expect(err, contains('number'));
+    });
+
+    test('schema parse error surfaces a clear diagnostic', () async {
+      final data = File('${tmp.path}/d.json')..writeAsStringSync('{}');
+      final schema = File('${tmp.path}/bad.json')
+        ..writeAsStringSync('{"allOf":[{"type":"object"}]}');
+      final (code, _, err) = await _runLam([
+        '--schema',
+        schema.path,
+        '.',
+        data.path,
+      ]);
+      expect(code, 1);
+      expect(err, contains('allOf'));
+      expect(err, contains('unsupported'));
+    });
+
+    test('missing schema file exits 1 with a clear error', () async {
+      final data = File('${tmp.path}/d.json')..writeAsStringSync('{}');
+      final (code, _, err) = await _runLam([
+        '--schema',
+        '${tmp.path}/nonexistent.json',
+        '.',
+        data.path,
+      ]);
+      expect(code, 1);
+      expect(err, contains('schema file not found'));
+    });
+
+    test('--ndjson rejects --schema', () async {
+      final data = File('${tmp.path}/e.ndjson')..writeAsStringSync('{}\n');
+      final schema = File('${tmp.path}/s.json')
+        ..writeAsStringSync('{"type":"object"}');
+      final (code, _, err) = await _runLam([
+        '--ndjson',
+        '--schema',
+        schema.path,
+        '.',
+        data.path,
+      ]);
+      expect(code, 1);
+      expect(err, contains('--schema'));
+    });
+  });
 }
