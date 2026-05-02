@@ -62,11 +62,13 @@ final class MustBeMap extends ShapeRequirement {
   String describe() => 'a map';
 }
 
-/// Requires a list at the root.
+/// Requires a list at the root, with no constraint on element shape.
 ///
-/// Permissive: accepts any [SList] regardless of element shape, plus
-/// [SAny]. Used where downstream code handles arbitrary element shapes,
-/// or where stricter checks are unnecessary.
+/// Accepts any [SList], plus [SAny] for unknown shapes. Retained as the
+/// generic list-root requirement so future format additions that tolerate
+/// any element shape can reuse it; CSV and TSV now use the stricter
+/// [MustBeFlatList] because their element shapes must serialize to a
+/// single text cell.
 final class MustBeList extends ShapeRequirement {
   /// Creates a [MustBeList] requirement.
   const MustBeList();

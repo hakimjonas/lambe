@@ -199,7 +199,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
       );
     } on QueryError catch (e) {
       return CallToolResult(
-        content: [TextContent(text: 'Error: $e')],
+        content: [TextContent(text: 'Error: ${e.message}')],
         isError: true,
       );
     } on FormatException catch (e) {
@@ -278,7 +278,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
       );
     } on QueryError catch (e) {
       return CallToolResult(
-        content: [TextContent(text: 'Error: $e')],
+        content: [TextContent(text: 'Error: ${e.message}')],
         isError: true,
       );
     }
@@ -336,7 +336,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
       }
     } on QueryError catch (e) {
       return CallToolResult(
-        content: [TextContent(text: 'Error: $e')],
+        content: [TextContent(text: 'Error: ${e.message}')],
         isError: true,
       );
     }
