@@ -114,6 +114,37 @@ void main() {
     });
   });
 
+  group('parseAst: empty input is actionable', () {
+    test('empty expression returns a one-liner, not a 30-token list', () {
+      try {
+        parseAst('');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, 'parse error: expression is empty');
+        expect(e.message, isNot(contains('expected')));
+        expect(e.message, isNot(contains('filter')));
+      }
+    });
+
+    test('whitespace-only expression treated as empty', () {
+      try {
+        parseAst('   ');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, 'parse error: expression is empty');
+      }
+    });
+
+    test('newline-only expression treated as empty', () {
+      try {
+        parseAst('\n\n');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, 'parse error: expression is empty');
+      }
+    });
+  });
+
   group('QueryError.message vs toString', () {
     test('message is prefix-free, toString adds QueryError:', () {
       try {

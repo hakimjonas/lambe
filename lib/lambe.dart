@@ -195,6 +195,10 @@ Object? _normalize(Object? value) {
 String _formatParseErrors(String expression, List<ParseError> errors) {
   if (errors.isEmpty) return 'parse error';
 
+  if (expression.trim().isEmpty) {
+    return 'parse error: expression is empty';
+  }
+
   final deepest = errors.reduce(
     (a, b) => b.location.offset > a.location.offset ? b : a,
   );
