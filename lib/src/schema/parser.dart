@@ -51,6 +51,9 @@ Shape _schema(JsonValue node, {required String path}) {
 
   final typeValue = node.fields['type'];
   if (typeValue == null) {
+    // Empty-object convention: {} accepts any value. Round-trips
+    // with [renderJsonSchema] on SAny.
+    if (node.fields.isEmpty) return const SAny();
     throw QueryError(
       'schema at $path: missing "type" keyword. A schema must declare '
       'a type such as "null", "boolean", "number", "string", "array", '

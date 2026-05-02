@@ -35,6 +35,7 @@ export 'src/output.dart'
 export 'src/schema/loader.dart'
     show loadSchemaFromFile, loadSchemaForData, mergeSchemaWithData;
 export 'src/schema/parser.dart' show parseJsonSchema;
+export 'src/schema/renderer.dart' show renderJsonSchema;
 export 'src/shape/shape.dart'
     show
         Shape,
