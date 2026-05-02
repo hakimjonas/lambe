@@ -60,7 +60,14 @@ export 'src/shape/check.dart'
         canWriteAs,
         canWriteShapeAs;
 export 'src/shape/explain.dart'
-    show ExplainReport, ExplainStage, ExplainWarning, explain, renderExplain;
+    show
+        ExplainReport,
+        ExplainStage,
+        ExplainWarning,
+        WarningKind,
+        explain,
+        renderExplain,
+        renderExplainJson;
 export 'src/shape/infer.dart' show inferShape;
 export 'src/shape/pipe_ops.dart'
     show

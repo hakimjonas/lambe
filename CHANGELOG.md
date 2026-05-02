@@ -4,6 +4,31 @@ In progress.
 
 ### Added
 
+- **Richer `--explain` output.** Three new categories of static
+  analysis, plus a structured output mode:
+  - **Runtime-rejection warnings** (always on): flags pipe ops whose
+    input shape is provably incompatible. `.config | filter(.x)` on a
+    known map produces "filter rejects map<...>; this will throw at
+    runtime." The existing pipe-op acceptance predicates in
+    `pipe_ops.dart` supply the check; `explain` surfaces it.
+  - **Trivial-result warnings** (opt-in via `--explain-trivial`):
+    flags `sort_by`, `group_by`, `map`, and `unique_by` whose
+    argument references a field provably absent on the element shape.
+    Often a typo but legitimate uses exist (stable no-op sort,
+    explicit null projection), hence opt-in.
+  - **Structured JSON output** (`--explain-json`): emits the full
+    explain report as JSON with snake_case keys
+    (`stages`, `warnings`, `writable_as`, `not_writable_as`,
+    `flatten_cells`). Warning kinds serialize as `empty_filter`,
+    `runtime_rejection`, `trivial_result`. For agent tooling and
+    build-pipeline integration.
+- **`ExplainWarning.kind`** (new field, [`WarningKind`] enum).
+  Classifier for filtering: CLI, JSON consumers, and future tooling
+  can select warning categories without parsing message strings. The
+  existing `emptyFilter` case carries the kind it always had.
+- **`renderExplainJson`** library function: produces the JSON report.
+- Both `--explain-trivial` and `--explain-json` imply `--explain`,
+  following the pattern of `--ndjson` being a non-combinable mode.
 - **`--ndjson` mode for line-delimited JSON input.** Each line of the
   source is parsed as an independent JSON document, the query is
   evaluated per line with no shared state, and one compact JSON

@@ -8,10 +8,13 @@
 /// pass [SAny] when no input data is available.
 library;
 
+import 'dart:convert';
+
 import '../ast.dart';
 import '../output_format.dart';
 import 'check.dart';
 import 'infer.dart';
+import 'pipe_ops.dart';
 import 'shape.dart';
 
 /// A single row in an explain trace.
@@ -33,15 +36,38 @@ final class ExplainStage {
   const ExplainStage({required this.source, required this.shape});
 }
 
-/// A static-analysis warning attached to an explain report.
+/// Category of static-analysis finding surfaced by [explain].
 ///
-/// Warnings call out constructs that evaluate to a trivial result
-/// regardless of input, such as a `filter` predicate whose inferred
-/// shape is not [SBool]. `filter` requires `== true`, so any non-bool
-/// predicate makes the filter always empty.
+/// - [emptyFilter]: a `filter`/`filter_values`/`filter_keys` predicate
+///   is provably non-boolean, so the filter always returns empty.
+/// - [runtimeRejection]: a pipe op's input shape is provably
+///   incompatible with the op (e.g. `filter` on an [SMap]); the query
+///   will throw at runtime if reached.
+/// - [trivialResult]: a parameterised op (`sort_by`, `group_by`,
+///   `map`, `unique_by`) references a field that is provably absent
+///   from the element shape. The op runs, but the field access yields
+///   null for every element, so the result is trivial (same order,
+///   same group, same null). Often a typo but legitimate uses exist,
+///   which is why this class is opt-in via [explain]'s
+///   `includeTrivial` parameter.
+enum WarningKind {
+  /// A filter predicate is provably non-boolean.
+  emptyFilter,
+
+  /// The op's input shape is provably incompatible; runtime throw.
+  runtimeRejection,
+
+  /// The op runs but the result is trivial (opt-in).
+  trivialResult,
+}
+
+/// A static-analysis finding attached to an explain report.
 ///
-/// [stageIndex] points into [ExplainReport.stages] so a renderer can
-/// highlight the offending stage.
+/// Each warning points at a specific [ExplainReport.stages] entry
+/// via [stageIndex] and carries a one-line human-readable [message]
+/// plus a [kind] classifier for filtering (CLI flag gates
+/// [WarningKind.trivialResult], for example, and a JSON consumer
+/// might want to surface only [WarningKind.runtimeRejection]).
 final class ExplainWarning {
   /// The stage this warning refers to, as an index into
   /// [ExplainReport.stages].
@@ -50,8 +76,15 @@ final class ExplainWarning {
   /// One-line human-readable message.
   final String message;
 
+  /// The warning category, for filtering and machine-readable output.
+  final WarningKind kind;
+
   /// Creates an [ExplainWarning].
-  const ExplainWarning({required this.stageIndex, required this.message});
+  const ExplainWarning({
+    required this.stageIndex,
+    required this.message,
+    required this.kind,
+  });
 }
 
 /// A full explain report for a query.
@@ -93,10 +126,20 @@ final class ExplainReport {
 /// caller (CLI `--flatten-cells`, REPL `:flatten-cells`, MCP
 /// `flatten_cells`). Default is [CellPolicy.refuse], matching the
 /// library's conservative default.
+///
+/// [includeTrivial] controls whether [WarningKind.trivialResult]
+/// findings are emitted. Defaults to `false`; trivial findings are
+/// often legitimate (e.g. `sort_by(.missing)` intentionally as a
+/// stable no-op sort) and can produce noise. The CLI enables them via
+/// `--explain-trivial`. [WarningKind.emptyFilter] and
+/// [WarningKind.runtimeRejection] findings are always emitted:
+/// empty-filter is almost always a bug, and runtime-rejection means
+/// the query will throw.
 ExplainReport explain(
   LamExpr expr,
   Shape inputShape, {
   CellPolicy flattenCells = CellPolicy.refuse,
+  bool includeTrivial = false,
 }) {
   final backbone = _flattenPipe(expr);
   final stages = <ExplainStage>[];
@@ -105,10 +148,42 @@ ExplainReport explain(
   var ctx = inputShape;
   for (var i = 0; i < backbone.length; i++) {
     final piece = backbone[i];
-    final warning = _analyzePredicate(piece, prev);
-    if (warning != null) {
-      warnings.add(ExplainWarning(stageIndex: i, message: warning));
+
+    final emptyFilter = _analyzePredicate(piece, prev);
+    if (emptyFilter != null) {
+      warnings.add(
+        ExplainWarning(
+          stageIndex: i,
+          message: emptyFilter,
+          kind: WarningKind.emptyFilter,
+        ),
+      );
     }
+
+    final rejection = _analyzeRejection(piece, prev);
+    if (rejection != null) {
+      warnings.add(
+        ExplainWarning(
+          stageIndex: i,
+          message: rejection,
+          kind: WarningKind.runtimeRejection,
+        ),
+      );
+    }
+
+    if (includeTrivial) {
+      final trivial = _analyzeTrivial(piece, prev);
+      if (trivial != null) {
+        warnings.add(
+          ExplainWarning(
+            stageIndex: i,
+            message: trivial,
+            kind: WarningKind.trivialResult,
+          ),
+        );
+      }
+    }
+
     ctx = inferShape(piece, ctx);
     stages.add(
       ExplainStage(
@@ -198,6 +273,54 @@ String? _predicateWarning(
   if (predShape is SBool || predShape is SAny) return null;
   return '$opName predicate has shape ${renderShape(predShape)}; '
       '$opName requires a boolean, so this will always be empty';
+}
+
+/// Detect input shapes that the pipe op will reject at runtime.
+///
+/// Each pipe op has an `accepts(Shape)` predicate in `pipe_ops.dart`.
+/// When the input shape is concrete (not [SAny]) and the predicate
+/// returns false, the query will throw at runtime. This warning
+/// surfaces that statically.
+///
+/// Returns `null` when [op] is not a pipe op (e.g. an object
+/// constructor), when the input shape is [SAny] (cannot prove), or
+/// when the op accepts the input shape.
+String? _analyzeRejection(LamExpr op, Shape inputShape) {
+  if (inputShape is SAny) return null;
+  final info = pipeOpInfoFor(op);
+  if (info == null) return null;
+  if (info.accepts(inputShape)) return null;
+  return '${info.name} rejects ${renderShape(inputShape)}; '
+      'this will throw at runtime';
+}
+
+/// Detect parameterised ops whose argument references a field
+/// provably absent from the element shape.
+///
+/// Applies to `sort_by`, `group_by`, `map`, `unique_by`. The op runs,
+/// but because the field access yields null for every element, the
+/// result is trivial (identity sort, single group, all-nulls map).
+/// Often a typo but legitimate uses exist (stable no-op sort for
+/// padding, explicit null projection), which is why this warning is
+/// opt-in via `explain(..., includeTrivial: true)`.
+///
+/// Returns `null` for ops not in this set, for inputs that are not
+/// lists (outer shape errors surface as runtime-rejection warnings
+/// instead), or when the argument references a field that may exist.
+String? _analyzeTrivial(LamExpr op, Shape inputShape) {
+  final (argExpr, opName) = switch (op) {
+    SortByOp(:final key) => (key, 'sort_by'),
+    GroupByOp(:final key) => (key, 'group_by'),
+    MapOp(:final transform) => (transform, 'map'),
+    UniqueByOp(:final key) => (key, 'unique_by'),
+    _ => (null, null),
+  };
+  if (argExpr == null || opName == null) return null;
+  if (inputShape is! SList) return null;
+  final missing = _missingFieldPath(argExpr, inputShape.element);
+  if (missing == null) return null;
+  return '$opName argument $missing does not exist on the element shape; '
+      'the result is trivial';
 }
 
 /// Render `.a.b.c` if [expr] is a [Field]/[Access] chain whose root
@@ -360,3 +483,43 @@ String renderExplain(ExplainReport report) {
   }
   return buf.toString();
 }
+
+/// Render an [ExplainReport] as a JSON string for programmatic
+/// consumers (agent tooling, build pipelines).
+///
+/// The payload is a map with keys `stages`, `warnings`, `writable_as`,
+/// `not_writable_as`, and `flatten_cells`. Each stage carries its
+/// `source` string and a `shape` rendered via [renderShape] (same text
+/// form as the human-readable renderer). Each warning carries
+/// `stage_index`, `kind` (one of `empty_filter`, `runtime_rejection`,
+/// `trivial_result`), and `message`.
+///
+/// Shapes are rendered as strings rather than structurally decomposed
+/// into nested maps. Agents that need structural access should use
+/// the `lambe_schema` MCP tool on the relevant input.
+String renderExplainJson(ExplainReport report) {
+  final payload = <String, Object?>{
+    'stages': [
+      for (final s in report.stages)
+        {'source': s.source, 'shape': renderShape(s.shape)},
+    ],
+    'warnings': [
+      for (final w in report.warnings)
+        {
+          'stage_index': w.stageIndex,
+          'kind': _warningKindName(w.kind),
+          'message': w.message,
+        },
+    ],
+    'writable_as': [for (final f in report.writableAs) f.name],
+    'not_writable_as': [for (final f in report.notWritableAs) f.name],
+    'flatten_cells': report.flattenCells.name,
+  };
+  return const JsonEncoder.withIndent('  ').convert(payload);
+}
+
+String _warningKindName(WarningKind k) => switch (k) {
+  WarningKind.emptyFilter => 'empty_filter',
+  WarningKind.runtimeRejection => 'runtime_rejection',
+  WarningKind.trivialResult => 'trivial_result',
+};

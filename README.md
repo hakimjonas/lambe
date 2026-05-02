@@ -93,6 +93,8 @@ Writable as: json, yaml, csv, tsv
 Not writable as: toml, hcl
 ```
 
+Explain flags provably-empty filters (`filter(.missing)` on a known shape) and runtime-rejection mismatches (`filter` on a non-list input) by default. Pass `--explain-trivial` to also flag `sort_by`/`group_by`/`map`/`unique_by` whose argument references a missing field (often a typo, sometimes intentional). For agent tooling and build pipelines, `--explain-json` emits the same information as a structured JSON document.
+
 ## Query Syntax
 
 Queries start with `.` (the current data) and chain operations with `|`:

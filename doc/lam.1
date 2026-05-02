@@ -40,7 +40,13 @@ CSV/TSV policy for non-scalar cells. \fBrefuse\fR (default) rejects list- or map
 Show the data structure with type names instead of values.
 .TP
 \fB--explain\fR
-Trace the shape of values flowing through each pipeline stage. Static analysis only; does not execute the query. Reports which output formats the final shape can be serialized as.
+Trace the shape of values flowing through each pipeline stage. Static analysis only; does not execute the query. Reports which output formats the final shape can be serialized as. Flags provably-empty filters and runtime-rejection mismatches.
+.TP
+\fB--explain-trivial\fR
+Include trivial-result warnings in the explain report. Flags parameterised ops (\fBsort_by\fR, \fBgroup_by\fR, \fBmap\fR, \fBunique_by\fR) whose argument references a field provably absent on the element shape. Implies \fB--explain\fR.
+.TP
+\fB--explain-json\fR
+Emit the explain report as a JSON document instead of the text table. Useful for agent tooling or build-pipeline integration. Implies \fB--explain\fR.
 .TP
 \fB--assert\fR
 Evaluate the expression and exit with code 0 if the result is true, 1 if false.

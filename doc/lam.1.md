@@ -48,7 +48,13 @@ If no file is given, reads from standard input.
 :   Show the data structure with type names instead of values.
 
 **--explain**
-:   Trace the shape of values flowing through each pipeline stage. Static analysis only; does not execute the query. Reports which output formats the final shape can be serialized as.
+:   Trace the shape of values flowing through each pipeline stage. Static analysis only; does not execute the query. Reports which output formats the final shape can be serialized as. Flags provably-empty filters and runtime-rejection mismatches.
+
+**--explain-trivial**
+:   Include trivial-result warnings in the explain report. Flags parameterised ops (**sort_by**, **group_by**, **map**, **unique_by**) whose argument references a field provably absent on the element shape. Implies **--explain**.
+
+**--explain-json**
+:   Emit the explain report as a JSON document instead of the text table. Useful for agent tooling or build-pipeline integration. Implies **--explain**.
 
 **--assert**
 :   Evaluate the expression and exit with code 0 if the result is true, 1 if false.

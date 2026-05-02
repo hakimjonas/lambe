@@ -333,4 +333,125 @@ void main() {
       },
     );
   });
+
+  group('--explain: richer warnings', () {
+    test('--explain flags runtime-rejection by default', () async {
+      final file = File('${tmp.path}/data.json')
+        ..writeAsStringSync('{"users":[]}');
+      final (code, out, _) = await _runLam([
+        '--explain',
+        '. | filter(.x)',
+        file.path,
+      ]);
+      expect(code, 0);
+      expect(out, contains('Warning'));
+      expect(out, contains('filter rejects'));
+      expect(out, contains('throw at runtime'));
+    });
+
+    test('--explain does NOT flag trivial-result by default', () async {
+      final file = File('${tmp.path}/data.json')
+        ..writeAsStringSync('[{"name":"a","age":30}]');
+      final (code, out, _) = await _runLam([
+        '--explain',
+        '. | sort_by(.missing)',
+        file.path,
+      ]);
+      expect(code, 0);
+      expect(out, isNot(contains('result is trivial')));
+    });
+
+    test('--explain-trivial enables trivial-result warnings', () async {
+      final file = File('${tmp.path}/data.json')
+        ..writeAsStringSync('[{"name":"a","age":30}]');
+      final (code, out, _) = await _runLam([
+        '--explain-trivial',
+        '. | sort_by(.missing)',
+        file.path,
+      ]);
+      expect(code, 0);
+      expect(out, contains('Warning'));
+      expect(out, contains('sort_by'));
+      expect(out, contains('trivial'));
+    });
+
+    test('--explain-trivial implies --explain', () async {
+      final file = File('${tmp.path}/data.json')
+        ..writeAsStringSync('[{"a":1}]');
+      final (code, out, _) = await _runLam([
+        '--explain-trivial',
+        '.',
+        file.path,
+      ]);
+      expect(code, 0);
+      expect(out, contains('Writable as:'));
+    });
+
+    test('--explain-json emits a JSON document', () async {
+      final file = File('${tmp.path}/data.json')
+        ..writeAsStringSync('{"name":"alice"}');
+      final (code, out, _) = await _runLam([
+        '--explain-json',
+        '.name',
+        file.path,
+      ]);
+      expect(code, 0);
+      final parsed = jsonDecode(out.trim()) as Map<String, Object?>;
+      expect(
+        parsed.keys,
+        containsAll([
+          'stages',
+          'warnings',
+          'writable_as',
+          'not_writable_as',
+          'flatten_cells',
+        ]),
+      );
+    });
+
+    test('--explain-json implies --explain', () async {
+      final file = File('${tmp.path}/data.json')..writeAsStringSync('{"a":1}');
+      final (code, out, _) = await _runLam(['--explain-json', '.a', file.path]);
+      expect(code, 0);
+      // Without --explain-json implying --explain, the query would
+      // execute and print `1`, not the structured report.
+      final parsed = jsonDecode(out.trim());
+      expect(parsed, isA<Map<String, Object?>>());
+      expect((parsed as Map<String, Object?>).keys, contains('stages'));
+    });
+
+    test(
+      '--explain-json --explain-trivial: structured warnings include trivial_result',
+      () async {
+        final file = File('${tmp.path}/data.json')
+          ..writeAsStringSync('[{"a":1}]');
+        final (code, out, _) = await _runLam([
+          '--explain-json',
+          '--explain-trivial',
+          '. | sort_by(.missing)',
+          file.path,
+        ]);
+        expect(code, 0);
+        final parsed = jsonDecode(out.trim()) as Map<String, Object?>;
+        final warnings = parsed['warnings'] as List;
+        expect(warnings, isNotEmpty);
+        final kinds = [
+          for (final w in warnings) (w as Map<String, Object?>)['kind'],
+        ];
+        expect(kinds, contains('trivial_result'));
+      },
+    );
+
+    test('--ndjson rejects --explain-json (via --explain guard)', () async {
+      final file = File('${tmp.path}/x.ndjson')..writeAsStringSync('{}\n');
+      final (code, _, err) = await _runLam([
+        '--ndjson',
+        '--explain-json',
+        '.',
+        file.path,
+      ]);
+      expect(code, 1);
+      expect(err, contains('--explain'));
+    });
+  });
 }

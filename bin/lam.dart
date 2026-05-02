@@ -54,6 +54,21 @@ void main(List<String> arguments) {
           negatable: false,
         )
         ..addFlag(
+          'explain-trivial',
+          help:
+              'Include trivial-result warnings in the explain report '
+              '(sort_by/group_by/map/unique_by on a missing field). '
+              'Implies --explain.',
+          negatable: false,
+        )
+        ..addFlag(
+          'explain-json',
+          help:
+              'Emit the explain report as JSON instead of the text table. '
+              'Implies --explain.',
+          negatable: false,
+        )
+        ..addFlag(
           'assert',
           help: 'Assert expression is true (exit 1 if false)',
           negatable: false,
@@ -92,7 +107,11 @@ void main(List<String> arguments) {
   final isSchemaMode = args.flag('schema');
   final isAssertMode = args.flag('assert');
   final isInteractive = args.flag('interactive');
-  final isExplainMode = args.flag('explain');
+  // --explain-trivial and --explain-json imply --explain, so enable
+  // explain mode if any of the three is set.
+  final explainTrivial = args.flag('explain-trivial');
+  final explainJson = args.flag('explain-json');
+  final isExplainMode = args.flag('explain') || explainTrivial || explainJson;
   var isNdjsonMode = args.flag('ndjson');
 
   final rest = args.rest;
@@ -240,8 +259,17 @@ void main(List<String> arguments) {
     }
     final inputShape = data == null ? const SAny() : shapeOf(data);
     final cellPolicy = CellPolicy.values.byName(args.option('flatten-cells')!);
-    final report = explain(ast, inputShape, flattenCells: cellPolicy);
-    stdout.write(renderExplain(report));
+    final report = explain(
+      ast,
+      inputShape,
+      flattenCells: cellPolicy,
+      includeTrivial: explainTrivial,
+    );
+    if (explainJson) {
+      stdout.writeln(renderExplainJson(report));
+    } else {
+      stdout.write(renderExplain(report));
+    }
     return;
   }
 
