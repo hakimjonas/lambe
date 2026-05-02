@@ -29,6 +29,8 @@ base class LambeServer extends MCPServer with ToolsSupport {
             'Use lambe_print_shape to understand data structure before '
             'querying (returns JSON Schema). '
             'Use lambe_check to validate data against a JSON Schema. '
+            'Use lambe_explain to trace a query statically before running '
+            'it (returns a structured JSON report of shape at each stage). '
             'Use lambe_assert to validate or check conditions on data.\n\n'
             'Common patterns:\n'
             '  .database.host                          — extract a value\n'
@@ -77,6 +79,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
     registerTool(_queryTool, _handleQuery);
     registerTool(_printShapeTool, _handlePrintShape);
     registerTool(_checkTool, _handleCheck);
+    registerTool(_explainTool, _handleExplain);
     registerTool(_assertTool, _handleAssert);
   }
 
@@ -349,6 +352,119 @@ base class LambeServer extends MCPServer with ToolsSupport {
             ).convert({'ok': false, 'error': e.message}),
           ),
         ],
+      );
+    }
+  }
+
+  final _explainTool = Tool(
+    name: 'lambe_explain',
+    description:
+        'Use this tool to trace the shape of values flowing through a '
+        'Lambe query without running it. Returns a structured JSON '
+        'report with one entry per pipe stage (source + inferred shape), '
+        'static-analysis warnings (empty filters, runtime rejections, '
+        'and optionally trivial results), and the output formats the '
+        'final shape can be serialized as. Use before `lambe_query` to '
+        'verify a query does what the user expects, or to find out why '
+        'an unfamiliar query would fail. Data is optional: without it, '
+        'the trace starts from "any" and still catches many classes of '
+        'mistake. A schema, when provided, sharpens the trace further.',
+    inputSchema: Schema.object(
+      properties: {
+        'expression': Schema.string(
+          description: 'The Lambe query expression to analyze.',
+        ),
+        'data': Schema.string(
+          description:
+              'Optional input data. When present, shape inference seeds '
+              'from shapeOf(data); without it, the initial shape is '
+              '"any".',
+        ),
+        'format': UntitledSingleSelectEnumSchema(
+          description: 'Input format for [data]. Auto-detected if omitted.',
+          values: ['json', 'yaml', 'toml', 'hcl', 'csv', 'tsv', 'markdown'],
+        ),
+        'schema': Schema.string(
+          description:
+              'Optional inline JSON Schema subset. When provided, the '
+              'schema is merged with shapeOf(data) (or used alone when '
+              'no data is given) to produce a more precise initial '
+              'shape — optional fields and empty-list elements from '
+              'the schema become visible in the trace.',
+        ),
+        'include_trivial': Schema.bool(
+          description:
+              'When true, includes trivial-result warnings '
+              '(sort_by/group_by/map/unique_by on a missing field). '
+              'Off by default because legitimate uses exist.',
+        ),
+        'flatten_cells': UntitledSingleSelectEnumSchema(
+          description:
+              'CSV/TSV cell policy for the writability summary. refuse '
+              '(default) requires scalar cells; json accepts any list '
+              'at the root.',
+          values: ['refuse', 'json'],
+        ),
+      },
+      required: ['expression'],
+    ),
+  );
+
+  FutureOr<CallToolResult> _handleExplain(CallToolRequest request) {
+    final args = request.arguments!;
+    final expression = args['expression'] as String;
+    final data = args['data'] as String?;
+    final formatStr = args['format'] as String?;
+    final schemaStr = args['schema'] as String?;
+    final includeTrivial = args['include_trivial'] as bool? ?? false;
+    final flattenCellsStr = args['flatten_cells'] as String?;
+
+    try {
+      final ast = parseAst(expression);
+      final flattenCells =
+          flattenCellsStr != null
+              ? CellPolicy.values.byName(flattenCellsStr)
+              : CellPolicy.refuse;
+
+      // Build the initial shape. Four cases:
+      //   - no data, no schema: SAny
+      //   - data only: shapeOf(data)
+      //   - schema only: parseJsonSchema(schema)
+      //   - both: mergeSchemaWithData(schema, shapeOf(data))
+      Shape inputShape;
+      if (data == null && schemaStr == null) {
+        inputShape = const SAny();
+      } else if (data == null) {
+        inputShape = parseJsonSchema(schemaStr!);
+      } else {
+        final format =
+            formatStr != null ? Format.values.byName(formatStr) : null;
+        final parsed = parseInput(data, format ?? sniffFormat(data));
+        final dataShape = shapeOf(parsed);
+        inputShape =
+            schemaStr != null
+                ? mergeSchemaWithData(parseJsonSchema(schemaStr), dataShape)
+                : dataShape;
+      }
+
+      final report = explain(
+        ast,
+        inputShape,
+        flattenCells: flattenCells,
+        includeTrivial: includeTrivial,
+      );
+      return CallToolResult(
+        content: [TextContent(text: renderExplainJson(report))],
+      );
+    } on QueryError catch (e) {
+      return CallToolResult(
+        content: [TextContent(text: 'Error: ${e.message}')],
+        isError: true,
+      );
+    } on FormatException catch (e) {
+      return CallToolResult(
+        content: [TextContent(text: 'Parse error: ${e.message}')],
+        isError: true,
       );
     }
   }
