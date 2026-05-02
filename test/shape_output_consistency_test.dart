@@ -1,0 +1,132 @@
+/// Pins `canWriteAs` to `formatOutput` ground truth.
+///
+/// For every representative value and every [OutputFormat], this test
+/// runs the writer and cross-checks the shape predicate: `Writable` must
+/// never result in [OutputShapeError], and `NotWritable` must always
+/// result in [OutputShapeError]. The `Writable` side is allowed to
+/// raise [QueryError] from the writer's defensive guard — that only
+/// fires when the shape language was too lossy to prove the mismatch
+/// (typically [SAny] buried inside a container). What is strictly
+/// forbidden is silent stringification, which is what the original
+/// CSV round-trip bug produced.
+///
+/// This test is the structural complement to
+/// `pipe_ops_consistency_test.dart`. The pipe-op matrix pins evaluator
+/// vs. spec; this one pins writer vs. shape check. Together they
+/// prevent a whole class of drift: a future contributor weakens one
+/// side without the other, and one of these matrices fails loudly.
+library;
+
+import 'package:lambe/lambe.dart';
+import 'package:test/test.dart';
+
+final _representatives = <String, Object?>{
+  'null': null,
+  'bool': true,
+  'number': 42,
+  'string': 'hello',
+  'empty list': <Object?>[],
+  'list of scalars': <Object?>[1, 2, 3],
+  'list of maps with scalar cells': <Object?>[
+    {'a': 1, 'b': 'x'},
+    {'a': 2, 'b': 'y'},
+  ],
+  'list of maps with a list-valued cell': <Object?>[
+    {
+      'key': 'items',
+      'value': <Object?>[1, 2, 3],
+    },
+  ],
+  'list of maps with a map-valued cell': <Object?>[
+    {
+      'key': 'first',
+      'value': <String, Object?>{'nested': 'x'},
+    },
+  ],
+  'list of lists of scalars': <Object?>[
+    <Object?>[1, 2, 3],
+    <Object?>[4, 5, 6],
+  ],
+  'empty map': <String, Object?>{},
+  'map of scalars': <String, Object?>{'a': 1, 'b': 'x'},
+  'map with a list field': <String, Object?>{
+    'deps': <Object?>[1, 2, 3],
+  },
+  'map with a nested map field': <String, Object?>{
+    'inner': <String, Object?>{'k': 'v'},
+  },
+};
+
+void main() {
+  group('canWriteAs agrees with formatOutput across the full matrix', () {
+    for (final entry in _representatives.entries) {
+      final label = entry.key;
+      final value = entry.value;
+      for (final fmt in OutputFormat.values) {
+        test('$label as ${fmt.name}', () {
+          final report = canWriteAs(value, fmt);
+          Object? thrown;
+          try {
+            formatOutput(value, fmt);
+          } catch (e) {
+            thrown = e;
+          }
+
+          switch (report) {
+            case Writable():
+              expect(
+                thrown,
+                isNot(isA<OutputShapeError>()),
+                reason:
+                    'canWriteAs said Writable for $label -> ${fmt.name}, '
+                    'but formatOutput raised OutputShapeError. The shape '
+                    'check and the writer disagree on whether this value '
+                    'is representable.',
+              );
+            case NotWritable():
+              expect(
+                thrown,
+                isA<OutputShapeError>(),
+                reason:
+                    'canWriteAs said NotWritable for $label -> '
+                    '${fmt.name}, but formatOutput did not raise '
+                    'OutputShapeError. A value the shape check rejects '
+                    'must not pass the writer silently.',
+              );
+          }
+        });
+      }
+    }
+  });
+
+  group('Writer never silently stringifies non-scalar CSV/TSV cells', () {
+    final offenders = <String, Object?>{
+      'list of maps with a list-valued cell': <Object?>[
+        {
+          'key': 'items',
+          'value': <Object?>[1, 2, 3],
+        },
+      ],
+      'list of maps with a map-valued cell': <Object?>[
+        {
+          'key': 'first',
+          'value': <String, Object?>{'nested': 'x'},
+        },
+      ],
+    };
+
+    for (final entry in offenders.entries) {
+      for (final fmt in [OutputFormat.csv, OutputFormat.tsv]) {
+        test('${entry.key} -> ${fmt.name} throws rather than stringifies', () {
+          expect(
+            () => formatOutput(entry.value, fmt),
+            throwsA(isA<QueryError>()),
+            reason:
+                'Writer must refuse rather than emit Dart toString() '
+                'garbage. This is the exact regression shipped in 0.7.1.',
+          );
+        });
+      }
+    }
+  });
+}
