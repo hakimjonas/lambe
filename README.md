@@ -187,6 +187,10 @@ lam --to csv '.users | map({name, age})' data.json
 lam --to toml '.config | as(toml)' data.json
 lam --to csv --flatten-cells json '.users' data.json   # encode nested cells as JSON
 
+# Line-delimited JSON (logs, event streams)
+lam --ndjson '.user.id' events.ndjson
+tail -f app.log | lam --ndjson '.level'
+
 # Query any format (auto-detected from extension)
 lam '. | filter(.status != "closed")' issues.csv
 lam '.resource | map(._labels)' main.tf

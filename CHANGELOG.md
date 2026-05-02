@@ -4,6 +4,17 @@ In progress.
 
 ### Added
 
+- **`--ndjson` mode for line-delimited JSON input.** Each line of the
+  source is parsed as an independent JSON document, the query is
+  evaluated per line with no shared state, and one compact JSON
+  result is emitted per line. Auto-enabled when the file extension is
+  `.ndjson` or `.jsonl`. Fail-fast on the first malformed or
+  unevaluable line; the line number is carried in the error. Covers
+  the "tail a log" use case without touching the core "AST over
+  in-memory tree" model. Available as a new top-level `queryNdjson`
+  function on the library (`Iterable<String> -> Iterable<Object?>`).
+  Cannot combine with `--interactive`, `--schema`, `--assert`, or
+  `--explain`; output is restricted to JSON.
 - **`--flatten-cells` option for CSV/TSV output.** Accepts `refuse`
   (default, 0.8.0 behavior) or `json`. Under `json`, non-scalar cells
   are encoded as JSON strings inline; the shape check widens

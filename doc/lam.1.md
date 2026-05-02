@@ -56,6 +56,9 @@ If no file is given, reads from standard input.
 **-i**, **--interactive**
 :   Start the interactive REPL. Requires a file argument.
 
+**--ndjson**
+:   Treat input as ndjson or jsonl: one JSON document per line, evaluated independently with no state shared between lines. Emits one compact JSON result per line on stdout. Auto-enabled when the file extension is **.ndjson** or **.jsonl**. Cannot combine with **--interactive**, **--schema**, **--assert**, or **--explain**. Output must be JSON (**--to json** or default); other **--to** values are refused.
+
 **-h**, **--help**
 :   Show usage information.
 
@@ -267,6 +270,11 @@ Pipe from stdin:
 Interactive exploration:
 
     lam -i data.json
+
+Line-delimited JSON (logs, event streams):
+
+    lam --ndjson '.level' events.ndjson
+    tail -f app.log | lam --ndjson '.user.id'
 
 # SEE ALSO
 

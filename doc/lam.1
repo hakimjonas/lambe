@@ -48,6 +48,9 @@ Evaluate the expression and exit with code 0 if the result is true, 1 if false.
 \fB-i\fR, \fB--interactive\fR
 Start the interactive REPL. Requires a file argument.
 .TP
+\fB--ndjson\fR
+Treat input as ndjson or jsonl: one JSON document per line, evaluated independently with no state shared between lines. Emits one compact JSON result per line on stdout. Auto-enabled when the file extension is \fB.ndjson\fR or \fB.jsonl\fR. Cannot combine with \fB--interactive\fR, \fB--schema\fR, \fB--assert\fR, or \fB--explain\fR. Output must be JSON (\fB--to json\fR or default); other \fB--to\fR values are refused.
+.TP
 \fB-h\fR, \fB--help\fR
 Show usage information.
 .SH QUERY LANGUAGE
@@ -261,6 +264,13 @@ Interactive exploration:
 .PP
 .nf
 lam -i data.json
+.fi
+.PP
+Line-delimited JSON (logs, event streams):
+.PP
+.nf
+lam --ndjson '.level' events.ndjson
+tail -f app.log | lam --ndjson '.user.id'
 .fi
 .SH SEE ALSO
 .PP

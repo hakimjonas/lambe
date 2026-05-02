@@ -144,6 +144,44 @@ Object? queryString(String expression, String input, {Format? format}) {
 Object? queryJson(String expression, String json) =>
     queryString(expression, json, format: Format.json);
 
+/// Evaluate [ast] against each non-empty line of [lines] independently
+/// as a JSON document.
+///
+/// Each line is parsed as JSON, normalized, and evaluated in isolation.
+/// No state is shared between lines; each line sees a fresh context.
+/// Empty or whitespace-only lines are skipped silently.
+///
+/// A parse or evaluation error on any line throws [QueryError] with a
+/// `line N:` prefix and stops iteration; subsequent lines are not
+/// evaluated. This is the same fail-fast semantics `lam` uses at the
+/// CLI. Callers that want per-line error isolation should iterate
+/// their own lines and call [evaluateAst] per line with their own
+/// exception handling.
+///
+/// Lazy: returns an [Iterable] that evaluates on demand. Safe to use
+/// over large inputs as long as individual lines fit in memory.
+Iterable<Object?> queryNdjson(Iterable<String> lines, LamExpr ast) sync* {
+  var lineNum = 0;
+  for (final raw in lines) {
+    lineNum++;
+    final line = raw.trim();
+    if (line.isEmpty) continue;
+    final Object? data;
+    try {
+      data = input_.parseInput(line, Format.json);
+    } on QueryError catch (e) {
+      throw QueryError('line $lineNum: ${e.message}');
+    }
+    try {
+      yield eval_.evaluate(ast, data);
+    } on EvalException catch (e) {
+      throw QueryError('line $lineNum: ${e.message}');
+    } on QueryError catch (e) {
+      throw QueryError('line $lineNum: ${e.message}');
+    }
+  }
+}
+
 /// Parse a query expression string into a [LamExpr] AST.
 ///
 /// Returns a Rumil [Result] which is [Success], [Partial], or [Failure].

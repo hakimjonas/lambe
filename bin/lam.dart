@@ -64,6 +64,13 @@ void main(List<String> arguments) {
           help: 'Interactive REPL mode',
           negatable: false,
         )
+        ..addFlag(
+          'ndjson',
+          help:
+              'Treat input as ndjson/jsonl: one JSON document per line, '
+              'evaluated independently. One result per line on stdout.',
+          negatable: false,
+        )
         ..addFlag('help', abbr: 'h', negatable: false, help: 'Show usage');
 
   final ArgResults args;
@@ -86,6 +93,7 @@ void main(List<String> arguments) {
   final isAssertMode = args.flag('assert');
   final isInteractive = args.flag('interactive');
   final isExplainMode = args.flag('explain');
+  var isNdjsonMode = args.flag('ndjson');
 
   final rest = args.rest;
   if (rest.isEmpty && !isSchemaMode && !isInteractive) {
@@ -105,6 +113,45 @@ void main(List<String> arguments) {
   final expression = rest.isNotEmpty ? rest[0] : '.';
   final fileArgIndex =
       (isSchemaMode || isInteractive) && rest.length == 1 ? 0 : 1;
+
+  // Auto-enable ndjson mode when the file extension suggests it, even
+  // without an explicit --ndjson flag. Consistent with the existing
+  // format auto-detection convention for .csv, .yaml, etc.
+  if (!isNdjsonMode && rest.length > fileArgIndex) {
+    final fpath = rest[fileArgIndex].toLowerCase();
+    if (fpath.endsWith('.ndjson') || fpath.endsWith('.jsonl')) {
+      isNdjsonMode = true;
+    }
+  }
+
+  if (isNdjsonMode) {
+    if (isInteractive) {
+      stderr.writeln('Error: --ndjson cannot be combined with --interactive.');
+      exit(1);
+    }
+    if (isSchemaMode) {
+      stderr.writeln('Error: --ndjson cannot be combined with --schema.');
+      exit(1);
+    }
+    if (isAssertMode) {
+      stderr.writeln('Error: --ndjson cannot be combined with --assert.');
+      exit(1);
+    }
+    if (isExplainMode) {
+      stderr.writeln('Error: --ndjson cannot be combined with --explain.');
+      exit(1);
+    }
+    final toArg = args.option('to');
+    if (toArg != null && toArg != 'json') {
+      stderr.writeln(
+        'Error: --ndjson emits one compact JSON document per line; '
+        '--to $toArg is not supported.',
+      );
+      exit(1);
+    }
+    _runNdjson(argParser, expression, rest, fileArgIndex);
+    return;
+  }
   String? input;
   String? filePath;
 
@@ -344,6 +391,69 @@ Remediation? _promptForRemediation(OutputShapeError err) {
     return null;
   }
   return err.suggestions[pick - 1];
+}
+
+/// Handle `--ndjson` mode: evaluate the query against each non-empty
+/// line of input independently, emit one compact JSON document per
+/// line.
+///
+/// File input is read eagerly into a list of lines (sufficient for
+/// typical ndjson files). Stdin is read line by line, so `tail -f |
+/// lam --ndjson` works as expected. On the first line that fails to
+/// parse or evaluate, writes the error with line number to stderr and
+/// exits 1; subsequent lines are not evaluated. Fail-fast matches the
+/// single-document CLI's semantics and jq's default behavior.
+void _runNdjson(
+  ArgParser argParser,
+  String expression,
+  List<String> rest,
+  int fileArgIndex,
+) {
+  final LamExpr queryAst;
+  try {
+    queryAst = parseAst(expression);
+  } on QueryError catch (e) {
+    stderr.writeln('Error: ${e.message}');
+    exit(1);
+  }
+
+  Iterable<String> lines;
+  if (rest.length > fileArgIndex) {
+    final filePath = rest[fileArgIndex];
+    final file = File(filePath);
+    if (!file.existsSync()) {
+      stderr.writeln('Error: file not found: $filePath');
+      exit(1);
+    }
+    lines = file.readAsLinesSync();
+  } else if (stdin.hasTerminal) {
+    stderr.writeln('Error: --ndjson needs a file argument or piped stdin.');
+    stderr.writeln();
+    _usage(argParser);
+    exit(1);
+  } else {
+    // Lazy stdin reader so `tail -f app.log | lam --ndjson ...` emits
+    // each line's result as soon as it arrives, not after EOF. The
+    // iterable completes when readLineSync returns null (pipe closed).
+    lines = _stdinLines();
+  }
+
+  try {
+    for (final result in queryNdjson(lines, queryAst)) {
+      stdout.writeln(const JsonEncoder().convert(result));
+    }
+  } on QueryError catch (e) {
+    stderr.writeln('Error: ${e.message}');
+    exit(1);
+  }
+}
+
+/// Lazy iterable over stdin lines, terminating at EOF.
+Iterable<String> _stdinLines() sync* {
+  String? line;
+  while ((line = stdin.readLineSync()) != null) {
+    yield line!;
+  }
 }
 
 /// Print usage information to stderr.
