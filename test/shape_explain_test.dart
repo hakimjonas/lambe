@@ -267,6 +267,13 @@ void main() {
       expect(text, contains('filter(.missing)'));
       expect(text, contains('does not exist'));
       expect(text, contains('Writable as:'));
+
+      final warningIdx = text.indexOf('Warning:');
+      final writableIdx = text.indexOf('Writable as:');
+      final stageIdx = text.indexOf(': list<');
+      expect(stageIdx, isNonNegative);
+      expect(stageIdx, lessThan(warningIdx));
+      expect(warningIdx, lessThan(writableIdx));
     });
 
     test('no warnings: renderExplain contains no Warning: line', () {

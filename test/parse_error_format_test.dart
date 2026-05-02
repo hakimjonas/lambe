@@ -100,6 +100,18 @@ void main() {
         expect(e.message, contains(' 11 | | filtre(.)'));
       }
     });
+
+    test('Windows-style \\r\\n line endings split correctly', () {
+      try {
+        parseAst('.users\r\n| filtre(.age)');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('line 2, column 1'));
+        expect(e.message, contains('  1 | .users'));
+        expect(e.message, contains('  2 | | filtre(.age)'));
+        expect(e.message, isNot(contains('\r')));
+      }
+    });
   });
 
   group('QueryError.message vs toString', () {
