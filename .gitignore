@@ -23,3 +23,6 @@ pubspec_overrides.yaml
 # Benchmark artifacts (AOT binary + per-run JSON output)
 tool/bench/*.aot
 bench-results-*.json
+
+# Session handover notes (internal workflow, not code)
+HANDOVER_*.md
