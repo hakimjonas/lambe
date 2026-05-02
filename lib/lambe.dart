@@ -199,6 +199,7 @@ String _formatParseErrors(String expression, List<ParseError> errors) {
     (a, b) => b.location.offset > a.location.offset ? b : a,
   );
   final offset = deepest.location.offset;
+  final line = deepest.location.line;
   final col = deepest.location.column;
 
   final expected = <String>{};
@@ -211,14 +212,14 @@ String _formatParseErrors(String expression, List<ParseError> errors) {
         expected.add(eoi.expected);
       case final CustomError c:
         if (c.message == 'Expected end of input') {
-          return 'parse error at column $col: '
-              '${_describeLeftover(expression, offset)}\n'
-              '  $expression\n'
-              '  ${' ' * (col - 1)}^';
+          return _renderParseError(
+            expression,
+            line,
+            col,
+            _describeLeftover(expression, offset),
+          );
         }
-        return 'parse error at column $col: ${c.message}\n'
-            '  $expression\n'
-            '  ${' ' * (col - 1)}^';
+        return _renderParseError(expression, line, col, c.message);
     }
   }
 
@@ -226,10 +227,47 @@ String _formatParseErrors(String expression, List<ParseError> errors) {
       expected.isEmpty
           ? 'unexpected input'
           : 'expected ${_joinExpected(expected)}';
+  return _renderParseError(expression, line, col, what);
+}
 
-  return 'parse error at column $col: $what\n'
-      '  $expression\n'
-      '  ${' ' * (col - 1)}^';
+/// Render a parse-error message with a line-aware source excerpt and
+/// caret.
+///
+/// Single-line expressions produce a jq-style three-line block: the
+/// `parse error` header, the source indented by two spaces, and a
+/// caret under column [col]. Multi-line expressions extend this with
+/// the previous line (if any) and the next line (if any), to give a
+/// reader enough context to locate the error without reprinting the
+/// full query. Line numbers are prefixed to every context line so the
+/// offending line stays unambiguous.
+String _renderParseError(String expression, int line, int col, String message) {
+  final lines = _splitLines(expression);
+  final idx = line - 1;
+  final gutterWidth = '${lines.length}'.length;
+  final buf = StringBuffer('parse error at line $line, column $col: $message');
+
+  String prefix(int lineNo) => '  ${'$lineNo'.padLeft(gutterWidth)} | ';
+
+  if (idx - 1 >= 0) {
+    buf.write('\n${prefix(line - 1)}${lines[idx - 1]}');
+  }
+  buf.write('\n${prefix(line)}${lines[idx]}');
+  buf.write('\n${' ' * prefix(line).length}${' ' * (col - 1)}^');
+  if (idx + 1 < lines.length) {
+    buf.write('\n${prefix(line + 1)}${lines[idx + 1]}');
+  }
+  return buf.toString();
+}
+
+/// Split [source] into lines without trailing newline characters.
+///
+/// Handles `\n`, `\r\n`, and a trailing newline. Returns `['']` for an
+/// empty source so callers can safely index.
+List<String> _splitLines(String source) {
+  if (source.isEmpty) return const [''];
+  final lines = source.split(RegExp(r'\r?\n'));
+  if (lines.isNotEmpty && lines.last.isEmpty) lines.removeLast();
+  return lines.isEmpty ? const [''] : lines;
 }
 
 String _describeLeftover(String expression, int offset) {
