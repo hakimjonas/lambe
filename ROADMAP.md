@@ -30,22 +30,26 @@ UX polish on top of 0.7.0. Remediation suggestions now surface the intent-level 
 
 No breaking changes.
 
-## 0.8.0 — next
+## 0.8.0 — shipped
 
-Extend the shape story to sub-expressions and polish parser errors.
+Closes an entire class of silent-wrong-output bugs in the CSV/TSV writer, extends `--explain` with static warnings for provably-empty filters, and rewrites one-shot parser errors as jq-style excerpts with line-aware caret + context. Unifying theme: "make wrong queries visibly wrong" — every behavior change swapped a silent failure for a loud one.
 
-- **Inner-expression shape validation.** Today `.users | filter(.missing)` completes fine at the outer level, but `.missing` against the element shape is never flagged — the query ships a silently always-null predicate. With the shape machinery in place, the completer and `--explain` can report field access against a known-closed map shape as a definite miss, and inner-expression completion against parameterized ops can offer only fields that exist on the element shape. Same infra, more wiring.
-- **Parser error recovery / multi-line diagnostics.** Rumil's `.recover()` already enables tolerant parsing for the REPL. One-shot CLI queries still get a single point-error. jq's multi-line traceback format (source line + caret + message) is a better experience; the deepest-error selection logic in `lib/lambe.dart` is close but needs better context and position tracking for nested contexts.
+- **Element-level CSV/TSV shape via `MustBeFlatList`.** Non-scalar cells (list- or map-valued) are now rejected with `OutputShapeError` instead of silently stringified through Dart's default `toString()`. Defensive `_scalarCell` guard in the writer catches cases where `SAny` lets the check pass (heterogeneous lists, sampling misses).
+- **Union headers for heterogeneous list-of-maps.** `[{a:1}, {b:2}]` used to lose the `b` column silently. Writer now unions keys across all rows in first-seen order; missing keys render as empty cells. Matches pandas / `csv.DictWriter` semantics.
+- **Writer–shape-check consistency matrix.** 100 cases pin `canWriteAs(v, fmt) == Writable ⇒ formatOutput does not throw OutputShapeError` and vice versa. Structural complement to `pipe_ops_consistency_test.dart`; writer drift fails loudly.
+- **`--explain` warnings for provably-empty filters.** `filter`, `filter_values`, and `filter_keys` all require `== true`. Two patterns make the op provably empty: a field path that doesn't exist on the element/value/key shape, and a predicate whose inferred shape is any concrete non-boolean scalar. `SBool` and `SAny` never warn.
+- **Line-aware parse diagnostics.** `line:column` header, source excerpt with line-number gutter, caret under the offending column, ±1 line of context for multi-line queries. Empty-expression produces a one-liner instead of a 30-token expected-list.
 
-Both extend existing work. Natural bundle.
+One breaking change: pipelines that relied on silent CSV garbage output now raise `OutputShapeError`. See CHANGELOG.
 
 ## 0.9.0 — direction, not commitment
 
 The rule: sharpen Lambë within its scope. Don't widen. Any of the items below might land in 0.9.0, several, or none — this section describes the space, not a plan. Actual scope is decided by what users ask for and what proves worth the effort.
 
-- **Schema-typed queries.** Users declare a schema for a CSV or JSON input once, and the shape tree carries that typing forever through the pipeline instead of re-inferring from sampled values. A `lam --schema file.schema query.lam data.csv` workflow that jq doesn't offer natively. Would compound on the 0.7.0 / 0.8.0 shape work.
-- **Richer `--explain` output.** Per-stage warnings when inference loses precision, structured machine-readable mode for LLM tools, inline remediation hints.
+- **Schema-typed queries.** Users declare a schema for a CSV or JSON input once, and the shape tree carries that typing forever through the pipeline instead of re-inferring from sampled values. A `lam --schema file.schema query.lam data.csv` workflow that jq doesn't offer natively. Would compound on the 0.7.0 / 0.8.0 shape work and is the most identity-defining candidate in the pool — prior shape releases were effectively prep work.
+- **Richer `--explain` output.** More warning categories than the single "provably-empty filter" class 0.8.0 ships: runtime-failure warnings (`filter` on a non-list input throws; flag statically), opt-in trivial-result warnings for `sort_by`/`group_by`/`map` on missing fields (legitimate uses exist, so opt-in), and a structured machine-readable mode for LLM tools.
 - **ndjson at the CLI layer.** Line-delimited JSON: one document per line, evaluated independently, no shared state between lines. Covers the "tail a log" use case without requiring streaming in the core. Small CLI-layer feature (not a core change).
+- **CSV cell-flattening policy.** A `--flatten-cells json` flag that encodes nested structure as a JSON string in a CSV cell rather than refusing. Explicit opt-in policy on the writer side — never silent garbage. Follows from 0.8.0's refusal-by-default stance.
 
 ## Explicit non-goals
 
