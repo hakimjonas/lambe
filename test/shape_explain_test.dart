@@ -282,4 +282,56 @@ void main() {
       expect(text, isNot(contains('Warning:')));
     });
   });
+
+  group('explain: CellPolicy threads through to writability', () {
+    // A list of maps whose cells hold a list. Under refuse (default),
+    // csv/tsv are NOT writable; under json, they ARE.
+    const nonFlatShape = SList(
+      SMap({'name': SString(), 'tags': SList(SString())}),
+    );
+
+    test('default (refuse) rejects csv/tsv for non-flat list-of-maps', () {
+      final report = explain(_parse('.'), nonFlatShape);
+      expect(report.writableAs, isNot(contains(OutputFormat.csv)));
+      expect(report.writableAs, isNot(contains(OutputFormat.tsv)));
+      expect(report.notWritableAs, contains(OutputFormat.csv));
+      expect(report.notWritableAs, contains(OutputFormat.tsv));
+    });
+
+    test('json policy accepts csv/tsv for the same shape', () {
+      final report = explain(
+        _parse('.'),
+        nonFlatShape,
+        flattenCells: CellPolicy.json,
+      );
+      expect(report.writableAs, contains(OutputFormat.csv));
+      expect(report.writableAs, contains(OutputFormat.tsv));
+      expect(report.notWritableAs, isNot(contains(OutputFormat.csv)));
+      expect(report.notWritableAs, isNot(contains(OutputFormat.tsv)));
+    });
+
+    test('report.flattenCells round-trips the requested policy', () {
+      final refuse = explain(_parse('.'), nonFlatShape);
+      expect(refuse.flattenCells, CellPolicy.refuse);
+
+      final json = explain(
+        _parse('.'),
+        nonFlatShape,
+        flattenCells: CellPolicy.json,
+      );
+      expect(json.flattenCells, CellPolicy.json);
+    });
+
+    test('renderExplain emits Cell policy footer only when non-default', () {
+      final refuse = explain(_parse('.'), nonFlatShape);
+      expect(renderExplain(refuse), isNot(contains('Cell policy:')));
+
+      final json = explain(
+        _parse('.'),
+        nonFlatShape,
+        flattenCells: CellPolicy.json,
+      );
+      expect(renderExplain(json), contains('Cell policy: json'));
+    });
+  });
 }

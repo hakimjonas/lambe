@@ -57,6 +57,10 @@ The same flow applies to CSV and TSV (which require a list of records at the roo
 
 Suggestions surface the intent-level `as(<format>)` form. The explanation names the raw fragment (`{value: .}`, `to_entries`, etc.) the bridge composes, so `--explain` and manual composition stay available to anyone who wants them.
 
+### Non-scalar cells in CSV/TSV
+
+By default, nested lists or maps in CSV/TSV cells are rejected — there is no faithful delimited rendering for them. When you need a quick export and lossy is acceptable, pass `--flatten-cells json` (CLI) or `:flatten-cells json` (REPL) to encode them as JSON strings inline. Round-tripping the resulting file back into Lambë does not recover the original structure; prefer reshaping the data query-side when fidelity matters.
+
 ### `as(fmt)` — bridging in the query language
 
 When the shape of the target format is known up front, `as(fmt)` performs the bridge inside the query. The combinator is a no-op when the input already satisfies the target, applies a single curated bridge when one exists, and lists the candidates when more than one could apply.
@@ -181,6 +185,7 @@ lam --assert '.replicas >= 2' deployment.yaml
 lam --to yaml '.config' data.json
 lam --to csv '.users | map({name, age})' data.json
 lam --to toml '.config | as(toml)' data.json
+lam --to csv --flatten-cells json '.users' data.json   # encode nested cells as JSON
 
 # Query any format (auto-detected from extension)
 lam '. | filter(.status != "closed")' issues.csv

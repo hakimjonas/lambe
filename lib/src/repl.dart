@@ -31,6 +31,7 @@ void runRepl(Object? data, {OutputFormat format = OutputFormat.json}) {
   var outputFormat = format;
   var pretty = true;
   var raw = false;
+  var flattenCells = CellPolicy.refuse;
 
   final history = _loadHistory();
   final rl = ReadLine(
@@ -81,6 +82,19 @@ void runRepl(Object? data, {OutputFormat format = OutputFormat.json}) {
           pretty = !pretty;
           stdout.writeln('Pretty-printing: ${pretty ? "on" : "off"}');
 
+        case 'flatten-cells' when arg != null:
+          final policy =
+              CellPolicy.values.where((p) => p.name == arg).firstOrNull;
+          if (policy != null) {
+            flattenCells = policy;
+            stdout.writeln('Flatten cells: ${policy.name}');
+          } else {
+            stderr.writeln('Usage: :flatten-cells <refuse|json>');
+          }
+
+        case 'flatten-cells':
+          stderr.writeln('Usage: :flatten-cells <refuse|json>');
+
         case 'load' when arg != null:
           final loaded = _loadFile(arg);
           if (loaded != null) {
@@ -123,6 +137,7 @@ void runRepl(Object? data, {OutputFormat format = OutputFormat.json}) {
           outputFormat,
           pretty: pretty,
           raw: raw,
+          flattenCells: flattenCells,
         );
         if (elapsed >= 100) {
           stdout.writeln('[${elapsed}ms] $output');
@@ -138,6 +153,7 @@ void runRepl(Object? data, {OutputFormat format = OutputFormat.json}) {
           outputFormat: outputFormat,
           pretty: pretty,
           raw: raw,
+          flattenCells: flattenCells,
         );
       }
     } on QueryError catch (e) {
@@ -161,6 +177,7 @@ void _handleShapeError(
   required OutputFormat outputFormat,
   required bool pretty,
   required bool raw,
+  required CellPolicy flattenCells,
 }) {
   stderr.writeln('Error: ${e.message}');
   if (e.suggestions.isEmpty) return;
@@ -183,7 +200,13 @@ void _handleShapeError(
   try {
     final result = evaluateAst(bridged, data);
     stdout.writeln(
-      _formatResult(result, outputFormat, pretty: pretty, raw: raw),
+      _formatResult(
+        result,
+        outputFormat,
+        pretty: pretty,
+        raw: raw,
+        flattenCells: flattenCells,
+      ),
     );
   } on QueryError catch (e2) {
     stderr.writeln('Error applying "${choice.display}": ${e2.message}');
@@ -272,21 +295,32 @@ String _formatResult(
   OutputFormat format, {
   required bool pretty,
   required bool raw,
+  required CellPolicy flattenCells,
 }) {
   if (raw && result is String) return result;
 
   if (result is List<Object?> && result.length > 10) {
     final truncated = result.sublist(0, 10);
     final rest = result.length - 10;
-    return '${_encode(truncated, format, pretty: pretty)}\n... and $rest more';
+    return '${_encode(truncated, format, pretty: pretty, flattenCells: flattenCells)}\n... and $rest more';
   }
 
-  return _encode(result, format, pretty: pretty);
+  return _encode(result, format, pretty: pretty, flattenCells: flattenCells);
 }
 
-String _encode(Object? value, OutputFormat format, {required bool pretty}) {
+String _encode(
+  Object? value,
+  OutputFormat format, {
+  required bool pretty,
+  required CellPolicy flattenCells,
+}) {
   if (format != OutputFormat.json) {
-    return formatOutput(value, format, pretty: pretty);
+    return formatOutput(
+      value,
+      format,
+      pretty: pretty,
+      flattenCells: flattenCells,
+    );
   }
   if (stdout.hasTerminal && pretty) {
     return _colorJson(value, 0);
@@ -379,16 +413,19 @@ Object? _loadFile(String path) {
 
 void _printHelp() {
   stdout.writeln('Commands:');
-  stdout.writeln('  :schema         Show data structure');
+  stdout.writeln('  :schema                  Show data structure');
   stdout.writeln(
-    '  :to <format>    Set output format (json, yaml, toml, csv, tsv, hcl)',
+    '  :to <format>             Set output format (json, yaml, toml, csv, tsv, hcl)',
   );
-  stdout.writeln('  :raw            Toggle raw string output');
-  stdout.writeln('  :pretty         Toggle pretty-printing');
-  stdout.writeln('  :load <file>    Load a different data file');
-  stdout.writeln('  :history        Show query history');
-  stdout.writeln('  :help           Show this help');
-  stdout.writeln('  :quit, :q       Exit');
+  stdout.writeln('  :raw                     Toggle raw string output');
+  stdout.writeln('  :pretty                  Toggle pretty-printing');
+  stdout.writeln(
+    '  :flatten-cells <policy>  CSV/TSV cell policy (refuse, json)',
+  );
+  stdout.writeln('  :load <file>             Load a different data file');
+  stdout.writeln('  :history                 Show query history');
+  stdout.writeln('  :help                    Show this help');
+  stdout.writeln('  :quit, :q                Exit');
   stdout.writeln();
   stdout.writeln('Shortcuts: Tab for completion, Up/Down for history');
 }

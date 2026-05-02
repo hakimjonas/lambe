@@ -47,6 +47,10 @@ class OutputShapeError extends QueryError {
   /// Query-fragment suggestions that would produce a compatible shape.
   List<Remediation> get suggestions => report.suggestions;
 
+  /// Environmental hints (CLI flags, REPL settings, MCP parameters)
+  /// that would resolve the mismatch without altering the query.
+  List<String> get hints => report.hints;
+
   static String _render(NotWritable r) {
     final buf = StringBuffer();
     buf.write(r.format.name.toUpperCase());
@@ -63,6 +67,10 @@ class OutputShapeError extends QueryError {
         buf.write('    # ');
         buf.write(s.explanation);
       }
+    }
+    for (final h in r.hints) {
+      buf.write('\n');
+      buf.write(h);
     }
     return buf.toString();
   }

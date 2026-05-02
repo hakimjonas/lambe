@@ -29,7 +29,8 @@ export 'src/ast.dart';
 export 'src/errors.dart';
 export 'src/input.dart'
     show Format, detectFormat, sniffFormat, parseInput, mdToNative;
-export 'src/output.dart' show OutputFormat, formatOutput, inferSchema;
+export 'src/output.dart'
+    show OutputFormat, CellPolicy, formatOutput, inferSchema;
 export 'src/shape/shape.dart'
     show
         Shape,

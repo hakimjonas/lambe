@@ -129,6 +129,66 @@ void main() {
     });
   });
 
+  group('NotWritable.hints surface the --flatten-cells escape hatch', () {
+    test('csv refuse + non-flat list-of-maps: hint points at the flag', () {
+      final v = <Object?>[
+        {
+          'k': <Object?>[1, 2],
+        },
+      ];
+      final report = canWriteAs(v, OutputFormat.csv) as NotWritable;
+      expect(report.hints, isNotEmpty);
+      expect(report.hints.first, contains('--flatten-cells'));
+      expect(report.hints.first, contains(':flatten-cells'));
+      expect(report.hints.first, contains('flatten_cells'));
+    });
+
+    test('csv under json policy accepts the value, no hint to produce', () {
+      final v = <Object?>[
+        {
+          'k': <Object?>[1, 2],
+        },
+      ];
+      final report = canWriteAs(
+        v,
+        OutputFormat.csv,
+        flattenCells: CellPolicy.json,
+      );
+      expect(report, isA<Writable>());
+    });
+
+    test('toml mismatch carries no --flatten-cells hint', () {
+      final report =
+          canWriteAs(<Object?>[1, 2, 3], OutputFormat.toml) as NotWritable;
+      expect(report.hints, isEmpty);
+    });
+
+    test(
+      'csv refuse + map-rooted rejection: no hint (flag would not help)',
+      () {
+        final report =
+            canWriteAs(<String, Object?>{'a': 1}, OutputFormat.csv)
+                as NotWritable;
+        expect(report.hints, isEmpty);
+      },
+    );
+
+    test('OutputShapeError.message includes the hint text', () {
+      final v = <Object?>[
+        {
+          'k': <Object?>[1, 2],
+        },
+      ];
+      try {
+        formatOutput(v, OutputFormat.csv);
+        fail('expected OutputShapeError');
+      } on OutputShapeError catch (e) {
+        expect(e.message, contains('--flatten-cells'));
+        expect(e.hints, isNotEmpty);
+      }
+    });
+  });
+
   group('Defensive writer guard uses descriptive type names', () {
     test('list cell fires _scalarCell with "list" in the message', () {
       final heteroRows = <Object?>[
@@ -143,6 +203,125 @@ void main() {
         expect(e.message, contains('list'));
         expect(e.message, isNot(contains('GrowableList')));
       }
+    });
+  });
+
+  group('CSV/TSV with CellPolicy.json encodes non-scalar cells inline', () {
+    final listOfMapsWithListValue = <Object?>[
+      {
+        'key': 'items',
+        'value': <Object?>[1, 2, 3],
+      },
+    ];
+    final listOfMapsWithMapValue = <Object?>[
+      {
+        'key': 'first',
+        'value': <String, Object?>{'nested': 'x'},
+      },
+    ];
+    final listOfListsWithListElement = <Object?>[
+      <Object?>[
+        1,
+        <Object?>[2, 3],
+      ],
+    ];
+
+    for (final fmt in [OutputFormat.csv, OutputFormat.tsv]) {
+      test('${fmt.name}: list-valued cell JSON-encodes', () {
+        final out = formatOutput(
+          listOfMapsWithListValue,
+          fmt,
+          flattenCells: CellPolicy.json,
+        );
+        expect(out, contains('[1,2,3]'));
+        expect(out, isNot(contains('{key:')));
+      });
+
+      test('${fmt.name}: map-valued cell JSON-encodes', () {
+        final out = formatOutput(
+          listOfMapsWithMapValue,
+          fmt,
+          flattenCells: CellPolicy.json,
+        );
+        // JSON's embedded double-quotes get RFC 4180 escaping (doubled
+        // and quote-wrapped) by the delimited writer regardless of
+        // delimiter.
+        expect(out, contains('"{""nested"":""x""}"'));
+      });
+
+      test('${fmt.name}: nested-list cell JSON-encodes', () {
+        final out = formatOutput(
+          listOfListsWithListElement,
+          fmt,
+          flattenCells: CellPolicy.json,
+        );
+        expect(out, contains('[2,3]'));
+      });
+
+      test('${fmt.name}: scalar cells still pass through unchanged', () {
+        final v = <Object?>[
+          {'a': 1, 'b': 'x'},
+          {'a': 2, 'b': 'y'},
+        ];
+        expect(
+          formatOutput(v, fmt, flattenCells: CellPolicy.json),
+          formatOutput(v, fmt),
+        );
+      });
+    }
+
+    test('canWriteAs widens MustBeFlatList to MustBeList under json', () {
+      final value = listOfMapsWithListValue;
+      expect(canWriteAs(value, OutputFormat.csv), isA<NotWritable>());
+      expect(
+        canWriteAs(value, OutputFormat.csv, flattenCells: CellPolicy.json),
+        isA<Writable>(),
+      );
+    });
+
+    test('requirementFor csv/tsv returns MustBeList under json policy', () {
+      expect(requirementFor(OutputFormat.csv), isA<MustBeFlatList>());
+      expect(
+        requirementFor(OutputFormat.csv, flattenCells: CellPolicy.json),
+        isA<MustBeList>(),
+      );
+      expect(
+        requirementFor(OutputFormat.tsv, flattenCells: CellPolicy.json),
+        isA<MustBeList>(),
+      );
+    });
+
+    test('refuse policy is unchanged from 0.8.0 default', () {
+      expect(
+        () => formatOutput(
+          listOfMapsWithListValue,
+          OutputFormat.csv,
+          flattenCells: CellPolicy.refuse,
+        ),
+        throwsA(isA<OutputShapeError>()),
+      );
+    });
+
+    test('json policy is still a scalar-root list rejection for non-list', () {
+      const scalarRoot = 'hello';
+      expect(
+        canWriteAs(scalarRoot, OutputFormat.csv, flattenCells: CellPolicy.json),
+        isA<NotWritable>(),
+      );
+    });
+
+    test('json policy: embedded delimiter triggers cell quoting for CSV', () {
+      final v = <Object?>[
+        {
+          'k': <Object?>[1, 2],
+        },
+      ];
+      final csvOut = formatOutput(
+        v,
+        OutputFormat.csv,
+        flattenCells: CellPolicy.json,
+      );
+      expect(csvOut, contains('"[1,2]"'));
     });
   });
 

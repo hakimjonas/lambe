@@ -1,3 +1,30 @@
+## 0.9.0-dev
+
+In progress.
+
+### Added
+
+- **`--flatten-cells` option for CSV/TSV output.** Accepts `refuse`
+  (default, 0.8.0 behavior) or `json`. Under `json`, non-scalar cells
+  are encoded as JSON strings inline; the shape check widens
+  `MustBeFlatList` to `MustBeList` for csv/tsv. Available in the CLI
+  (`--flatten-cells`), the REPL (`:flatten-cells`), the MCP server
+  (`flatten_cells` parameter), and as a `CellPolicy flattenCells`
+  named parameter on `formatOutput`, `canWriteAs`, `canWriteShapeAs`,
+  `requirementFor`, and `explain`. Round-tripping the resulting CSV
+  back into Lambë does not recover the original structure; this is
+  an output-side escape hatch, not a faithful encoding.
+- **`NotWritable.hints`.** A list of strings surfacing environmental
+  guidance (flags, settings) relevant to the mismatch. The first such
+  hint covers the `--flatten-cells json` escape hatch: when a
+  CSV/TSV request rejects under `refuse` but a list root is already
+  present, the hint points at the equivalent CLI flag, REPL command,
+  and MCP parameter. Uniform channel across CLI, REPL, and MCP so
+  tools don't re-derive the condition.
+- **`ExplainReport.flattenCells`.** The cell policy the report was
+  generated under. `renderExplain` prints `Cell policy: json` as a
+  footer when non-default; default output is byte-for-byte unchanged.
+
 ## 0.8.0
 
 Adds element-level shape checking for CSV/TSV output, union headers

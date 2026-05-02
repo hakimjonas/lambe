@@ -34,6 +34,15 @@ void main(List<String> arguments) {
           help: 'Output format',
           allowed: ['json', 'yaml', 'toml', 'csv', 'tsv', 'hcl'],
         )
+        ..addOption(
+          'flatten-cells',
+          help:
+              'CSV/TSV policy for non-scalar cells. '
+              'refuse (default) rejects them; json encodes them as '
+              'JSON strings inline.',
+          allowed: ['refuse', 'json'],
+          defaultsTo: 'refuse',
+        )
         ..addFlag(
           'schema',
           help: 'Show data structure without values',
@@ -183,7 +192,8 @@ void main(List<String> arguments) {
       exit(1);
     }
     final inputShape = data == null ? const SAny() : shapeOf(data);
-    final report = explain(ast, inputShape);
+    final cellPolicy = CellPolicy.values.byName(args.option('flatten-cells')!);
+    final report = explain(ast, inputShape, flattenCells: cellPolicy);
     stdout.write(renderExplain(report));
     return;
   }
@@ -225,12 +235,14 @@ void main(List<String> arguments) {
   final toArg = args.option('to');
   if (toArg != null) {
     final outputFormat = OutputFormat.values.byName(toArg);
+    final cellPolicy = CellPolicy.values.byName(args.option('flatten-cells')!);
     _writeWithBridge(
       result,
       outputFormat,
       pretty: args.flag('pretty'),
       queryAst: queryAst,
       data: data,
+      flattenCells: cellPolicy,
     );
   } else if (args.flag('raw') && result is String) {
     stdout.writeln(result);
@@ -253,9 +265,12 @@ void _writeWithBridge(
   required bool pretty,
   required LamExpr queryAst,
   required Object? data,
+  required CellPolicy flattenCells,
 }) {
   try {
-    stdout.writeln(formatOutput(result, fmt, pretty: pretty));
+    stdout.writeln(
+      formatOutput(result, fmt, pretty: pretty, flattenCells: flattenCells),
+    );
     return;
   } on OutputShapeError catch (e) {
     if (!(stdin.hasTerminal && stdout.hasTerminal)) {
@@ -274,7 +289,14 @@ void _writeWithBridge(
     final bridged = applyBridge(queryAst, choice.template);
     try {
       final Object? newResult = evaluateAst(bridged, data);
-      stdout.writeln(formatOutput(newResult, fmt, pretty: pretty));
+      stdout.writeln(
+        formatOutput(
+          newResult,
+          fmt,
+          pretty: pretty,
+          flattenCells: flattenCells,
+        ),
+      );
     } on QueryError catch (e2) {
       stderr.writeln('Error applying "${choice.display}": ${e2.message}');
       exit(1);

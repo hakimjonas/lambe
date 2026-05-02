@@ -168,6 +168,14 @@ base class LambeServer extends MCPServer with ToolsSupport {
               'list of lists).',
           values: ['json', 'yaml', 'toml', 'csv', 'tsv', 'hcl'],
         ),
+        'flatten_cells': UntitledSingleSelectEnumSchema(
+          description:
+              'CSV/TSV policy for non-scalar cells. refuse (default) '
+              'rejects list- or map-valued cells with a shape error; '
+              'json encodes them as JSON strings inline. Ignored for '
+              'other output formats.',
+          values: ['refuse', 'json'],
+        ),
       },
       required: ['expression', 'data'],
     ),
@@ -179,6 +187,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
     final data = args['data'] as String;
     final formatStr = args['format'] as String?;
     final outputFormatStr = args['output_format'] as String?;
+    final flattenCellsStr = args['flatten_cells'] as String?;
 
     try {
       final format = formatStr != null ? Format.values.byName(formatStr) : null;
@@ -187,10 +196,14 @@ base class LambeServer extends MCPServer with ToolsSupport {
           outputFormatStr != null
               ? OutputFormat.values.byName(outputFormatStr)
               : OutputFormat.json;
+      final flattenCells =
+          flattenCellsStr != null
+              ? CellPolicy.values.byName(flattenCellsStr)
+              : CellPolicy.refuse;
       final rendered =
           outputFormat == OutputFormat.json
               ? const JsonEncoder.withIndent('  ').convert(result)
-              : formatOutput(result, outputFormat);
+              : formatOutput(result, outputFormat, flattenCells: flattenCells);
       return CallToolResult(content: [TextContent(text: rendered)]);
     } on OutputShapeError catch (e) {
       return CallToolResult(
@@ -214,11 +227,14 @@ base class LambeServer extends MCPServer with ToolsSupport {
   /// consumption.
   ///
   /// The payload has keys `error`, `message`, `format`, `got_shape`,
-  /// `original_expression`, and `suggestions`. Each entry in
+  /// `original_expression`, `suggestions`, and `hints`. Each entry in
   /// `suggestions` carries a 1-based `id`, a `label`, a `template_text`
   /// (the query-fragment source), an `apply_as` (the complete query
   /// formed by appending the template to the original expression via
-  /// `|`), and an `explanation`.
+  /// `|`), and an `explanation`. `hints` is a list of strings
+  /// describing environmental remedies (tool parameters, CLI flags)
+  /// that would resolve the mismatch without changing the query;
+  /// empty when no such remedy exists.
   String _renderShapeErrorPayload(OutputShapeError e, String expression) =>
       const JsonEncoder.withIndent('  ').convert({
         'error': 'output_shape_mismatch',
@@ -236,6 +252,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
               'explanation': e.suggestions[i].explanation,
             },
         ],
+        'hints': e.hints,
       });
 
   final _schemaTool = Tool(

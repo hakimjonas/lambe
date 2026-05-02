@@ -41,6 +41,9 @@ If no file is given, reads from standard input.
 **-t**, **--to** *FMT*
 :   Output format. One of: json, yaml, toml, csv, tsv, hcl. Default is json.
 
+**--flatten-cells** *POLICY*
+:   CSV/TSV policy for non-scalar cells. **refuse** (default) rejects list- or map-valued cells with a shape error. **json** encodes them as JSON strings inline; the shape check correspondingly widens to accept any list at the root. Ignored for other output formats.
+
 **--schema**
 :   Show the data structure with type names instead of values.
 
@@ -192,6 +195,9 @@ Computation on null throws: **null + 5** and **null > 3** are errors.
 
 **:pretty**
 :   Toggle pretty-printing.
+
+**:flatten-cells** *POLICY*
+:   Set CSV/TSV cell policy for this session. One of: refuse, json.
 
 **:load** *file*
 :   Load a different data file.

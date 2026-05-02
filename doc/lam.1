@@ -33,6 +33,9 @@ Input format. One of: json, yaml, toml, hcl, csv, tsv, markdown. Auto-detected f
 \fB-t\fR, \fB--to\fR \fIFMT\fR
 Output format. One of: json, yaml, toml, csv, tsv, hcl. Default is json.
 .TP
+\fB--flatten-cells\fR \fIPOLICY\fR
+CSV/TSV policy for non-scalar cells. \fBrefuse\fR (default) rejects list- or map-valued cells with a shape error. \fBjson\fR encodes them as JSON strings inline; the shape check correspondingly widens to accept any list at the root. Ignored for other output formats.
+.TP
 \fB--schema\fR
 Show the data structure with type names instead of values.
 .TP
@@ -170,6 +173,9 @@ Toggle unquoted string output.
 .TP
 \fB:pretty\fR
 Toggle pretty-printing.
+.TP
+\fB:flatten-cells\fR \fIPOLICY\fR
+Set CSV/TSV cell policy for this session. One of: refuse, json.
 .TP
 \fB:load\fR \fIfile\fR
 Load a different data file.

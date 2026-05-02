@@ -9,7 +9,7 @@ import 'errors.dart';
 import 'output_format.dart';
 import 'shape/check.dart';
 
-export 'output_format.dart' show OutputFormat;
+export 'output_format.dart' show OutputFormat, CellPolicy;
 
 /// Format [value] as a string in the given [format].
 ///
@@ -19,23 +19,32 @@ export 'output_format.dart' show OutputFormat;
 /// For CSV/TSV, requires a list of maps, a list of lists, or a list of
 /// scalars. For a list of maps, headers are the union of keys across
 /// all rows in first-seen order; a row missing a key renders as an
-/// empty cell. Every cell value must be a scalar: null, bool, num,
-/// or string. List-of-maps or list-of-lists with non-scalar cells
-/// throws [OutputShapeError]; a non-scalar cell that slips past shape
-/// inference (for example via [SAny]) throws [QueryError] at
-/// serialization time.
-String formatOutput(Object? value, OutputFormat format, {bool pretty = true}) =>
-    switch (format) {
-      OutputFormat.json =>
-        pretty
-            ? const JsonEncoder.withIndent('  ').convert(value)
-            : const JsonEncoder().convert(value),
-      OutputFormat.yaml => _toYaml(value),
-      OutputFormat.toml => _toToml(value),
-      OutputFormat.csv => _toCsv(value, ','),
-      OutputFormat.tsv => _toCsv(value, '\t'),
-      OutputFormat.hcl => _toHcl(value),
-    };
+/// empty cell.
+///
+/// Cell handling in CSV/TSV is governed by [flattenCells]. With the
+/// default [CellPolicy.refuse], every cell value must be a scalar:
+/// null, bool, num, or string. Non-scalar cells throw [OutputShapeError]
+/// from the shape check, or [QueryError] from the writer's defensive
+/// guard if the shape check was too lossy to prove incompatibility.
+/// With [CellPolicy.json], non-scalar cells are encoded as JSON
+/// strings inline; the shape check widens to accept any list at the
+/// root.
+String formatOutput(
+  Object? value,
+  OutputFormat format, {
+  bool pretty = true,
+  CellPolicy flattenCells = CellPolicy.refuse,
+}) => switch (format) {
+  OutputFormat.json =>
+    pretty
+        ? const JsonEncoder.withIndent('  ').convert(value)
+        : const JsonEncoder().convert(value),
+  OutputFormat.yaml => _toYaml(value),
+  OutputFormat.toml => _toToml(value),
+  OutputFormat.csv => _toCsv(value, ',', flattenCells),
+  OutputFormat.tsv => _toCsv(value, '\t', flattenCells),
+  OutputFormat.hcl => _toHcl(value),
+};
 
 /// Infer the structure of [value] without showing actual data.
 ///
@@ -81,9 +90,9 @@ String _toToml(Object? value) {
   return serializeToml(doc);
 }
 
-String _toCsv(Object? value, String delimiter) {
+String _toCsv(Object? value, String delimiter, CellPolicy policy) {
   final fmt = delimiter == '\t' ? OutputFormat.tsv : OutputFormat.csv;
-  final report = canWriteAs(value, fmt);
+  final report = canWriteAs(value, fmt, flattenCells: policy);
   if (report is NotWritable) throw OutputShapeError(report);
   final list = value as List<Object?>;
   final config = DelimitedConfig(delimiter: delimiter);
@@ -96,7 +105,7 @@ String _toCsv(Object? value, String delimiter) {
       for (final map in maps)
         [
           for (final h in headers)
-            map.containsKey(h) ? _scalarCell(map[h], fmt) : '',
+            map.containsKey(h) ? _cell(map[h], fmt, policy) : '',
         ],
     ];
     return serializeCsvWithHeaders(headers, rows, config: config);
@@ -105,29 +114,33 @@ String _toCsv(Object? value, String delimiter) {
   if (list.first is List) {
     final rows = [
       for (final row in list)
-        [for (final cell in row as List) _scalarCell(cell, fmt)],
+        [for (final cell in row as List) _cell(cell, fmt, policy)],
     ];
     return serializeCsv(rows, config: config);
   }
 
   return serializeCsv([
-    for (final item in list) [_scalarCell(item, fmt)],
+    for (final item in list) [_cell(item, fmt, policy)],
   ], config: config);
 }
 
-/// Render a single cell for CSV/TSV output, refusing any non-scalar
-/// value.
+/// Render a single cell for CSV/TSV output.
 ///
-/// The shape check in [_toCsv] is the primary defense; this is a
+/// Under [CellPolicy.refuse], non-scalar cells throw [QueryError]. The
+/// shape check in [_toCsv] is the primary defense; this is a
 /// belt-and-braces guard for cases where the check was bypassed (for
 /// example, a [SAny] shape that the checker could not prove
 /// incompatible, or heterogeneous list elements that sampling missed).
 /// Throws [QueryError] rather than [OutputShapeError] because by this
 /// point the shape check has already passed: reaching here means the
 /// shape language was unable to prove the mismatch.
-String _scalarCell(Object? cell, OutputFormat fmt) {
+///
+/// Under [CellPolicy.json], non-scalar cells are JSON-encoded inline
+/// as compact strings, and the writer never throws for shape reasons.
+String _cell(Object? cell, OutputFormat fmt, CellPolicy policy) {
   if (cell == null) return '';
   if (cell is num || cell is bool || cell is String) return '$cell';
+  if (policy == CellPolicy.json) return const JsonEncoder().convert(cell);
   throw QueryError(
     '${fmt.name.toUpperCase()} cell must be a scalar, '
     'got ${_describeCellKind(cell)}.',

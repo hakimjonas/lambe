@@ -130,13 +130,23 @@ final class MustBeFlatList extends ShapeRequirement {
 }
 
 /// The requirement for each supported [OutputFormat].
-ShapeRequirement requirementFor(OutputFormat format) => switch (format) {
+///
+/// [flattenCells] relaxes the cell-shape requirement for CSV/TSV. When
+/// [CellPolicy.json], a list-of-maps or list-of-lists with non-scalar
+/// cells is accepted at shape-check time because the writer will
+/// JSON-encode those cells inline.
+ShapeRequirement requirementFor(
+  OutputFormat format, {
+  CellPolicy flattenCells = CellPolicy.refuse,
+}) => switch (format) {
   OutputFormat.json => const AnyShape(),
   OutputFormat.yaml => const AnyShape(),
   OutputFormat.toml => const MustBeMap(),
   OutputFormat.hcl => const MustBeMap(),
-  OutputFormat.csv => const MustBeFlatList(),
-  OutputFormat.tsv => const MustBeFlatList(),
+  OutputFormat.csv || OutputFormat.tsv =>
+    flattenCells == CellPolicy.json
+        ? const MustBeList()
+        : const MustBeFlatList(),
 };
 
 /// Report returned by [canWriteAs].
@@ -158,7 +168,9 @@ final class Writable extends ShapeReport {
 ///
 /// Carries the target [format], the actual [got] shape, the expected
 /// [required], and a non-empty list of [suggestions] the user can append
-/// to their query to produce a shape the format accepts.
+/// to their query to produce a shape the format accepts. [hints] surface
+/// environmental remedies (CLI flags, REPL settings, MCP parameters)
+/// that would change the outcome without modifying the query itself.
 final class NotWritable extends ShapeReport {
   /// The output format that was requested.
   final OutputFormat format;
@@ -172,12 +184,20 @@ final class NotWritable extends ShapeReport {
   /// Query-fragment suggestions that would produce a compatible shape.
   final List<Remediation> suggestions;
 
+  /// Environmental guidance for the consumer (CLI flags, REPL
+  /// settings, MCP parameters) that would resolve the mismatch without
+  /// altering the query. Populated when a configuration knob exists;
+  /// empty otherwise. Suggestions modify the query, hints modify the
+  /// invocation.
+  final List<String> hints;
+
   /// Creates a [NotWritable] report.
   const NotWritable({
     required this.format,
     required this.got,
     required this.required,
     required this.suggestions,
+    this.hints = const [],
   });
 }
 
@@ -273,26 +293,61 @@ final class Remediation {
 /// Returns [Writable] if the value's shape satisfies the format's
 /// requirement, otherwise [NotWritable] with suggestions.
 ///
+/// [flattenCells] widens the CSV/TSV element-shape requirement; see
+/// [requirementFor].
+///
 /// Cost is dominated by [shapeOf] on [value], which is bounded by
 /// structural depth rather than element count.
-ShapeReport canWriteAs(Object? value, OutputFormat format) {
+ShapeReport canWriteAs(
+  Object? value,
+  OutputFormat format, {
+  CellPolicy flattenCells = CellPolicy.refuse,
+}) {
   final shape = shapeOf(value);
-  return canWriteShapeAs(shape, format);
+  return canWriteShapeAs(shape, format, flattenCells: flattenCells);
 }
 
 /// Shape-only variant of [canWriteAs].
 ///
 /// Prefer this when a [Shape] is already available, for example from
 /// [inferShape] over a query AST, to avoid re-inferring from a value.
-ShapeReport canWriteShapeAs(Shape shape, OutputFormat format) {
-  final req = requirementFor(format);
+ShapeReport canWriteShapeAs(
+  Shape shape,
+  OutputFormat format, {
+  CellPolicy flattenCells = CellPolicy.refuse,
+}) {
+  final req = requirementFor(format, flattenCells: flattenCells);
   if (req.accepts(shape)) return const Writable();
   return NotWritable(
     format: format,
     got: shape,
     required: req,
     suggestions: _suggestionsFor(shape, format),
+    hints: _hintsFor(shape, format, flattenCells),
   );
+}
+
+/// Environmental remedies for a shape/format/policy mismatch.
+///
+/// Currently one class fires: a CSV/TSV request under the default
+/// [CellPolicy.refuse] where the root is already a list, so only the
+/// cells are the problem. Switching to [CellPolicy.json] would accept
+/// the value as-is. Hints are surfaced via [NotWritable.hints] and
+/// rendered in [OutputShapeError]'s message, REPL, and MCP payload by
+/// their respective consumers.
+List<String> _hintsFor(Shape got, OutputFormat format, CellPolicy policy) {
+  if (policy != CellPolicy.refuse) return const [];
+  if (format != OutputFormat.csv && format != OutputFormat.tsv) {
+    return const [];
+  }
+  if (got is! SList) return const [];
+  // At this point the list root is fine; the rejection must be
+  // element-level. Flipping to json would accept.
+  return const [
+    'Or pass --flatten-cells json (CLI) / :flatten-cells json (REPL) / '
+        'flatten_cells=json (MCP) to encode non-scalar cells as JSON '
+        'strings inline.',
+  ];
 }
 
 List<Remediation> _suggestionsFor(Shape got, OutputFormat format) => switch ((

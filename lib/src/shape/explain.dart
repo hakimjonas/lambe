@@ -69,18 +69,35 @@ final class ExplainReport {
   /// nothing was flagged.
   final List<ExplainWarning> warnings;
 
+  /// The CSV/TSV cell policy the report was generated under. Default
+  /// is [CellPolicy.refuse]; pass [CellPolicy.json] to [explain] to
+  /// get writability lists that reflect the widened element-shape
+  /// requirement.
+  final CellPolicy flattenCells;
+
   /// Creates an [ExplainReport].
   const ExplainReport({
     required this.stages,
     required this.writableAs,
     required this.notWritableAs,
     this.warnings = const [],
+    this.flattenCells = CellPolicy.refuse,
   });
 }
 
 /// Produce an [ExplainReport] for [expr] given [inputShape] as the
 /// initial context. Pass [SAny] when the input's shape is unknown.
-ExplainReport explain(LamExpr expr, Shape inputShape) {
+///
+/// [flattenCells] widens the CSV/TSV element-shape requirement so the
+/// report's writability lists reflect the policy in effect at the
+/// caller (CLI `--flatten-cells`, REPL `:flatten-cells`, MCP
+/// `flatten_cells`). Default is [CellPolicy.refuse], matching the
+/// library's conservative default.
+ExplainReport explain(
+  LamExpr expr,
+  Shape inputShape, {
+  CellPolicy flattenCells = CellPolicy.refuse,
+}) {
   final backbone = _flattenPipe(expr);
   final stages = <ExplainStage>[];
   final warnings = <ExplainWarning>[];
@@ -105,7 +122,7 @@ ExplainReport explain(LamExpr expr, Shape inputShape) {
   final writable = <OutputFormat>[];
   final notWritable = <OutputFormat>[];
   for (final fmt in OutputFormat.values) {
-    if (canWriteShapeAs(ctx, fmt) is Writable) {
+    if (canWriteShapeAs(ctx, fmt, flattenCells: flattenCells) is Writable) {
       writable.add(fmt);
     } else {
       notWritable.add(fmt);
@@ -117,6 +134,7 @@ ExplainReport explain(LamExpr expr, Shape inputShape) {
     writableAs: writable,
     notWritableAs: notWritable,
     warnings: warnings,
+    flattenCells: flattenCells,
   );
 }
 
@@ -336,6 +354,9 @@ String renderExplain(ExplainReport report) {
       'Not writable as: ${report.notWritableAs.map((f) => f.name).join(", ")}',
     );
     buf.write('\n');
+  }
+  if (report.flattenCells != CellPolicy.refuse) {
+    buf.write('Cell policy: ${report.flattenCells.name}\n');
   }
   return buf.toString();
 }
