@@ -63,7 +63,7 @@ void main() {
       test('${fmt.name}: list of lists with a nested-list cell throws', () {
         expect(
           () => formatOutput(listOfListsWithListElement, fmt),
-          throwsA(isA<OutputShapeError>()),
+          throwsA(isA<QueryError>()),
         );
       });
     }

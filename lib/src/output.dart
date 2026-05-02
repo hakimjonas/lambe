@@ -86,21 +86,42 @@ String _toCsv(Object? value, String delimiter) {
     final maps = list.cast<Map<String, Object?>>();
     final headers = maps.first.keys.toList();
     final rows = [
-      for (final map in maps) [for (final h in headers) '${map[h] ?? ''}'],
+      for (final map in maps)
+        [for (final h in headers) _scalarCell(map[h], fmt)],
     ];
     return serializeCsvWithHeaders(headers, rows, config: config);
   }
 
   if (list.first is List) {
     final rows = [
-      for (final row in list) [for (final cell in row as List) '$cell'],
+      for (final row in list)
+        [for (final cell in row as List) _scalarCell(cell, fmt)],
     ];
     return serializeCsv(rows, config: config);
   }
 
   return serializeCsv([
-    for (final item in list) ['$item'],
+    for (final item in list) [_scalarCell(item, fmt)],
   ], config: config);
+}
+
+/// Render a single cell for CSV/TSV output, refusing any non-scalar
+/// value.
+///
+/// The shape check in [_toCsv] is the primary defense; this is a
+/// belt-and-braces guard for cases where the check was bypassed (for
+/// example, a [SAny] shape that the checker could not prove
+/// incompatible, or heterogeneous list elements that sampling missed).
+/// Throws [QueryError] rather than [OutputShapeError] because by this
+/// point the shape check has already passed — reaching here means the
+/// shape language was unable to prove the mismatch.
+String _scalarCell(Object? cell, OutputFormat fmt) {
+  if (cell == null) return '';
+  if (cell is num || cell is bool || cell is String) return '$cell';
+  throw QueryError(
+    '${fmt.name.toUpperCase()} cell must be a scalar, '
+    'got ${cell.runtimeType}.',
+  );
 }
 
 String _toHcl(Object? value) {

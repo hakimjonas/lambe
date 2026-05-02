@@ -48,6 +48,7 @@ export 'src/shape/check.dart'
         AnyShape,
         MustBeMap,
         MustBeList,
+        MustBeFlatList,
         requirementFor,
         ShapeReport,
         Writable,
