@@ -234,12 +234,16 @@ ExplainReport explain(
 ///
 /// Returns `null` when no warning applies.
 String? _analyzePredicate(LamExpr op, Shape inputShape) {
+  // Unwrap optional for per-op analysis: the op's behavior is
+  // determined by the inner shape; absence is handled by the
+  // runtime-rejection warning elsewhere.
+  final concrete = inputShape is SOptional ? inputShape.inner : inputShape;
   switch (op) {
     case FilterOp(:final predicate):
-      final element = inputShape is SList ? inputShape.element : const SAny();
+      final element = concrete is SList ? concrete.element : const SAny();
       return _predicateWarning(predicate, element, 'filter', 'element');
     case FilterValuesOp(:final predicate):
-      final value = switch (inputShape) {
+      final value = switch (concrete) {
         SMap(:final fields) when fields.isNotEmpty => fields.values.reduce(
           (a, b) => a == b ? a : const SAny(),
         ),
@@ -270,7 +274,15 @@ String? _predicateWarning(
         '$opName will always be empty';
   }
   final predShape = inferShape(predicate, context);
-  if (predShape is SBool || predShape is SAny) return null;
+  // Unwrap optional: an optional bool predicate may be absent at
+  // runtime (yields null, fails the == true check) but isn't
+  // "provably" non-boolean. Let it pass this check; the
+  // runtime-rejection warning surfaces the absence concern.
+  final unwrapped = switch (predShape) {
+    SOptional(:final inner) => inner,
+    _ => predShape,
+  };
+  if (unwrapped is SBool || unwrapped is SAny) return null;
   return '$opName predicate has shape ${renderShape(predShape)}; '
       '$opName requires a boolean, so this will always be empty';
 }
@@ -316,8 +328,11 @@ String? _analyzeTrivial(LamExpr op, Shape inputShape) {
     _ => (null, null),
   };
   if (argExpr == null || opName == null) return null;
-  if (inputShape is! SList) return null;
-  final missing = _missingFieldPath(argExpr, inputShape.element);
+  // Unwrap optional: the op either runs on the inner list or is
+  // flagged by runtime-rejection, both handled elsewhere.
+  final concrete = inputShape is SOptional ? inputShape.inner : inputShape;
+  if (concrete is! SList) return null;
+  final missing = _missingFieldPath(argExpr, concrete.element);
   if (missing == null) return null;
   return '$opName argument $missing does not exist on the element shape; '
       'the result is trivial';
@@ -351,6 +366,11 @@ String? _missingFieldPath(LamExpr expr, Shape context) {
 
   var ctx = context;
   for (var i = 0; i < segments.length; i++) {
+    // Walk through optional wrappers transparently: an optional map
+    // still has its declared fields, just maybe absent as a whole.
+    while (ctx is SOptional) {
+      ctx = ctx.inner;
+    }
     if (ctx is SAny) return null;
     if (ctx is! SMap) return null;
     final name = segments[i];

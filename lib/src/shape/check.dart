@@ -60,6 +60,10 @@ final class MustBeMap extends ShapeRequirement {
 
   @override
   String describe() => 'a map';
+
+  // Note: does NOT unwrap [SOptional]. An optional root means the
+  // value may be absent; TOML/HCL cannot serialize that. Users must
+  // materialize with a default before the `--to` step.
 }
 
 /// Requires a list at the root, with no constraint on element shape.
@@ -113,19 +117,26 @@ final class MustBeFlatList extends ShapeRequirement {
 
   /// Whether an element shape of the outer list produces only scalar
   /// cells when serialized as a CSV/TSV row.
+  ///
+  /// [SOptional] is transparent: an optional cell is flat iff its
+  /// inner shape is flat. An absent optional renders as an empty
+  /// cell, which is always valid.
   static bool _cellShapeIsFlat(Shape elem) => switch (elem) {
     SAny() || SNull() || SBool() || SNum() || SString() => true,
     SList(:final element) => _isScalar(element),
     SMap(:final fields) => fields.values.every(_isScalar),
+    SOptional(:final inner) => _cellShapeIsFlat(inner),
   };
 
   /// Whether [s] is a scalar shape (null, bool, num, string, or unknown).
   ///
   /// `SAny` counts as scalar here: when the shape is unknown, the check
   /// cannot prove incompatibility and defers to the runtime guard.
+  /// [SOptional] is transparent; the inner shape decides.
   static bool _isScalar(Shape s) => switch (s) {
     SAny() || SNull() || SBool() || SNum() || SString() => true,
     SList() || SMap() => false,
+    SOptional(:final inner) => _isScalar(inner),
   };
 }
 

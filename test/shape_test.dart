@@ -210,4 +210,41 @@ void main() {
       expect(json, contains('"kind":"number"'));
     });
   });
+
+  group('SOptional: the optionality wrapper', () {
+    test('renders as optional<inner>', () {
+      expect(renderShape(SOptional(const SNum())), 'optional<number>');
+      expect(
+        renderShape(SOptional(const SList(SString()))),
+        'optional<list<string>>',
+      );
+    });
+
+    test('serializes to {kind: optional, inner: ...}', () {
+      expect(shapeToJson(SOptional(const SNum())), {
+        'kind': 'optional',
+        'inner': {'kind': 'number'},
+      });
+    });
+
+    test('equality compares inner shapes', () {
+      expect(SOptional(const SNum()) == SOptional(const SNum()), isTrue);
+      expect(SOptional(const SNum()) == SOptional(const SString()), isFalse);
+      expect(SOptional(const SNum()) == const SNum(), isFalse);
+    });
+
+    test('nested optional collapses (factory unwraps)', () {
+      // SOptional(SOptional(x)) is semantically identical to
+      // SOptional(x); the factory enforces this.
+      final nested = SOptional(SOptional(const SNum()));
+      expect(nested, equals(SOptional(const SNum())));
+      expect(renderShape(nested), 'optional<number>');
+    });
+
+    test('lives inside other shapes too', () {
+      final shape = SMap({'age': SOptional(const SNum())});
+      expect(renderShape(shape), 'map<age: optional<number>>');
+      expect(shape.fields['age'], isA<SOptional>());
+    });
+  });
 }

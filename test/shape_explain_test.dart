@@ -577,4 +577,83 @@ void main() {
       expect(parsed['flatten_cells'], 'json');
     });
   });
+
+  group('SOptional: propagates through inference and analyzers', () {
+    test('field access on map with optional field returns optional', () {
+      final mapShape = SMap({'age': SOptional(const SNum())});
+      final report = explain(_parse('.age'), mapShape);
+      expect(report.stages.last.shape, SOptional(const SNum()));
+    });
+
+    test('field access on optional map wraps result in optional', () {
+      final mapShape = SOptional(const SMap({'name': SString()}));
+      final report = explain(_parse('.name'), mapShape);
+      expect(report.stages.last.shape, SOptional(const SString()));
+    });
+
+    test('filter accepts optional list (acceptance unwraps)', () {
+      final listShape = SOptional(const SList(SNum()));
+      final report = explain(_parse('. | filter(. > 0)'), listShape);
+      // Rejection analyzer should NOT fire: optional unwraps for
+      // acceptance, and the inner SList is accepted.
+      final rejection = report.warnings.where(
+        (w) => w.kind == WarningKind.runtimeRejection,
+      );
+      expect(rejection, isEmpty);
+    });
+
+    test('missing-field check walks through optional wrappers', () {
+      final shape = SOptional(
+        const SMap({
+          'users': SList(SMap({'name': SString()})),
+        }),
+      );
+      // `.users | filter(.missing)` on an optional-outer map: the
+      // walk should see users is a list of maps with only `name`.
+      final report = explain(_parse('.users | filter(.missing)'), shape);
+      final emptyFilter =
+          report.warnings
+              .where((w) => w.kind == WarningKind.emptyFilter)
+              .toList();
+      expect(emptyFilter, hasLength(1));
+      expect(emptyFilter.first.message, contains('.missing'));
+    });
+
+    test('optional bool predicate is not provably-empty', () {
+      // An optional bool is "bool or absent" — not provably non-boolean.
+      // The empty-filter check should NOT fire.
+      final listShape = SList(SMap({'active': SOptional(const SBool())}));
+      final report = explain(_parse('. | filter(.active)'), listShape);
+      final emptyFilter = report.warnings.where(
+        (w) => w.kind == WarningKind.emptyFilter,
+      );
+      expect(emptyFilter, isEmpty);
+    });
+
+    test('root optional map rejects TOML (MustBeMap does NOT unwrap)', () {
+      // Root optional means "might be absent entirely" — TOML cannot
+      // serialize that without a materialization step.
+      final shape = SOptional(const SMap({'a': SNum()}));
+      final report = explain(_parse('.'), shape);
+      expect(report.notWritableAs, contains(OutputFormat.toml));
+    });
+
+    test('nested optionality collapses through factory', () {
+      // Verified via the factory, but also check that inference never
+      // produces stacked optionals via field-through-optional.
+      final shape = SOptional(SMap({'nested': SOptional(const SNum())}));
+      final report = explain(_parse('.nested'), shape);
+      // Two optional steps (outer map, inner field) should collapse
+      // to a single SOptional<SNum>.
+      expect(report.stages.last.shape, SOptional(const SNum()));
+    });
+
+    test('shapeToJson round-trips optional', () {
+      final shape = SOptional(const SNum());
+      expect(shapeToJson(shape), {
+        'kind': 'optional',
+        'inner': {'kind': 'number'},
+      });
+    });
+  });
 }

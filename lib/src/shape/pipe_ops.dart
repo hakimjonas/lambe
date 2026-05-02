@@ -211,12 +211,39 @@ Shape inferPipeOpShape(Shape input, LamExpr op) {
 // call site, keeps the invariant a property of the spec table
 // itself: any new spec defined via these helpers inherits it.
 
-bool _acceptsList(Shape s) => s is SList || s is SAny;
-bool _acceptsMap(Shape s) => s is SMap || s is SAny;
-bool _acceptsListOrMap(Shape s) => s is SList || s is SMap || s is SAny;
-bool _acceptsListMapOrString(Shape s) =>
-    s is SList || s is SMap || s is SString || s is SAny;
-bool _acceptsStringOrNum(Shape s) => s is SString || s is SNum || s is SAny;
+// Optional wraps the value's potential absence. For acceptance
+// purposes, unwrap: if the inner shape is accepted, so is the
+// optional. The runtime-rejection warning in `explain.dart` is the
+// user-visible note that "may be absent at runtime." Downstream
+// inference still sees the optional propagated by [inferShape] so
+// warnings keep firing along the chain.
+Shape _unwrap(Shape s) => s is SOptional ? s.inner : s;
+
+bool _acceptsList(Shape s) {
+  s = _unwrap(s);
+  return s is SList || s is SAny;
+}
+
+bool _acceptsMap(Shape s) {
+  s = _unwrap(s);
+  return s is SMap || s is SAny;
+}
+
+bool _acceptsListOrMap(Shape s) {
+  s = _unwrap(s);
+  return s is SList || s is SMap || s is SAny;
+}
+
+bool _acceptsListMapOrString(Shape s) {
+  s = _unwrap(s);
+  return s is SList || s is SMap || s is SString || s is SAny;
+}
+
+bool _acceptsStringOrNum(Shape s) {
+  s = _unwrap(s);
+  return s is SString || s is SNum || s is SAny;
+}
+
 bool _acceptsAny(Shape _) => true;
 
 // --- List-consuming ops --------------------------------------------

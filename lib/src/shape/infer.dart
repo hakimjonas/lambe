@@ -116,6 +116,14 @@ Shape _asShape(Shape input, OutputFormat target) {
 }
 
 Shape _lookupField(Shape context, String name) {
+  if (context is SOptional) {
+    // Field access through an optional propagates the optional: if
+    // the outer value is absent, null propagation returns null for
+    // the field access too. So `.field` on SOptional<SMap> yields
+    // SOptional<fieldShape>.
+    final inner = _lookupField(context.inner, name);
+    return SOptional(inner);
+  }
   if (context is SMap) {
     return context.fields[name] ?? const SAny();
   }

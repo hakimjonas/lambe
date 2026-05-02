@@ -231,8 +231,10 @@ Completions _completionContext(LamExpr ast, int astEnd, Shape inputShape) {
     final inner = _innerExpr(ast.op);
     if (inner != null) {
       final collection = inferShape(ast.input, inputShape);
-      if (collection is SList) {
-        return _completionContext(inner, astEnd, collection.element);
+      // An optional list completes against its element shape.
+      final unwrapped = collection is SOptional ? collection.inner : collection;
+      if (unwrapped is SList) {
+        return _completionContext(inner, astEnd, unwrapped.element);
       }
       return (start: astEnd, end: astEnd, candidates: <String>[]);
     }
@@ -282,11 +284,15 @@ Completions _completeAstTail(
 /// produces no field candidates.
 Completions _fieldsOf(Shape target, String partial, int dotPos) {
   final tokenEnd = dotPos + 1 + partial.length;
-  if (target is! SMap) {
+  // Optional maps still offer their fields for completion; null
+  // propagation at runtime handles the absent case.
+  final unwrapped = target is SOptional ? target.inner : target;
+  if (unwrapped is! SMap) {
     return (start: tokenEnd, end: tokenEnd, candidates: <String>[]);
   }
   final matching =
-      target.fields.keys.where((k) => k.startsWith(partial)).toList()..sort();
+      unwrapped.fields.keys.where((k) => k.startsWith(partial)).toList()
+        ..sort();
   return (
     start: dotPos,
     end: tokenEnd,
@@ -307,8 +313,9 @@ Shape _resolveTarget(LamExpr? ast, Shape inputShape) {
     final inner = _innerExpr(ast.op);
     if (inner != null) {
       final collection = inferShape(ast.input, inputShape);
-      if (collection is SList) {
-        return inferShape(inner, collection.element);
+      final unwrapped = collection is SOptional ? collection.inner : collection;
+      if (unwrapped is SList) {
+        return inferShape(inner, unwrapped.element);
       }
       return const SAny();
     }

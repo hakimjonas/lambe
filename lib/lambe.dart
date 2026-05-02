@@ -42,6 +42,7 @@ export 'src/shape/shape.dart'
         SString,
         SList,
         SMap,
+        SOptional,
         shapeOf,
         renderShape,
         shapeToJson;

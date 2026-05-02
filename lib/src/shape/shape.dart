@@ -162,6 +162,43 @@ final class SMap extends Shape {
   }
 }
 
+/// A value that may be absent. Used for JSON Schema properties not
+/// listed in `required`, and any other statically-known optionality.
+///
+/// Optional appears in the shape system to let schema-declared
+/// absences be represented faithfully. At evaluation time, an
+/// optional field that's absent produces null through Lambe's usual
+/// null-propagation; the query language itself is unchanged. The
+/// variant's purpose is purely to sharpen [explain] and writer
+/// compatibility checks: an optional field accessed without a null
+/// guard produces a runtime-rejection warning during static analysis.
+///
+/// Nested optionality collapses: `SOptional(SOptional(x))` is
+/// semantically identical to `SOptional(x)`. Constructors enforce
+/// this by unwrapping.
+final class SOptional extends Shape {
+  /// The shape of the value when present.
+  final Shape inner;
+
+  /// Creates an [SOptional] shape.
+  ///
+  /// If [inner] is itself [SOptional], unwraps to avoid nested
+  /// optionality.
+  factory SOptional(Shape inner) =>
+      inner is SOptional ? inner : SOptional._(inner);
+
+  const SOptional._(this.inner);
+
+  @override
+  bool operator ==(Object other) => other is SOptional && other.inner == inner;
+
+  @override
+  int get hashCode => Object.hash('optional', inner);
+
+  @override
+  String toString() => 'optional<$inner>';
+}
+
 /// Infer the structural [Shape] of [value].
 ///
 /// Recurses through lists and maps. Lists are sampled rather than fully
@@ -242,4 +279,5 @@ Map<String, Object?> shapeToJson(Shape shape) => switch (shape) {
         key: shapeToJson(value),
     },
   },
+  SOptional(:final inner) => {'kind': 'optional', 'inner': shapeToJson(inner)},
 };
