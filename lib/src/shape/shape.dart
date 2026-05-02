@@ -208,3 +208,38 @@ const int _heteroSampleLimit = 8;
 /// Equivalent to [Shape.toString], provided as a function for callers that
 /// prefer `renderShape(s)` over `s.toString()`.
 String renderShape(Shape shape) => shape.toString();
+
+/// Serialize [shape] as a JSON-shaped `Map<String, Object?>` tree.
+///
+/// Every shape is a map with a `kind` discriminator. List shapes carry
+/// `element` (a nested shape). Map shapes carry `fields` (a
+/// `Map<String, Object?>` of field-name to nested shape). Scalars carry
+/// only the kind. The output is intended for `--explain-json` and
+/// other programmatic consumers that want to reason about shape
+/// structure without re-parsing the `renderShape` text form.
+///
+/// ```
+/// shapeToJson(SList(SMap({'a': SNum()})))
+/// // {
+/// //   "kind": "list",
+/// //   "element": {
+/// //     "kind": "map",
+/// //     "fields": {"a": {"kind": "number"}}
+/// //   }
+/// // }
+/// ```
+Map<String, Object?> shapeToJson(Shape shape) => switch (shape) {
+  SAny() => const {'kind': 'any'},
+  SNull() => const {'kind': 'null'},
+  SBool() => const {'kind': 'bool'},
+  SNum() => const {'kind': 'number'},
+  SString() => const {'kind': 'string'},
+  SList(:final element) => {'kind': 'list', 'element': shapeToJson(element)},
+  SMap(:final fields) => {
+    'kind': 'map',
+    'fields': {
+      for (final MapEntry(:key, :value) in fields.entries)
+        key: shapeToJson(value),
+    },
+  },
+};

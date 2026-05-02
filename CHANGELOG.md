@@ -20,8 +20,13 @@ In progress.
     explain report as JSON with snake_case keys
     (`stages`, `warnings`, `writable_as`, `not_writable_as`,
     `flatten_cells`). Warning kinds serialize as `empty_filter`,
-    `runtime_rejection`, `trivial_result`. For agent tooling and
-    build-pipeline integration.
+    `runtime_rejection`, `trivial_result`. Shapes serialize as nested
+    `{kind, ...}` trees (via `shapeToJson`) rather than stringified,
+    so agents can pattern-match shape structure without re-parsing.
+    For agent tooling and build-pipeline integration.
+- **`shapeToJson`** library function: serializes a [`Shape`] as a
+  nested `Map<String, Object?>` with a `kind` discriminator on each
+  node. The structured format used by `--explain-json`.
 - **`ExplainWarning.kind`** (new field, [`WarningKind`] enum).
   Classifier for filtering: CLI, JSON consumers, and future tooling
   can select warning categories without parsing message strings. The

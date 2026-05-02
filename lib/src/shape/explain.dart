@@ -489,19 +489,16 @@ String renderExplain(ExplainReport report) {
 ///
 /// The payload is a map with keys `stages`, `warnings`, `writable_as`,
 /// `not_writable_as`, and `flatten_cells`. Each stage carries its
-/// `source` string and a `shape` rendered via [renderShape] (same text
-/// form as the human-readable renderer). Each warning carries
-/// `stage_index`, `kind` (one of `empty_filter`, `runtime_rejection`,
-/// `trivial_result`), and `message`.
-///
-/// Shapes are rendered as strings rather than structurally decomposed
-/// into nested maps. Agents that need structural access should use
-/// the `lambe_schema` MCP tool on the relevant input.
+/// `source` string and a `shape` serialized via [shapeToJson] (a
+/// nested `{kind, ...}` tree rather than the `renderShape` text form,
+/// so consumers can pattern-match without re-parsing). Each warning
+/// carries `stage_index`, `kind` (one of `empty_filter`,
+/// `runtime_rejection`, `trivial_result`), and `message`.
 String renderExplainJson(ExplainReport report) {
   final payload = <String, Object?>{
     'stages': [
       for (final s in report.stages)
-        {'source': s.source, 'shape': renderShape(s.shape)},
+        {'source': s.source, 'shape': shapeToJson(s.shape)},
     ],
     'warnings': [
       for (final w in report.warnings)

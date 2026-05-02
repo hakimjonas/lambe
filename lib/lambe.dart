@@ -43,7 +43,8 @@ export 'src/shape/shape.dart'
         SList,
         SMap,
         shapeOf,
-        renderShape;
+        renderShape,
+        shapeToJson;
 export 'src/shape/check.dart'
     show
         ShapeRequirement,

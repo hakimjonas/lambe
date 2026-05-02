@@ -377,6 +377,24 @@ void main() {
       );
       expect(rejection, isEmpty);
     });
+
+    test(
+      'after a rejection, downstream stages see SAny and do not double-warn',
+      () {
+        // `. | filter(.a) | sort` starting from a map: filter rejects
+        // (warning emitted), inferShape widens ctx to SAny, sort then
+        // accepts any shape and should NOT emit its own rejection.
+        const shape = SMap({'a': SNum()});
+        final report = explain(_parse('. | filter(.a) | sort'), shape);
+        final rejections =
+            report.warnings
+                .where((w) => w.kind == WarningKind.runtimeRejection)
+                .toList();
+        expect(rejections, hasLength(1));
+        expect(rejections.first.stageIndex, 1);
+        expect(rejections.first.message, contains('filter rejects'));
+      },
+    );
   });
 
   group('explain: trivial-result warnings (opt-in)', () {
@@ -491,7 +509,12 @@ void main() {
       expect(stages, hasLength(2));
       final first = stages.first as Map<String, Object?>;
       expect(first['source'], '.users');
-      expect(first['shape'], 'list<string>');
+      // Structured shape: {kind: list, element: {kind: string}}.
+      expect(first['shape'], isA<Map<String, Object?>>());
+      final shape = first['shape'] as Map<String, Object?>;
+      expect(shape['kind'], 'list');
+      final element = shape['element'] as Map<String, Object?>;
+      expect(element['kind'], 'string');
     });
 
     test('warnings carry stage_index, kind (snake_case), and message', () {
