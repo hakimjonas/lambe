@@ -10,9 +10,7 @@ import 'dart:io';
 
 import 'package:args/args.dart';
 import 'package:lambe/lambe.dart';
-import 'package:lambe/src/parser.dart' show parseQuery;
 import 'package:lambe/src/repl.dart' show runRepl;
-import 'package:rumil/rumil.dart' show Success, ParseError;
 
 void main(List<String> arguments) {
   final argParser =
@@ -149,7 +147,7 @@ void main(List<String> arguments) {
       stderr.writeln('Error: invalid ${format.name} input: ${e.message}');
       exit(1);
     } on QueryError catch (e) {
-      stderr.writeln('Error: $e');
+      stderr.writeln('Error: ${e.message}');
       exit(1);
     }
   }
@@ -177,13 +175,11 @@ void main(List<String> arguments) {
 
   // --explain mode: static shape trace, no execution
   if (isExplainMode) {
-    final parseResult = parseQuery(expression);
-    final ast = switch (parseResult) {
-      Success<ParseError, LamExpr>(:final value) => value,
-      _ => null,
-    };
-    if (ast == null) {
-      stderr.writeln('Error: failed to parse query');
+    final LamExpr ast;
+    try {
+      ast = parseAst(expression);
+    } on QueryError catch (e) {
+      stderr.writeln('Error: ${e.message}');
       exit(1);
     }
     final inputShape = data == null ? const SAny() : shapeOf(data);
@@ -199,14 +195,14 @@ void main(List<String> arguments) {
   try {
     queryAst = parseAst(expression);
   } on QueryError catch (e) {
-    stderr.writeln('Error: $e');
+    stderr.writeln('Error: ${e.message}');
     exit(1);
   }
   Object? result;
   try {
     result = evaluateAst(queryAst, data);
   } on QueryError catch (e) {
-    stderr.writeln('Error: $e');
+    stderr.writeln('Error: ${e.message}');
     exit(1);
   }
 

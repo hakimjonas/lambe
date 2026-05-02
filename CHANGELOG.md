@@ -1,3 +1,100 @@
+## 0.8.0
+
+Adds element-level shape checking for CSV/TSV output, union headers
+across heterogeneous-keyed rows, static warnings for provably-empty
+filters in `--explain`, and line-aware parser diagnostics.
+
+### Added
+
+- **Element-level CSV/TSV shape check via `MustBeFlatList`.** The
+  new requirement class walks the element shape of the outer list
+  and accepts three forms: `SList<scalar>`, `SList<SList<scalar>>`,
+  and `SList<SMap<k:scalar, ...>>`. A list of maps with list- or
+  map-valued cells now raises `OutputShapeError` instead of being
+  serialized through Dart's default `toString()`. `MustBeList` is
+  retained as the generic list-root requirement for future format
+  additions whose serialization tolerates any element shape.
+  Exported from `package:lambe/lambe.dart`.
+- **Defensive cell guard in the CSV/TSV writer.** For cases where
+  shape inference loses precision (heterogeneous list elements
+  collapse to `SList<SAny>`, which the shape check cannot prove
+  incompatible), a non-scalar cell that reaches the serializer
+  throws `QueryError` with a descriptive type name rather than
+  silently stringifying.
+- **Union headers across heterogeneous-keyed rows.** The writer
+  previously took headers from the first row only, so
+  `[{a:1}, {b:2}]` produced `"a\n1\n"` and the `b` column was
+  silently dropped. Headers are now the union of keys across all
+  rows in first-seen order; rows missing a key render as an empty
+  cell. Matches pandas and Python's `csv.DictWriter` semantics.
+- **Writer and shape-check consistency matrix.**
+  `test/shape_output_consistency_test.dart` pins the invariant
+  across 100 cases: `canWriteAs(v, fmt) == Writable` implies
+  `formatOutput` does not raise `OutputShapeError`; `NotWritable`
+  always raises it. Structural complement to
+  `pipe_ops_consistency_test.dart`; writer drift fails loudly.
+- **`--explain` warnings for provably-empty filters.** `filter`,
+  `filter_values`, and `filter_keys` reject elements whose predicate
+  is not `== true`. Two patterns make the op provably empty: a
+  predicate whose field path doesn't exist on the element, value,
+  or key shape; and a predicate whose inferred shape is any
+  concrete non-boolean scalar. The explain report now carries a
+  `warnings` list and `renderExplain` prints it between stages and
+  writability. `SBool` and `SAny` predicates never warn: either
+  might be true. New `ExplainWarning` type exported from
+  `package:lambe/lambe.dart`.
+
+### Changed
+
+- **Parser errors are line-aware with source context.** Error
+  messages lead with `line:column` instead of just `column`, show
+  the offending line in a gutter-prefixed excerpt with a caret
+  under the bad column, and include one line of context on either
+  side for multi-line queries. The "did you mean" hint for
+  mistyped pipe ops is preserved. `Location.line` was always
+  available on Rumil's `ParseError`; the previous renderer assumed
+  single-line input and rendered the caret against the full
+  expression, which put it on the wrong visual line for any
+  multi-line query.
+- **Empty-expression parse error is actionable.** Running
+  `lam '' file.json` previously dumped the parser's full list of
+  expected tokens (around 30 items) and buried the actual problem.
+  It now returns a single line: `parse error: expression is empty`.
+  Same treatment for whitespace-only and newline-only input.
+- **`--explain` CLI path uses the line-aware diagnostic.**
+  Previously it printed `Error: failed to parse query` and skipped
+  the excerpt that `--to` had access to. Both paths now go through
+  `parseAst`.
+- **`requirementFor(OutputFormat.csv)` and
+  `requirementFor(OutputFormat.tsv)` return `MustBeFlatList`
+  instead of `MustBeList`.** Downstream code that pattern-matches
+  `is MustBeList` on `NotWritable.required` will flip
+  `true` to `false`.
+- **MCP server `Error: $e` callsites rewritten to `e.message`.**
+  Three sites in `bin/mcp_server.dart` previously produced
+  `Error: QueryError: parse error at line ...`; the `QueryError:`
+  prefix doubled the CLI's `Error:` prefix.
+- **`ExplainReport` constructor gains an optional `warnings`
+  parameter.** Defaults to `const []`, so existing callers that
+  pass `stages`, `writableAs`, and `notWritableAs` compile and
+  behave unchanged.
+
+### Breaking
+
+- **Queries that relied on the silent CSV/TSV garbage output now
+  raise `OutputShapeError`.** Pipelines like
+  `.deps | as(csv) | as(toml) | as(csv)` used to emit a CSV cell
+  like `"[{key: rumil, value: ^0.6.0}, ...]"` (Dart's default
+  `List<Map>.toString()`). They now raise `OutputShapeError` with
+  the shape that failed the check. Convert the shape before the
+  final `as(csv)` (for example project inner lists to strings), or
+  use a different output format.
+- **Writer output for heterogeneous-keyed list-of-maps changes.**
+  `[{a:1}, {b:2}]` now serializes to `"a,b\n1,\n,2\n"` instead of
+  `"a\n1\n"`. Row 1 renders an empty cell for `b`, row 2 renders
+  an empty cell for `a`. Code that produced correct output on
+  homogeneous-keyed input is unaffected.
+
 ## 0.7.1
 
 Polish release on top of 0.7.0. Error-message remediation

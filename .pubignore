@@ -1,0 +1,9 @@
+HANDOVER_*.md
+bench-results-*.json
+tool/bench/
+doc/api/
+# Stale local AOT build; per-platform binaries are published via CI
+# to the GitHub release and consumed by the MCP registry. Pub clients
+# rebuild from source on `dart pub global activate`, so shipping this
+# is dead weight.
+lam-mcp

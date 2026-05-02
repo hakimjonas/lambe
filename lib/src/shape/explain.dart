@@ -33,6 +33,27 @@ final class ExplainStage {
   const ExplainStage({required this.source, required this.shape});
 }
 
+/// A static-analysis warning attached to an explain report.
+///
+/// Warnings call out constructs that evaluate to a trivial result
+/// regardless of input, such as a `filter` predicate whose inferred
+/// shape is not [SBool]. `filter` requires `== true`, so any non-bool
+/// predicate makes the filter always empty.
+///
+/// [stageIndex] points into [ExplainReport.stages] so a renderer can
+/// highlight the offending stage.
+final class ExplainWarning {
+  /// The stage this warning refers to, as an index into
+  /// [ExplainReport.stages].
+  final int stageIndex;
+
+  /// One-line human-readable message.
+  final String message;
+
+  /// Creates an [ExplainWarning].
+  const ExplainWarning({required this.stageIndex, required this.message});
+}
+
 /// A full explain report for a query.
 final class ExplainReport {
   /// The stages along the pipe backbone, in left-to-right order.
@@ -44,11 +65,16 @@ final class ExplainReport {
   /// The formats the final shape is *not* writable as.
   final List<OutputFormat> notWritableAs;
 
+  /// Static-analysis warnings attached to individual stages. Empty when
+  /// nothing was flagged.
+  final List<ExplainWarning> warnings;
+
   /// Creates an [ExplainReport].
   const ExplainReport({
     required this.stages,
     required this.writableAs,
     required this.notWritableAs,
+    this.warnings = const [],
   });
 }
 
@@ -57,9 +83,15 @@ final class ExplainReport {
 ExplainReport explain(LamExpr expr, Shape inputShape) {
   final backbone = _flattenPipe(expr);
   final stages = <ExplainStage>[];
+  final warnings = <ExplainWarning>[];
+  var prev = inputShape;
   var ctx = inputShape;
   for (var i = 0; i < backbone.length; i++) {
     final piece = backbone[i];
+    final warning = _analyzePredicate(piece, prev);
+    if (warning != null) {
+      warnings.add(ExplainWarning(stageIndex: i, message: warning));
+    }
     ctx = inferShape(piece, ctx);
     stages.add(
       ExplainStage(
@@ -67,6 +99,7 @@ ExplainReport explain(LamExpr expr, Shape inputShape) {
         shape: ctx,
       ),
     );
+    prev = ctx;
   }
 
   final writable = <OutputFormat>[];
@@ -83,7 +116,110 @@ ExplainReport explain(LamExpr expr, Shape inputShape) {
     stages: stages,
     writableAs: writable,
     notWritableAs: notWritable,
+    warnings: warnings,
   );
+}
+
+/// Detect predicate anti-patterns in parameterized ops.
+///
+/// `filter`, `filter_values`, and `filter_keys` all reject elements
+/// whose predicate does not evaluate to `== true`. Two patterns can
+/// prove the predicate will never return `true` and therefore the op
+/// will always be empty:
+///
+/// - The predicate references a field that doesn't exist on the
+///   known element shape (e.g. `filter(.missing)` when the element
+///   is `SMap<name, age>`). At runtime the field access yields
+///   `null`, which never equals `true`.
+/// - The predicate's inferred shape is a concrete non-boolean scalar
+///   (`SNum`, `SString`, `SList`, `SMap`, `SNull`). Even without an
+///   unknown-field match, a predicate that can only return, say, a
+///   number is always non-boolean, so `== true` never holds.
+///
+/// [SBool] and [SAny] are left alone: booleans might be true,
+/// unknowns might be true, neither is provably-empty.
+///
+/// Returns `null` when no warning applies.
+String? _analyzePredicate(LamExpr op, Shape inputShape) {
+  switch (op) {
+    case FilterOp(:final predicate):
+      final element = inputShape is SList ? inputShape.element : const SAny();
+      return _predicateWarning(predicate, element, 'filter', 'element');
+    case FilterValuesOp(:final predicate):
+      final value = switch (inputShape) {
+        SMap(:final fields) when fields.isNotEmpty => fields.values.reduce(
+          (a, b) => a == b ? a : const SAny(),
+        ),
+        _ => const SAny(),
+      };
+      return _predicateWarning(predicate, value, 'filter_values', 'value');
+    case FilterKeysOp(:final predicate):
+      return _predicateWarning(
+        predicate,
+        const SString(),
+        'filter_keys',
+        'key',
+      );
+    default:
+      return null;
+  }
+}
+
+String? _predicateWarning(
+  LamExpr predicate,
+  Shape context,
+  String opName,
+  String domain,
+) {
+  final missing = _missingFieldPath(predicate, context);
+  if (missing != null) {
+    return 'predicate $missing does not exist on the $domain shape; '
+        '$opName will always be empty';
+  }
+  final predShape = inferShape(predicate, context);
+  if (predShape is SBool || predShape is SAny) return null;
+  return '$opName predicate has shape ${renderShape(predShape)}; '
+      '$opName requires a boolean, so this will always be empty';
+}
+
+/// Render `.a.b.c` if [expr] is a [Field]/[Access] chain whose root
+/// resolves to a known [SMap] missing a segment in the chain; otherwise
+/// `null`.
+///
+/// Walks left-to-right along a `Field`/`Access` spine, narrowing the
+/// context at each step. As soon as a step lands on a known map whose
+/// fields don't include the required name, returns the rendered path up
+/// to and including that missing segment. [SAny] anywhere along the
+/// path disables the check: unknown context means we cannot prove
+/// the field is missing.
+String? _missingFieldPath(LamExpr expr, Shape context) {
+  final segments = <String>[];
+  LamExpr cur = expr;
+  while (true) {
+    if (cur is Field) {
+      segments.insert(0, cur.name);
+      break;
+    }
+    if (cur is Access) {
+      segments.insert(0, cur.field);
+      cur = cur.target;
+      continue;
+    }
+    return null;
+  }
+
+  var ctx = context;
+  for (var i = 0; i < segments.length; i++) {
+    if (ctx is SAny) return null;
+    if (ctx is! SMap) return null;
+    final name = segments[i];
+    if (!ctx.fields.containsKey(name)) {
+      final path = segments.sublist(0, i + 1).join('.');
+      return '.$path';
+    }
+    ctx = ctx.fields[name]!;
+  }
+  return null;
 }
 
 /// Flatten a left-associative [Pipe] chain into a list of stages.
@@ -174,6 +310,18 @@ String renderExplain(ExplainReport report) {
     buf.write('  : ');
     buf.write(renderShape(stage.shape));
     buf.write('\n');
+  }
+
+  if (report.warnings.isNotEmpty) {
+    buf.write('\n');
+    for (final w in report.warnings) {
+      final source = report.stages[w.stageIndex].source.trimLeft();
+      buf.write('Warning: ');
+      buf.write(source);
+      buf.write('\n  ');
+      buf.write(w.message);
+      buf.write('\n');
+    }
   }
 
   buf.write('\n');

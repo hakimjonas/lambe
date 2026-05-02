@@ -99,7 +99,7 @@ void main() {
         expect(report, isA<NotWritable>());
         final nw = report as NotWritable;
         expect(nw.got, isA<SMap>());
-        expect(nw.required, isA<MustBeList>());
+        expect(nw.required, isA<MustBeFlatList>());
         expect(nw.suggestions, isNotEmpty);
         // Display is the intent-level `as(<fmt>)` form; the template
         // that actually runs is still `to_entries`.

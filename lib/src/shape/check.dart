@@ -22,8 +22,8 @@ import 'shape.dart';
 
 /// The shape a given [OutputFormat] requires at its root.
 ///
-/// Sealed hierarchy with concrete subclasses [AnyShape], [MustBeMap], and
-/// [MustBeList].
+/// Sealed hierarchy with concrete subclasses [AnyShape], [MustBeMap],
+/// [MustBeList], and [MustBeFlatList].
 sealed class ShapeRequirement {
   /// Creates a new [ShapeRequirement]. Use the concrete subclasses.
   const ShapeRequirement();
@@ -62,11 +62,13 @@ final class MustBeMap extends ShapeRequirement {
   String describe() => 'a map';
 }
 
-/// Requires a list at the root. Used by CSV and TSV.
+/// Requires a list at the root, with no constraint on element shape.
 ///
-/// The serializer supports three list shapes: `list<map>`, `list<list>`,
-/// and `list<scalar>`. [accepts] returns true for any list, including
-/// the empty list.
+/// Accepts any [SList], plus [SAny] for unknown shapes. Retained as the
+/// generic list-root requirement so future format additions that tolerate
+/// any element shape can reuse it; CSV and TSV now use the stricter
+/// [MustBeFlatList] because their element shapes must serialize to a
+/// single text cell.
 final class MustBeList extends ShapeRequirement {
   /// Creates a [MustBeList] requirement.
   const MustBeList();
@@ -78,14 +80,63 @@ final class MustBeList extends ShapeRequirement {
   String describe() => 'a list';
 }
 
+/// Requires a list whose element cells serialize to a single text cell.
+/// Used by CSV and TSV.
+///
+/// Delimited formats project rows onto a flat grid of scalar cells. The
+/// serializer supports three element shapes:
+/// - `SList<scalar>`: each element is one cell.
+/// - `SList<SList<scalar>>`: each inner element is one cell.
+/// - `SList<SMap<k1:scalar, k2:scalar, ...>>`: each field is one cell.
+///
+/// A list-of-maps whose cells hold nested lists or maps has no faithful
+/// delimited rendering. Without this stricter requirement, the writer
+/// would fall back to Dart's default `toString()` for such cells and
+/// silently emit garbage like `"[{key: rumil, value: ^0.6.0}]"`.
+///
+/// [SAny] is accepted everywhere it appears: when the shape is unknown,
+/// the checker cannot prove incompatibility and defers to the runtime
+/// guard in the serializer.
+final class MustBeFlatList extends ShapeRequirement {
+  /// Creates a [MustBeFlatList] requirement.
+  const MustBeFlatList();
+
+  @override
+  bool accepts(Shape shape) {
+    if (shape is SAny) return true;
+    if (shape is! SList) return false;
+    return _cellShapeIsFlat(shape.element);
+  }
+
+  @override
+  String describe() => 'a list with scalar cells';
+
+  /// Whether an element shape of the outer list produces only scalar
+  /// cells when serialized as a CSV/TSV row.
+  static bool _cellShapeIsFlat(Shape elem) => switch (elem) {
+    SAny() || SNull() || SBool() || SNum() || SString() => true,
+    SList(:final element) => _isScalar(element),
+    SMap(:final fields) => fields.values.every(_isScalar),
+  };
+
+  /// Whether [s] is a scalar shape (null, bool, num, string, or unknown).
+  ///
+  /// `SAny` counts as scalar here: when the shape is unknown, the check
+  /// cannot prove incompatibility and defers to the runtime guard.
+  static bool _isScalar(Shape s) => switch (s) {
+    SAny() || SNull() || SBool() || SNum() || SString() => true,
+    SList() || SMap() => false,
+  };
+}
+
 /// The requirement for each supported [OutputFormat].
 ShapeRequirement requirementFor(OutputFormat format) => switch (format) {
   OutputFormat.json => const AnyShape(),
   OutputFormat.yaml => const AnyShape(),
   OutputFormat.toml => const MustBeMap(),
   OutputFormat.hcl => const MustBeMap(),
-  OutputFormat.csv => const MustBeList(),
-  OutputFormat.tsv => const MustBeList(),
+  OutputFormat.csv => const MustBeFlatList(),
+  OutputFormat.tsv => const MustBeFlatList(),
 };
 
 /// Report returned by [canWriteAs].
