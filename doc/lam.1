@@ -239,10 +239,22 @@ Format conversion:
 lam --to yaml '.config' data.json
 .fi
 .PP
-Schema inspection:
+Shape inspection:
 .PP
 .nf
 lam --print-shape deployment.yaml
+.fi
+.PP
+Schema-checked query (validates data against the schema before running):
+.PP
+.nf
+lam --schema api.schema.json '.users | map(.email)' response.json
+.fi
+.PP
+Shape trace, schema-seeded (no data needed):
+.PP
+.nf
+lam --schema api.schema.json --explain '.users | map(.email)'
 .fi
 .PP
 Shape trace for a pipeline:

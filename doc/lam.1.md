@@ -256,9 +256,17 @@ Format conversion:
 
     lam --to yaml '.config' data.json
 
-Schema inspection:
+Shape inspection:
 
     lam --print-shape deployment.yaml
+
+Schema-checked query (validates data against the schema before running):
+
+    lam --schema api.schema.json '.users | map(.email)' response.json
+
+Shape trace, schema-seeded (no data needed):
+
+    lam --schema api.schema.json --explain '.users | map(.email)'
 
 Shape trace for a pipeline:
 

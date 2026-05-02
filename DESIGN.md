@@ -66,7 +66,7 @@ Absence is data (Maybe/Option semantics). Type mismatch is an error.
 |---------|---------|-----|
 | **CLI binary** | Platform engineers, DevOps | `dart compile exe` -> standalone `lam` binary |
 | **Dart library** | Flutter/Dart developers | `import 'package:lambe/lambe.dart'` |
-| **MCP tool** | AI agents, LLM frameworks | `lambe_query`, `lambe_schema`, `lambe_assert` |
+| **MCP tool** | AI agents, LLM frameworks | `lambe_query`, `lambe_print_shape`, `lambe_check`, `lambe_explain`, `lambe_assert` |
 
 ---
 

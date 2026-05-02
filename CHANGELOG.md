@@ -1,70 +1,161 @@
-## 0.9.0-dev
+## 0.9.0
 
-In progress.
+Closes the shape feedback loop. Declare a JSON Schema, check queries
+against it, round-trip schemas with the ecosystem. Plus: richer
+static analysis in `--explain`, line-delimited JSON input, and an
+opt-in CSV escape hatch for nested cells.
 
-### Added
+### Schemas as a first-class contract
 
-- **Richer `--explain` output.** Three new categories of static
-  analysis, plus a structured output mode:
-  - **Runtime-rejection warnings** (always on): flags pipe ops whose
-    input shape is provably incompatible. `.config | filter(.x)` on a
-    known map produces "filter rejects map<...>; this will throw at
-    runtime." The existing pipe-op acceptance predicates in
-    `pipe_ops.dart` supply the check; `explain` surfaces it.
-  - **Trivial-result warnings** (opt-in via `--explain-trivial`):
-    flags `sort_by`, `group_by`, `map`, and `unique_by` whose
-    argument references a field provably absent on the element shape.
-    Often a typo but legitimate uses exist (stable no-op sort,
-    explicit null projection), hence opt-in.
-  - **Structured JSON output** (`--explain-json`): emits the full
-    explain report as JSON with snake_case keys
-    (`stages`, `warnings`, `writable_as`, `not_writable_as`,
-    `flatten_cells`). Warning kinds serialize as `empty_filter`,
-    `runtime_rejection`, `trivial_result`. Shapes serialize as nested
-    `{kind, ...}` trees (via `shapeToJson`) rather than stringified,
-    so agents can pattern-match shape structure without re-parsing.
-    For agent tooling and build-pipeline integration.
-- **`shapeToJson`** library function: serializes a [`Shape`] as a
-  nested `Map<String, Object?>` with a `kind` discriminator on each
-  node. The structured format used by `--explain-json`.
-- **`ExplainWarning.kind`** (new field, [`WarningKind`] enum).
-  Classifier for filtering: CLI, JSON consumers, and future tooling
-  can select warning categories without parsing message strings. The
-  existing `emptyFilter` case carries the kind it always had.
-- **`renderExplainJson`** library function: produces the JSON report.
-- Both `--explain-trivial` and `--explain-json` imply `--explain`,
-  following the pattern of `--ndjson` being a non-combinable mode.
-- **`--ndjson` mode for line-delimited JSON input.** Each line of the
-  source is parsed as an independent JSON document, the query is
-  evaluated per line with no shared state, and one compact JSON
-  result is emitted per line. Auto-enabled when the file extension is
-  `.ndjson` or `.jsonl`. Fail-fast on the first malformed or
-  unevaluable line; the line number is carried in the error. Covers
-  the "tail a log" use case without touching the core "AST over
-  in-memory tree" model. Available as a new top-level `queryNdjson`
-  function on the library (`Iterable<String> -> Iterable<Object?>`).
-  Cannot combine with `--interactive`, `--schema`, `--assert`, or
-  `--explain`; output is restricted to JSON.
-- **`--flatten-cells` option for CSV/TSV output.** Accepts `refuse`
-  (default, 0.8.0 behavior) or `json`. Under `json`, non-scalar cells
-  are encoded as JSON strings inline; the shape check widens
-  `MustBeFlatList` to `MustBeList` for csv/tsv. Available in the CLI
-  (`--flatten-cells`), the REPL (`:flatten-cells`), the MCP server
-  (`flatten_cells` parameter), and as a `CellPolicy flattenCells`
-  named parameter on `formatOutput`, `canWriteAs`, `canWriteShapeAs`,
-  `requirementFor`, and `explain`. Round-tripping the resulting CSV
-  back into Lambë does not recover the original structure; this is
-  an output-side escape hatch, not a faithful encoding.
-- **`NotWritable.hints`.** A list of strings surfacing environmental
-  guidance (flags, settings) relevant to the mismatch. The first such
-  hint covers the `--flatten-cells json` escape hatch: when a
-  CSV/TSV request rejects under `refuse` but a list root is already
-  present, the hint points at the equivalent CLI flag, REPL command,
-  and MCP parameter. Uniform channel across CLI, REPL, and MCP so
-  tools don't re-derive the condition.
-- **`ExplainReport.flattenCells`.** The cell policy the report was
-  generated under. `renderExplain` prints `Cell policy: json` as a
-  footer when non-default; default output is byte-for-byte unchanged.
+- **`--schema <path>`** on the CLI. Threads a JSON Schema subset
+  through both `--explain` inference and normal evaluation. With
+  data, the schema validates at load time (structural disagreement
+  exits 1 with a JSON path). Without data, the schema alone seeds
+  shape inference for design-time planning.
+- **Sibling auto-detect.** Data at `path/to/data.json` picks up
+  `path/to/data.schema.json` implicitly. Same convention as ndjson
+  auto-detect.
+- **`--print-shape`** on the CLI. Emits `shapeOf(data)` as a JSON
+  Schema subset document, round-trippable with `--schema` input. The
+  same shape-to-JSON-Schema rendering powers
+  `renderJsonSchema(shape)` on the library and the MCP
+  `lambe_print_shape` tool.
+- **REPL: `:schema [path]` and `:print-shape`.** `:schema <path>`
+  loads a schema for the session and reports agreement/disagreement
+  vs current data. `:schema` (no arg) prints the active schema.
+  `:load` re-validates against an active schema and warns on
+  disagreement.
+- **MCP: `lambe_print_shape`, `lambe_check`, `lambe_explain`, plus
+  a `schema` parameter on `lambe_query`.** Agents can print a
+  shape, validate fixtures against a schema, trace a query
+  structurally before running, or gate a query on schema
+  conformance. `lambe_check` returns `{"ok": true}` /
+  `{"ok": false, "error": "..."}`.
+- **Library surface.** `parseJsonSchema`, `renderJsonSchema`,
+  `loadSchemaFromFile`, `loadSchemaForData`, `mergeSchemaWithData`
+  are all exported from `package:lambe/lambe.dart`.
+
+### `SOptional` in the shape ADT
+
+- New sealed variant `SOptional(Shape)`. Represents
+  statically-known optionality — populated by JSON Schema's
+  `required` semantics, propagated through field access and op
+  inference, and surfaced by the explain trace. Nested optionality
+  collapses at construction: `SOptional(SOptional(x))` is always
+  `SOptional(x)`.
+- Acceptance predicates unwrap `SOptional` for op inputs — `filter`
+  on `SOptional<SList<T>>` is accepted, with the potential absence
+  surfaced by a runtime-rejection warning rather than a silent
+  accept or a false reject.
+- Root-level requirements (TOML/HCL `MustBeMap`) do NOT unwrap: an
+  absent root can't be serialized, so users must materialize a
+  default first. This asymmetry is deliberate.
+- `shapeToJson` emits `{"kind": "optional", "inner": ...}`.
+  `renderJsonSchema` flattens `SOptional` inside `SMap` fields into
+  missing `required` entries (standard JSON Schema idiom);
+  non-field-position `SOptional` has no standard spelling in our
+  subset and is flattened with a docstring caveat.
+
+### Richer `--explain` output
+
+Three new categories of static analysis, plus a structured output
+mode:
+- **Runtime-rejection warnings** (always on). Flags pipe ops whose
+  input shape is provably incompatible. `.config | filter(.x)` on a
+  known map produces `"filter rejects map<...>; this will throw at
+  runtime"`. Uses the existing pipe-op acceptance predicates.
+- **Trivial-result warnings** (opt-in via `--explain-trivial`).
+  Flags `sort_by`, `group_by`, `map`, and `unique_by` whose
+  argument references a field provably absent on the element shape.
+  Opt-in because legitimate uses exist (stable no-op sort, explicit
+  null projection).
+- **Structured JSON output** (`--explain-json`). Emits the full
+  explain report as JSON with snake_case keys (`stages`,
+  `warnings`, `writable_as`, `not_writable_as`, `flatten_cells`).
+  Warning kinds serialize as `empty_filter`, `runtime_rejection`,
+  `trivial_result`. Shapes serialize as nested `{kind, ...}` trees
+  (via `shapeToJson`) so agents can pattern-match shape structure
+  without re-parsing. Also surfaces in the new `lambe_explain` MCP
+  tool.
+- Both `--explain-trivial` and `--explain-json` imply `--explain`.
+- New `shapeToJson(Shape)`, `renderExplainJson(ExplainReport)`,
+  `WarningKind` enum, and `ExplainWarning.kind` field on the
+  library.
+
+### `--ndjson` mode for line-delimited JSON input
+
+- Each line is parsed as an independent JSON document; the query is
+  evaluated per line with no shared state; one compact JSON result
+  per line. Auto-enabled when the file extension is `.ndjson` or
+  `.jsonl`. Stdin support streams: `tail -f app.log | lam --ndjson
+  '.level'` emits each result as the line arrives.
+- Fail-fast on the first malformed or unevaluable line; error
+  carries the line number.
+- New `queryNdjson(Iterable<String>, LamExpr)` library function
+  (`Iterable<Object?>`, lazy).
+- Cannot combine with `--interactive`, `--schema`, `--assert`, or
+  `--explain`; output is restricted to JSON (`--to` other than
+  `json` is refused).
+
+### `--flatten-cells` for CSV/TSV
+
+- Opt-in escape hatch: non-scalar cells encoded as JSON strings
+  inline. Accepts `refuse` (default, 0.8.0 behavior) or `json`.
+  Under `json`, the shape check widens `MustBeFlatList` to
+  `MustBeList` for csv/tsv. Round-tripping the resulting CSV back
+  into Lambe does NOT recover structure; this is an output-side
+  escape hatch, not a faithful encoding.
+- Surfaced at the CLI (`--flatten-cells`), REPL
+  (`:flatten-cells`), MCP (`flatten_cells` parameter), and as
+  `CellPolicy flattenCells` on `formatOutput`, `canWriteAs`,
+  `canWriteShapeAs`, `requirementFor`, and `explain`.
+
+### Cross-surface hints
+
+- **`NotWritable.hints`.** When a shape mismatch has an
+  environmental resolution (a flag, a setting, a tool parameter),
+  the report carries a structured `Hint` type with `label`,
+  `cliFlag`, `replCommand`, `mcpParameter`, and `explanation`. CLI,
+  REPL, and MCP each render the form that applies to them.
+  Agent-facing JSON carries `parameter`/`value` pairs, not CLI
+  syntax.
+- The first shipping hint covers `--flatten-cells json`: when a
+  CSV/TSV request rejects under `refuse` but a list root is
+  already present.
+
+### Breaking changes
+
+- **`--schema` flag renamed to `--print-shape`.** 0.8.0's `--schema`
+  printed a type-name JSON summary of the data. That function moved
+  to `--print-shape`. The new `--schema` takes a JSON Schema file
+  path. Users scripting `lam --schema data.json` must change to
+  `lam --print-shape data.json`. ArgParser rejects the old form
+  because `--schema` now requires a value.
+- **`--print-shape` output format changed.** Emits a JSON Schema
+  subset document (`{"type": "object", "properties": ..., "required":
+  ...}`) instead of the type-name-string JSON format 0.8.0 emitted
+  (`{"age": "number"}`). The new output round-trips with
+  `--schema` input; the old format had no round-trip path.
+- **MCP tool `lambe_schema` renamed to `lambe_print_shape`.** Output
+  format also changed to JSON Schema, matching the CLI. Agents that
+  hardcoded the old tool name get "tool not found" and a message
+  pointing at `lambe_print_shape`.
+- **`Shape` ADT gained `SOptional` variant.** Source-breaking for
+  external code that pattern-matches `Shape` without a default case
+  (probably just Lambe itself). Exhaustive switches now need a
+  fifth branch.
+- **`ExplainWarning` constructor gained required `kind` parameter.**
+  External code constructing warnings directly must add a
+  `WarningKind`. Uncommon; the existing pattern is consuming
+  warnings, not producing them.
+
+### Deprecated
+
+- **`inferSchema(Object? value)`** library function. Emits
+  type-name-string JSON (no round-trip). Use
+  `renderJsonSchema(shapeOf(value))` for JSON Schema output, or
+  `shapeOf(value)` for the `Shape` ADT. Scheduled for removal in
+  1.0.
 
 ## 0.8.0
 

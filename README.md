@@ -1,8 +1,10 @@
 # Lambë
 
-*Query structured data, get errors with suggested fixes, and reshape results to the format you need.*
+*A query language for structured data that shows you what you're working with.*
 
-Lambë is a query language for JSON, YAML, TOML, HCL, CSV, TSV, and Markdown. Queries compose through a pipe operator, the same way a shell pipeline does. What's different: when a query produces a result your target format cannot serialize, Lambë infers the shape, explains the mismatch, and lists the curated query fragments that bridge it. The `as(fmt)` operator lets you ask for the bridge directly in the query language; `--explain` shows the shape at every pipe stage without running anything.
+`lam` queries JSON, YAML, TOML, HCL, CSV, TSV, and Markdown. Unlike other query tools, it tells you what your query *does* before you run it — the shape at each pipe stage, which output formats can serialize the result, what would go wrong.
+
+Use it when you don't already know the data: inspecting an unfamiliar API response, auditing a Helm chart, verifying a CI pipeline's assumptions, or asking an AI agent to extract something without guessing at the structure.
 
 ```
 $ lam --to toml '.dependencies | keys' pubspec.yaml
@@ -13,6 +15,8 @@ Try appending one of:
 $ lam --to toml '.dependencies | keys | as(toml)' pubspec.yaml
 items = ["rumil", "rumil_parsers", "rumil_expressions"]
 ```
+
+Queries are bounded and always terminate. No recursion, no lambdas, no `def`. That's the tradeoff: Lambe doesn't try to be a programming language, so its shape inference, `--explain`, `--schema`, and error remediations all work.
 
 *Lambë (pronounced "lam-beh") means "language" in Quenya (Tolkien's elvish). The package name is `lambe` for ASCII compatibility.*
 
@@ -95,6 +99,34 @@ Not writable as: toml, hcl
 
 Explain flags provably-empty filters (`filter(.missing)` on a known shape) and runtime-rejection mismatches (`filter` on a non-list input) by default. Pass `--explain-trivial` to also flag `sort_by`/`group_by`/`map`/`unique_by` whose argument references a missing field (often a typo, sometimes intentional). For agent tooling and build pipelines, `--explain-json` emits the same information as a structured JSON document.
 
+### `--schema` — declare a shape and let Lambe check your work
+
+When you have a JSON Schema for your data — from an API contract, OpenAPI spec, or hand-written docs — point `--schema` at it:
+
+```
+$ lam --schema api.schema.json --explain '.users | map(.email)' response.json
+.users         : list<map<id: string, name: string, email: optional<string>>>
+| map(.email)  : list<optional<string>>
+
+Writable as: json, yaml, csv, tsv
+Not writable as: toml, hcl
+```
+
+The schema fills in information data alone can't express: optional fields (from JSON Schema's `required`), element shapes of empty lists, types `shapeOf` couldn't infer from sampling. `--explain` shows them; the evaluator trusts them.
+
+With data present, Lambe also validates: a schema saying `age: number` against data with `age: "30"` exits 1 at load time with a JSON-path-annotated diagnostic. No silent drift, no running a query against data that doesn't match its contract.
+
+A sibling `<datafile>.schema.json` is auto-detected, so a project convention of placing schemas next to data works without explicit flags.
+
+The reverse direction is symmetrical: `lam --print-shape data.json` emits the inferred shape as a JSON Schema document. Round-trip:
+
+```
+lam --print-shape data.json > data.schema.json    # bootstrap a schema from data
+lam --schema data.schema.json '.users' data.json  # use it back
+```
+
+Accepted JSON Schema keywords: `type`, `properties`, `items`, `required`. Value-level constraints (`minimum`, `pattern`, `enum`, etc.), structural combinators (`allOf`, `oneOf`), `$ref`, and conditional schemas are rejected with a per-keyword error. Lambe is a shape system, not a validation engine — for richer validation, reach for `ajv` or `check-jsonschema`.
+
 ## Query Syntax
 
 Queries start with `.` (the current data) and chain operations with `|`:
@@ -176,8 +208,11 @@ lam '.users | map("\(.name) is \(.age)")' data.json
 # Shape trace
 lam --explain '.users | map(.name)' data.json
 
-# Schema inference
-lam --schema data.json
+# Shape inspection (JSON Schema output)
+lam --print-shape data.json
+
+# Schema-checked queries: validate data against a schema as it runs
+lam --schema api.schema.json '.users | map(.email)' response.json
 
 # CI validation
 lam --assert '.version != "0.0.0"' package.json
@@ -209,7 +244,7 @@ lam -i data.json
 ```
 
 ```
-lambe v0.8.0 - type :help for commands, :q to quit
+lambe v0.9.0 - type :help for commands, :q to quit
 Data loaded: {3 fields, 42 users}
 
 lambe> .users | filter(.age > 30) | map(.name)
@@ -250,8 +285,13 @@ final result2 = evaluateAst(ast, dataset2);
 final yaml = formatOutput(data, OutputFormat.yaml);
 final csv = formatOutput(users, OutputFormat.csv);
 
-// Schema inference
-final schema = inferSchema(data);
+// Shape inference and JSON Schema output
+final shape = shapeOf(data);                    // Shape ADT
+final schemaJson = renderJsonSchema(shape);     // JSON Schema text
+
+// Or parse a schema file and merge with observed data
+final schema = parseJsonSchema(schemaSource);
+final merged = mergeSchemaWithData(schema, shape);  // throws on disagreement
 ```
 
 ### Shape and bridging API
@@ -353,7 +393,15 @@ Install, then add `.mcp.json` to your project:
 }
 ```
 
-This gives AI assistants three tools: `lambe_query` (extract/filter/transform), `lambe_schema` (structure inspection), `lambe_assert` (validation). When `lambe_query` encounters a shape mismatch with the requested output format, the error response includes a structured `suggestions` array: each entry carries a `template_text`, an `apply_as` (the complete query formed by appending the template to the original expression), and a one-line `explanation`. Agents can call the tool again with an `apply_as` verbatim.
+This gives AI assistants five tools that cover the whole feedback loop:
+
+- `lambe_query` — extract/filter/transform, with an optional `schema` parameter that validates data structurally before the query runs.
+- `lambe_print_shape` — inspect unfamiliar data; returns a JSON Schema subset document.
+- `lambe_check` — validate data against a JSON Schema. Returns `{"ok": true}` or `{"ok": false, "error": "..."}` naming the disagreement path.
+- `lambe_explain` — trace a query statically (with or without data); returns a structured JSON report with shape-per-stage, warnings, and writability.
+- `lambe_assert` — boolean assertion on a query result.
+
+When `lambe_query` encounters a shape mismatch with the requested output format, the error response includes a structured `suggestions` array: each entry carries a `template_text`, an `apply_as` (the complete query formed by appending the template to the original expression), and a one-line `explanation`. Agents can call the tool again with an `apply_as` verbatim.
 
 ### For AI Coding Agents
 
@@ -387,6 +435,7 @@ expect(data, lamHas('.users[0].address.city'));
 - [Getting started](doc/getting-started.md) - install and first queries
 - [Syntax reference](doc/syntax.md) - the full query language
 - [REPL guide](doc/repl.md) - interactive mode, commands, keyboard shortcuts
+- [Schema guide](doc/schema.md) - the JSON Schema subset, merge semantics, round-trip
 - [Recipes](doc/recipes.md) - real-world patterns for Kubernetes, Terraform, CI, CSV
 - [Man page](doc/lam.1.md) - Unix man page (`man -l doc/lam.1`)
 
