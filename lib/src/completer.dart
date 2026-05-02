@@ -40,10 +40,12 @@ final List<String> pipelineOps = parser_.pipeOpNames;
 
 /// REPL command names, sorted alphabetically.
 const _replCommands = <String>[
+  'flatten-cells',
   'help',
   'history',
   'load',
   'pretty',
+  'print-shape',
   'q',
   'quit',
   'raw',

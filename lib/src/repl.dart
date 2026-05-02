@@ -32,6 +32,7 @@ void runRepl(Object? data, {OutputFormat format = OutputFormat.json}) {
   var pretty = true;
   var raw = false;
   var flattenCells = CellPolicy.refuse;
+  Shape? activeSchema;
 
   final history = _loadHistory();
   final rl = ReadLine(
@@ -52,12 +53,41 @@ void runRepl(Object? data, {OutputFormat format = OutputFormat.json}) {
       final arg = parts.length > 1 ? parts.skip(1).join(' ') : null;
 
       switch (command) {
+        case 'schema' when arg != null:
+          try {
+            final schema = loadSchemaFromFile(arg);
+            activeSchema = schema;
+            // Validate against currently loaded data, if any.
+            if (currentData != null) {
+              try {
+                mergeSchemaWithData(schema, shapeOf(currentData));
+                stdout.writeln('Schema loaded (agrees with current data).');
+              } on QueryError catch (e) {
+                stdout.writeln(
+                  'Schema loaded, but disagrees with current data: '
+                  '${e.message}',
+                );
+              }
+            } else {
+              stdout.writeln('Schema loaded.');
+            }
+          } on QueryError catch (e) {
+            stderr.writeln('Error: ${e.message}');
+          }
+
         case 'schema':
-          stdout.writeln(
-            const JsonEncoder.withIndent(
-              '  ',
-            ).convert(inferSchema(currentData)),
-          );
+          if (activeSchema == null) {
+            stdout.writeln('No schema loaded. Use :schema <path> to load one.');
+          } else {
+            stdout.writeln(renderJsonSchema(activeSchema));
+          }
+
+        case 'print-shape':
+          if (currentData == null) {
+            stderr.writeln('No data loaded. Use :load <file> first.');
+          } else {
+            stdout.writeln(renderJsonSchema(shapeOf(currentData)));
+          }
 
         case 'to' when arg != null:
           final fmt =
@@ -100,6 +130,17 @@ void runRepl(Object? data, {OutputFormat format = OutputFormat.json}) {
           if (loaded != null) {
             currentData = loaded;
             stdout.writeln('Data loaded: ${_briefDescription(currentData)}');
+            // Re-validate against the active schema, if any.
+            if (activeSchema != null) {
+              try {
+                mergeSchemaWithData(activeSchema, shapeOf(loaded));
+              } on QueryError catch (e) {
+                stdout.writeln(
+                  'Warning: data disagrees with active schema: '
+                  '${e.message}',
+                );
+              }
+            }
           }
 
         case 'load':
@@ -416,7 +457,12 @@ Object? _loadFile(String path) {
 
 void _printHelp() {
   stdout.writeln('Commands:');
-  stdout.writeln('  :schema                  Show data structure');
+  stdout.writeln(
+    '  :schema [path]           Load (with path) or show the active schema',
+  );
+  stdout.writeln(
+    '  :print-shape             Print the data\'s inferred shape as JSON Schema',
+  );
   stdout.writeln(
     '  :to <format>             Set output format (json, yaml, toml, csv, tsv, hcl)',
   );

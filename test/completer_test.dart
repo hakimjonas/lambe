@@ -270,9 +270,11 @@ void main() {
 
     test('all commands on bare colon', () {
       final (:start, :end, :candidates) = complete(':', 1, null);
-      expect(candidates.length, 9);
+      expect(candidates.length, 11);
       expect(candidates, contains('help'));
       expect(candidates, contains('schema'));
+      expect(candidates, contains('print-shape'));
+      expect(candidates, contains('flatten-cells'));
     });
   });
 
