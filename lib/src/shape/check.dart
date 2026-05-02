@@ -111,14 +111,18 @@ final class MustBeFlatList extends ShapeRequirement {
   @override
   String describe() => 'a list with scalar cells';
 
-  /// Whether `elem` — the element shape of the outer list — produces
-  /// only scalar cells when serialized as a CSV/TSV row.
+  /// Whether an element shape of the outer list produces only scalar
+  /// cells when serialized as a CSV/TSV row.
   static bool _cellShapeIsFlat(Shape elem) => switch (elem) {
     SAny() || SNull() || SBool() || SNum() || SString() => true,
     SList(:final element) => _isScalar(element),
     SMap(:final fields) => fields.values.every(_isScalar),
   };
 
+  /// Whether [s] is a scalar shape (null, bool, num, string, or unknown).
+  ///
+  /// `SAny` counts as scalar here: when the shape is unknown, the check
+  /// cannot prove incompatibility and defers to the runtime guard.
   static bool _isScalar(Shape s) => switch (s) {
     SAny() || SNull() || SBool() || SNum() || SString() => true,
     SList() || SMap() => false,

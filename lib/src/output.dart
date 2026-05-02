@@ -19,7 +19,7 @@ export 'output_format.dart' show OutputFormat;
 /// For CSV/TSV, requires a list of maps, a list of lists, or a list of
 /// scalars. For a list of maps, headers are the union of keys across
 /// all rows in first-seen order; a row missing a key renders as an
-/// empty cell. Every cell value must be a scalar — null, bool, num,
+/// empty cell. Every cell value must be a scalar: null, bool, num,
 /// or string. List-of-maps or list-of-lists with non-scalar cells
 /// throws [OutputShapeError]; a non-scalar cell that slips past shape
 /// inference (for example via [SAny]) throws [QueryError] at
@@ -123,7 +123,7 @@ String _toCsv(Object? value, String delimiter) {
 /// example, a [SAny] shape that the checker could not prove
 /// incompatible, or heterogeneous list elements that sampling missed).
 /// Throws [QueryError] rather than [OutputShapeError] because by this
-/// point the shape check has already passed — reaching here means the
+/// point the shape check has already passed: reaching here means the
 /// shape language was unable to prove the mismatch.
 String _scalarCell(Object? cell, OutputFormat fmt) {
   if (cell == null) return '';
@@ -134,6 +134,11 @@ String _scalarCell(Object? cell, OutputFormat fmt) {
   );
 }
 
+/// Short human-readable kind name for a non-scalar cell value.
+///
+/// Used by [_scalarCell] to render errors like "got list" instead of
+/// "got _GrowableList". Falls back to [Object.runtimeType] for kinds
+/// outside List and Map.
 String _describeCellKind(Object cell) {
   if (cell is List) return 'list';
   if (cell is Map) return 'map';
@@ -145,7 +150,7 @@ String _describeCellKind(Object cell) {
 /// The first map's keys appear first in their insertion order; each
 /// subsequent map contributes any keys not already present, in the
 /// order they first appear. Rows missing a key render as an empty cell
-/// rather than silently dropping the column — symmetric with how the
+/// rather than silently dropping the column, symmetric with how the
 /// writer refuses non-scalar cells elsewhere.
 List<String> _unionHeaders(List<Map<String, Object?>> maps) {
   final seen = <String>{};

@@ -35,9 +35,9 @@ final class ExplainStage {
 
 /// A static-analysis warning attached to an explain report.
 ///
-/// Warnings call out constructs that will evaluate to a trivial result
+/// Warnings call out constructs that evaluate to a trivial result
 /// regardless of input, such as a `filter` predicate whose inferred
-/// shape is not [SBool] — `filter` requires `== true`, so any non-bool
+/// shape is not [SBool]. `filter` requires `== true`, so any non-bool
 /// predicate makes the filter always empty.
 ///
 /// [stageIndex] points into [ExplainReport.stages] so a renderer can
@@ -190,7 +190,7 @@ String? _predicateWarning(
 /// context at each step. As soon as a step lands on a known map whose
 /// fields don't include the required name, returns the rendered path up
 /// to and including that missing segment. [SAny] anywhere along the
-/// path disables the check — unknown context means we cannot prove
+/// path disables the check: unknown context means we cannot prove
 /// the field is missing.
 String? _missingFieldPath(LamExpr expr, Shape context) {
   final segments = <String>[];

@@ -3,7 +3,7 @@
 ///
 /// Bug motivating this test: `.deps | as(csv) | as(toml) | as(csv)` on a
 /// map-of-strings fixture produced
-/// `items,"[{key: rumil, value: ^0.6.0}, ...]"` — the cell's value was
+/// `items,"[{key: rumil, value: ^0.6.0}, ...]"`. The cell's value was
 /// Dart's default `List<Map>.toString()` output. `MustBeList.accepts`
 /// only checked list-at-the-root; the element shape was never validated.
 ///

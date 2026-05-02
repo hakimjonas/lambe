@@ -3,9 +3,9 @@
 /// A query with a typo or dangling pipe should produce a jq-style
 /// excerpt: the error header with `line:column`, the offending line
 /// with a gutter-prefixed line number, a caret under the offending
-/// column, and — for multi-line queries — one line of context on
-/// either side so the reader can orient. The existing "did you mean"
-/// hint for mistyped pipe ops continues to work.
+/// column, and (for multi-line queries) one line of context on either
+/// side so the reader can orient. The "did you mean" hint for mistyped
+/// pipe ops continues to work.
 ///
 /// QueryError.message is the clean rendered text; callers should print
 /// `e.message` rather than `$e`, because `$e` prepends `QueryError: `

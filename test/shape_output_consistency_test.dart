@@ -4,9 +4,9 @@
 /// runs the writer and cross-checks the shape predicate: `Writable` must
 /// never result in [OutputShapeError], and `NotWritable` must always
 /// result in [OutputShapeError]. The `Writable` side is allowed to
-/// raise [QueryError] from the writer's defensive guard — that only
-/// fires when the shape language was too lossy to prove the mismatch
-/// (typically [SAny] buried inside a container). What is strictly
+/// raise [QueryError] from the writer's defensive guard (which only
+/// fires when the shape language was too lossy to prove the mismatch,
+/// typically [SAny] buried inside a container). What is strictly
 /// forbidden is silent stringification, which is what the original
 /// CSV round-trip bug produced.
 ///
