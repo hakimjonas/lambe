@@ -144,7 +144,7 @@ String? _analyzePredicate(LamExpr op, Shape inputShape) {
   switch (op) {
     case FilterOp(:final predicate):
       final element = inputShape is SList ? inputShape.element : const SAny();
-      return _predicateWarning(predicate, element, 'filter');
+      return _predicateWarning(predicate, element, 'filter', 'element');
     case FilterValuesOp(:final predicate):
       final value = switch (inputShape) {
         SMap(:final fields) when fields.isNotEmpty => fields.values.reduce(
@@ -152,18 +152,28 @@ String? _analyzePredicate(LamExpr op, Shape inputShape) {
         ),
         _ => const SAny(),
       };
-      return _predicateWarning(predicate, value, 'filter_values');
+      return _predicateWarning(predicate, value, 'filter_values', 'value');
     case FilterKeysOp(:final predicate):
-      return _predicateWarning(predicate, const SString(), 'filter_keys');
+      return _predicateWarning(
+        predicate,
+        const SString(),
+        'filter_keys',
+        'key',
+      );
     default:
       return null;
   }
 }
 
-String? _predicateWarning(LamExpr predicate, Shape context, String opName) {
+String? _predicateWarning(
+  LamExpr predicate,
+  Shape context,
+  String opName,
+  String domain,
+) {
   final missing = _missingFieldPath(predicate, context);
   if (missing != null) {
-    return 'predicate $missing does not exist on the element shape; '
+    return 'predicate $missing does not exist on the $domain shape; '
         '$opName will always be empty';
   }
   final predShape = inferShape(predicate, context);

@@ -162,6 +162,7 @@ void main() {
       final w = report.warnings.first;
       expect(w.stageIndex, 1);
       expect(w.message, contains('.missing does not exist'));
+      expect(w.message, contains('element shape'));
       expect(w.message, contains('filter will always be empty'));
     });
 
@@ -211,6 +212,20 @@ void main() {
       );
       expect(report.warnings, hasLength(1));
       expect(report.warnings.first.message, contains('filter_values'));
+    });
+
+    test('filter_values missing-field warning names the value domain', () {
+      final report = explain(
+        _parse('.deps | filter_values(.missing)'),
+        const SMap({
+          'deps': SMap({
+            'a': SMap({'known': SBool()}),
+            'b': SMap({'known': SBool()}),
+          }),
+        }),
+      );
+      expect(report.warnings, hasLength(1));
+      expect(report.warnings.first.message, contains('value shape'));
     });
 
     test('filter_keys warns: keys are strings, not bool', () {

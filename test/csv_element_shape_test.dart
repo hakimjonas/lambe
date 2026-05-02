@@ -10,13 +10,14 @@
 /// The tests fall in two layers:
 ///
 /// 1. Direct `formatOutput` calls on crafted values: a list of maps with a
-///    list-valued cell, or a nested-list cell. Must throw
-///    [OutputShapeError] rather than produce a row with a stringified
+///    list-valued cell, or a nested-list cell. Must throw a [QueryError]
+///    (either [OutputShapeError] from the shape check, or the defensive
+///    writer-level guard) rather than produce a row with a stringified
 ///    Dart `toString()` cell.
-/// 2. End-to-end `runQuery` on the real reproduction pipeline. The chain
+/// 2. End-to-end `query` on the real reproduction pipeline. The chain
 ///    must either succeed with scalar-only cells or raise
-///    [OutputShapeError] pointing at a real remediation. It must not
-///    silently emit the `[{key: ..., value: ...}]` garbage cell.
+///    [OutputShapeError]. It must not silently emit the
+///    `[{key: ..., value: ...}]` garbage cell.
 library;
 
 import 'package:lambe/lambe.dart';
@@ -95,7 +96,7 @@ void main() {
           reason: 'silent Dart toString() garbage leaked into output',
         );
       } on OutputShapeError {
-        // Accepted: the shape checker caught the mismatch.
+        return;
       }
     });
   });
@@ -125,6 +126,23 @@ void main() {
 
     test('empty list', () {
       expect(formatOutput(<Object?>[], OutputFormat.csv), isEmpty);
+    });
+  });
+
+  group('Defensive writer guard uses descriptive type names', () {
+    test('list cell fires _scalarCell with "list" in the message', () {
+      final heteroRows = <Object?>[
+        'scalar',
+        <Object?>[1, 2],
+      ];
+      try {
+        formatOutput(heteroRows, OutputFormat.csv);
+        fail('expected QueryError');
+      } on QueryError catch (e) {
+        expect(e.message, contains('cell must be a scalar'));
+        expect(e.message, contains('list'));
+        expect(e.message, isNot(contains('GrowableList')));
+      }
     });
   });
 }

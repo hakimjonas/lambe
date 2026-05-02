@@ -123,7 +123,7 @@ void main() {
             throwsA(isA<QueryError>()),
             reason:
                 'Writer must refuse rather than emit Dart toString() '
-                'garbage. This is the exact regression shipped in 0.7.1.',
+                'garbage. This is the pre-0.8.0 bug this release closes.',
           );
         });
       }

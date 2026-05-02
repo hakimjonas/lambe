@@ -16,7 +16,12 @@ export 'output_format.dart' show OutputFormat;
 /// For JSON, uses pretty-printing with 2-space indent by default.
 /// For YAML, uses block style.
 /// For TOML/HCL, requires the root value to be a `Map<String, Object?>`.
-/// For CSV/TSV, requires a list of maps (uses keys as headers) or list of lists.
+/// For CSV/TSV, requires a list of maps (uses keys as headers), a list of
+/// lists, or a list of scalars. Every cell must be a scalar — null,
+/// bool, num, or string. List-of-maps or list-of-lists with non-scalar
+/// cells throws [OutputShapeError]; a non-scalar cell that slips past
+/// shape inference (for example via [SAny]) throws [QueryError] at
+/// serialization time.
 String formatOutput(Object? value, OutputFormat format, {bool pretty = true}) =>
     switch (format) {
       OutputFormat.json =>
@@ -120,8 +125,14 @@ String _scalarCell(Object? cell, OutputFormat fmt) {
   if (cell is num || cell is bool || cell is String) return '$cell';
   throw QueryError(
     '${fmt.name.toUpperCase()} cell must be a scalar, '
-    'got ${cell.runtimeType}.',
+    'got ${_describeCellKind(cell)}.',
   );
+}
+
+String _describeCellKind(Object cell) {
+  if (cell is List) return 'list';
+  if (cell is Map) return 'map';
+  return cell.runtimeType.toString();
 }
 
 String _toHcl(Object? value) {
