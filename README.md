@@ -22,11 +22,17 @@ Queries are bounded and always terminate. No recursion, no lambdas, no `def`. Th
 
 ## Installation
 
-```bash
-# Pre-built binary (no Dart required)
-curl -L https://github.com/hakimjonas/lambe/releases/latest/download/lam-linux-x64 -o lam
-chmod +x lam && sudo mv lam /usr/local/bin/
+One-line installer (Linux and macOS, no `sudo`, verifies SHA256 checksums):
 
+```bash
+curl -fsSL https://raw.githubusercontent.com/hakimjonas/lambe/main/install.sh | sh
+```
+
+This downloads `lam` and `lam-mcp` from the latest GitHub release into `~/.local/bin/`. Environment variables `LAMBE_VERSION` (pin a version) and `LAMBE_PREFIX` (change install dir) are supported; see the script for details.
+
+Other options:
+
+```bash
 # From pub.dev (Dart users)
 dart pub global activate lambe
 

@@ -157,6 +157,21 @@ mode:
   `shapeOf(value)` for the `Shape` ADT. Scheduled for removal in
   1.0.
 
+### Install ergonomics
+
+- **`install.sh`** — one-line installer at the repo root.
+  `curl -fsSL https://raw.githubusercontent.com/hakimjonas/lambe/main/install.sh | sh`
+  downloads the latest `lam` and `lam-mcp` binaries for the current
+  platform (Linux x64/arm64, macOS x64/arm64), verifies SHA256
+  against a published `checksums.txt`, and installs to
+  `~/.local/bin/`. No sudo, no shell rc edits. Respects
+  `LAMBE_VERSION` and `LAMBE_PREFIX` env vars.
+- **Release workflow generates `checksums.txt`.** `.github/workflows/release.yml`
+  now publishes a combined SHA256 manifest for every release
+  artifact as an asset. `install.sh` relies on this for integrity
+  checking; downstream package managers (a future Homebrew tap,
+  apt/rpm) can reuse it.
+
 ## 0.8.0
 
 Adds element-level shape checking for CSV/TSV output, union headers

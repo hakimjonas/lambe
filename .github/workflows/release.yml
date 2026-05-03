@@ -56,6 +56,14 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Generate checksums.txt
+        run: |
+          cd artifacts
+          # One SHA256 per line, matching sha256sum / shasum -a 256 format.
+          # install.sh reads this to verify downloaded binaries.
+          sha256sum lam-* > checksums.txt
+          cat checksums.txt
+
       - uses: softprops/action-gh-release@v3
         with:
           files: artifacts/*
