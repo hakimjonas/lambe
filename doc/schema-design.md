@@ -1,13 +1,15 @@
-# Lambe 0.9.0 Track A: Schema-typed queries — design document
+# Schema-typed queries — design rationale
 
-Status: **approved**, ready for implementation.
+The decisions behind the 0.9.0 schema feature. User-facing documentation
+is in [doc/schema.md](schema.md); this file records *why* the design is
+what it is, for contributors and curious readers.
 
 ## Context
 
 0.9.0 completes the shape feedback loop: declare a shape, check queries
-against it, round-trip with JSON Schema tooling. Tracks B/C/D landed
-the per-feature polish; track A ships the piece that lets Lambe's
-shape system act as a contract between the tool and its users' data.
+against it, round-trip with JSON Schema tooling. The schema feature is
+the piece that lets Lambe's shape system act as a contract between the
+tool and its users' data.
 
 The positioning is *"a query language for structured data that shows
 you what you're working with."* Schemas are how a user tells Lambe
