@@ -1,16 +1,26 @@
 /// Query parser. Left-recursive grammar via `rule()`, operator precedence
-/// via layered `chainl1` calls.
+/// via the `pratt` combinator.
 ///
-/// Grammar structure (lowest to highest precedence):
-///   _expr      = _alternative         (top-level, lowest precedence)
-///   _alternative = _logicOr ('//' _logicOr)*   right-associative
-///   _logicOr   = _logicAnd  chainl1 '||' | 'or'
-///   _logicAnd  = _equality  chainl1 '&&' | 'and'
-///   _equality  = _comparison chainl1 '==' | '!='
-///   _comparison = _additive  chainl1 '<' | '>' | '<=' | '>='
-///   _additive  = _multiplicative chainl1 '+' | '-'
-///   _multiplicative = _unary chainl1 '*' | '/' | '%'
-///   _unary     = ('-' | '!') _unary | _postfix
+/// Grammar structure:
+///   _expr      = _operators           (top-level)
+///   _operators = pratt(_postfix, [
+///                  // prefix unary at bp 70
+///                  Prefix('-', 70), Prefix('!', 70),
+///                  // multiplicative (left-assoc) bp 60
+///                  *, /, %
+///                  // additive (left-assoc) bp 50
+///                  +, -
+///                  // comparison (left-assoc) bp 40
+///                  <=, >=, <, >
+///                  // equality (left-assoc) bp 30
+///                  ==, !=
+///                  // logic and (left-assoc) bp 20
+///                  &&, and
+///                  // logic or (left-assoc) bp 10
+///                  ||, or
+///                  // alternative (right-assoc) bp 5
+///                  //
+///                ])
 ///   _postfix   = rule(                (left-recursive via Warth)
 ///                  _postfix '|' pipe_op
 ///                | _postfix '.' ident
@@ -343,94 +353,45 @@ final Parser<ParseError, LamExpr> _postfix = rule(
       _atom,
 );
 
-final Parser<ParseError, LamExpr> _unary =
-    (_sym('-').as('-') | _sym('!').as('!')).flatMap(
-      (op) =>
-          defer(() => _unary).map((operand) => UnaryOp(op, operand) as LamExpr),
-    ) |
-    _postfix;
+/// `/` must not match the first `/` of `//` (alternative operator). Other
+/// single-char ops don't have a longer variant that would be ambiguous at
+/// the binary-operator level, so only `/` needs a notFollowedBy guard.
+final Parser<ParseError, String> _divSym =
+    _lex(string('/').thenSkip(char('/').notFollowedBy));
 
-Parser<ParseError, LamExpr Function(LamExpr, LamExpr)> _binOp(String op) {
-  // `/` must not match the first `/` of `//` (alternative operator).
-  // Other single-char ops don't have a longer variant that would be
-  // ambiguous at this level, so we only special-case `/`.
-  final sym = op == '/'
-      ? _lex(string('/').thenSkip(char('/').notFollowedBy))
-      : _sym(op);
-  return sym.as<LamExpr Function(LamExpr, LamExpr)>(
-    (l, r) => BinaryOp(op, l, r),
-  );
-}
+LamExpr _binOp(String op, LamExpr a, LamExpr b) => BinaryOp(op, a, b);
 
-/// Word-boundary binary op for keyword aliases like `and` / `or`.
-///
-/// `_sym` matches any substring; for keyword aliases we need
-/// `.andy` / `.orbit` to keep working. The result node carries the
-/// canonical symbol so shape/eval don't see the alias.
-Parser<ParseError, LamExpr Function(LamExpr, LamExpr)> _binOpKw(
-  String keyword,
-  String canonical,
-) => _kw(keyword).as<LamExpr Function(LamExpr, LamExpr)>(
-  (l, r) => BinaryOp(canonical, l, r),
-);
+/// Single Pratt parse covering prefix unary, six binary precedence levels,
+/// and the right-associative `//` alternative. The conditional (`if/then/
+/// else`) is parsed inside `_atom` rather than as a Pratt operator because
+/// its three-branch shape doesn't fit infix dispatch.
+final Parser<ParseError, LamExpr> _operators = pratt<LamExpr>(_postfix, [
+  // Alternative (right-associative, lowest precedence).
+  InfixRight(_sym('//'), 5, Alternative.new),
+  // Logical OR.
+  InfixLeft(_sym('||'), 10, (LamExpr a, LamExpr b) => _binOp('||', a, b)),
+  InfixLeft(_kw('or'), 10, (LamExpr a, LamExpr b) => _binOp('||', a, b)),
+  // Logical AND.
+  InfixLeft(_sym('&&'), 20, (LamExpr a, LamExpr b) => _binOp('&&', a, b)),
+  InfixLeft(_kw('and'), 20, (LamExpr a, LamExpr b) => _binOp('&&', a, b)),
+  // Equality.
+  InfixLeft(_sym('=='), 30, (LamExpr a, LamExpr b) => _binOp('==', a, b)),
+  InfixLeft(_sym('!='), 30, (LamExpr a, LamExpr b) => _binOp('!=', a, b)),
+  // Comparison.
+  InfixLeft(_sym('<='), 40, (LamExpr a, LamExpr b) => _binOp('<=', a, b)),
+  InfixLeft(_sym('>='), 40, (LamExpr a, LamExpr b) => _binOp('>=', a, b)),
+  InfixLeft(_sym('<'), 40, (LamExpr a, LamExpr b) => _binOp('<', a, b)),
+  InfixLeft(_sym('>'), 40, (LamExpr a, LamExpr b) => _binOp('>', a, b)),
+  // Additive.
+  InfixLeft(_sym('+'), 50, (LamExpr a, LamExpr b) => _binOp('+', a, b)),
+  InfixLeft(_sym('-'), 50, (LamExpr a, LamExpr b) => _binOp('-', a, b)),
+  // Multiplicative.
+  InfixLeft(_sym('*'), 60, (LamExpr a, LamExpr b) => _binOp('*', a, b)),
+  InfixLeft(_divSym, 60, (LamExpr a, LamExpr b) => _binOp('/', a, b)),
+  InfixLeft(_sym('%'), 60, (LamExpr a, LamExpr b) => _binOp('%', a, b)),
+  // Prefix unary (highest precedence).
+  Prefix(_sym('-'), 70, (LamExpr e) => UnaryOp('-', e)),
+  Prefix(_sym('!'), 70, (LamExpr e) => UnaryOp('!', e)),
+]);
 
-Parser<ParseError, LamExpr Function(LamExpr, LamExpr)> _binOps(
-  List<String> ops,
-) {
-  var p = _binOp(ops.first);
-  for (var i = 1; i < ops.length; i++) {
-    p = p | _binOp(ops[i]);
-  }
-  return p;
-}
-
-final Parser<ParseError, LamExpr> _multiplicative = _unary.chainl1(
-  _binOps(['*', '/', '%']),
-);
-
-final Parser<ParseError, LamExpr> _additive = _multiplicative.chainl1(
-  _binOps(['+', '-']),
-);
-
-final Parser<ParseError, LamExpr> _comparison = () {
-  final ops = _binOp('<=') | _binOp('>=') | _binOp('<') | _binOp('>');
-  return _additive.chainl1(ops);
-}();
-
-final Parser<ParseError, LamExpr> _equality = _comparison.chainl1(
-  _binOps(['==', '!=']),
-);
-
-final Parser<ParseError, LamExpr> _logicAnd = _equality.chainl1(
-  _binOp('&&') | _binOpKw('and', '&&'),
-);
-
-final Parser<ParseError, LamExpr> _logicOr = _logicAnd.chainl1(
-  _binOp('||') | _binOpKw('or', '||'),
-);
-
-/// `//` alternative: `a // b` returns `a` if non-null, else `b`.
-/// Right-associative, one level above `||` so `a // b // c` means
-/// `a // (b // c)`. Built by hand because Lambé's parser combinators
-/// ship `chainl1` (left-associative) only.
-final Parser<ParseError, LamExpr> _alternative =
-    _logicOr.flatMap(
-      (first) => _altTail.many.map(
-        (tail) {
-          if (tail.isEmpty) return first;
-          final all = [first, ...tail];
-          LamExpr acc = all.last;
-          for (var i = all.length - 2; i >= 0; i--) {
-            acc = Alternative(all[i], acc);
-          }
-          return acc;
-        },
-      ),
-    );
-
-/// A single `// expr` suffix. Matched against the `//` symbol directly
-/// to avoid ambiguity with `/` (division).
-final Parser<ParseError, LamExpr> _altTail =
-    _sym('//').skipThen(_logicOr);
-
-final Parser<ParseError, LamExpr> _expr = _alternative;
+final Parser<ParseError, LamExpr> _expr = _operators;
