@@ -359,39 +359,30 @@ final Parser<ParseError, LamExpr> _postfix = rule(
 final Parser<ParseError, String> _divSym =
     _lex(string('/').thenSkip(char('/').notFollowedBy));
 
-LamExpr _binOp(String op, LamExpr a, LamExpr b) => BinaryOp(op, a, b);
+/// Lambé's symbol parser routing: `/` requires a not-followed-by guard
+/// so it doesn't shadow the `//` alternative; everything else is a
+/// whitespace-tolerant `_sym(...)`.
+Parser<ParseError, String> _opSym(String s) => s == '/' ? _divSym : _sym(s);
 
-/// Single Pratt parse covering prefix unary, six binary precedence levels,
-/// and the right-associative `//` alternative. The conditional (`if/then/
-/// else`) is parsed inside `_atom` rather than as a Pratt operator because
-/// its three-branch shape doesn't fit infix dispatch.
+/// Single Pratt parse covering prefix unary, the six binary precedence
+/// levels supplied by [cFamilyPrecedence], plus Lambé extensions: the
+/// right-associative `//` alternative at the bottom, and the keyword
+/// aliases `and` / `or`. The conditional (`if/then/else`) is parsed
+/// inside `_atom` rather than as a Pratt operator because its
+/// three-branch shape doesn't fit infix dispatch.
 final Parser<ParseError, LamExpr> _operators = pratt<LamExpr>(_postfix, [
-  // Alternative (right-associative, lowest precedence).
+  // Alternative (right-associative, below `||`).
   InfixRight(_sym('//'), 5, Alternative.new),
-  // Logical OR.
-  InfixLeft(_sym('||'), 10, (LamExpr a, LamExpr b) => _binOp('||', a, b)),
-  InfixLeft(_kw('or'), 10, (LamExpr a, LamExpr b) => _binOp('||', a, b)),
-  // Logical AND.
-  InfixLeft(_sym('&&'), 20, (LamExpr a, LamExpr b) => _binOp('&&', a, b)),
-  InfixLeft(_kw('and'), 20, (LamExpr a, LamExpr b) => _binOp('&&', a, b)),
-  // Equality.
-  InfixLeft(_sym('=='), 30, (LamExpr a, LamExpr b) => _binOp('==', a, b)),
-  InfixLeft(_sym('!='), 30, (LamExpr a, LamExpr b) => _binOp('!=', a, b)),
-  // Comparison.
-  InfixLeft(_sym('<='), 40, (LamExpr a, LamExpr b) => _binOp('<=', a, b)),
-  InfixLeft(_sym('>='), 40, (LamExpr a, LamExpr b) => _binOp('>=', a, b)),
-  InfixLeft(_sym('<'), 40, (LamExpr a, LamExpr b) => _binOp('<', a, b)),
-  InfixLeft(_sym('>'), 40, (LamExpr a, LamExpr b) => _binOp('>', a, b)),
-  // Additive.
-  InfixLeft(_sym('+'), 50, (LamExpr a, LamExpr b) => _binOp('+', a, b)),
-  InfixLeft(_sym('-'), 50, (LamExpr a, LamExpr b) => _binOp('-', a, b)),
-  // Multiplicative.
-  InfixLeft(_sym('*'), 60, (LamExpr a, LamExpr b) => _binOp('*', a, b)),
-  InfixLeft(_divSym, 60, (LamExpr a, LamExpr b) => _binOp('/', a, b)),
-  InfixLeft(_sym('%'), 60, (LamExpr a, LamExpr b) => _binOp('%', a, b)),
-  // Prefix unary (highest precedence).
-  Prefix(_sym('-'), 70, (LamExpr e) => UnaryOp('-', e)),
-  Prefix(_sym('!'), 70, (LamExpr e) => UnaryOp('!', e)),
+  // Standard C-family operators.
+  ...cFamilyPrecedence<LamExpr>(
+    sym: _opSym,
+    binary: BinaryOp.new,
+    unary: UnaryOp.new,
+  ),
+  // Lambé-specific keyword aliases for && / ||. _kw enforces a word
+  // boundary so `.andy` / `.orbit` keep tokenizing as identifiers.
+  InfixLeft(_kw('and'), 20, (LamExpr a, LamExpr b) => BinaryOp('&&', a, b)),
+  InfixLeft(_kw('or'), 10, (LamExpr a, LamExpr b) => BinaryOp('||', a, b)),
 ]);
 
 final Parser<ParseError, LamExpr> _expr = _operators;
