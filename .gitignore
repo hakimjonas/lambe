@@ -27,3 +27,6 @@ bench-results-*.json
 
 # Session handover notes (internal workflow, not code)
 HANDOVER_*.md
+
+# Local scratch notes (release planning, status snapshots, etc.)
+*.scratch.md
