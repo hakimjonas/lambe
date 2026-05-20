@@ -2,9 +2,10 @@
 /// via layered `chainl1` calls.
 ///
 /// Grammar structure (lowest to highest precedence):
-///   _expr      = _logicOr             (top-level, lowest precedence)
-///   _logicOr   = _logicAnd  chainl1 '||'
-///   _logicAnd  = _equality  chainl1 '&&'
+///   _expr      = _alternative         (top-level, lowest precedence)
+///   _alternative = _logicOr ('//' _logicOr)*   right-associative
+///   _logicOr   = _logicAnd  chainl1 '||' | 'or'
+///   _logicAnd  = _equality  chainl1 '&&' | 'and'
 ///   _equality  = _comparison chainl1 '==' | '!='
 ///   _comparison = _additive  chainl1 '<' | '>' | '<=' | '>='
 ///   _additive  = _multiplicative chainl1 '+' | '-'
@@ -16,7 +17,7 @@
 ///                | _postfix '[' _expr ']'
 ///                | _atom )
 ///   _atom      = number | string | bool | null | '(' _expr ')' | dotField
-///                | objConstruct | conditional | pipe_op
+///                | objConstruct | listConstruct | conditional | pipe_op
 library;
 
 import 'package:rumil/rumil.dart';
@@ -158,6 +159,15 @@ final Parser<ParseError, LamExpr> _objConstruct = _sym('{')
     .thenSkip(_closeBrace)
     .map((entries) => ObjConstruct(entries) as LamExpr);
 
+/// List literal: `[expr, expr, ...]` or `[]`.
+///
+/// Parsed at atom level so it never shadows postfix indexing
+/// (`expr[i]`), which requires a prior atom to the left of `[`.
+final Parser<ParseError, LamExpr> _listConstruct = _sym('[')
+    .skipThen(defer(() => _expr).sepBy(_sym(',')))
+    .thenSkip(_closeBracket)
+    .map((parts) => ListConstruct(parts) as LamExpr);
+
 final Parser<ParseError, LamExpr> _conditional = _sym('if')
     .skipThen(_innerExpr)
     .flatMap(
@@ -186,6 +196,7 @@ final Parser<ParseError, LamExpr> _atom =
     _nullLit |
     _conditional |
     _objConstruct |
+    _listConstruct |
     _parenExpr |
     _dotField |
     _pipeOp;
@@ -249,6 +260,14 @@ final Parser<ParseError, LamExpr> _asOp = _sym('as')
 /// still need an explicit rule here.
 final Parser<ParseError, LamExpr> _pipeOp = _buildPipeOp();
 
+/// jq-ism aliases: names agents reach for that map cleanly to an
+/// existing Lambé op. Registered at the parser layer so shape/eval
+/// stay unaware. Canonical name is what `--print-shape` / `--explain`
+/// emit; these just let jq-trained agents land the query.
+const Map<String, String> _jqAliases = {
+  'tonumber': 'to_number',
+};
+
 Parser<ParseError, LamExpr> _buildPipeOp() {
   final alternatives = <Parser<ParseError, LamExpr>>[];
   for (final spec in shape_ops.pipeOpSpecs) {
@@ -265,6 +284,20 @@ Parser<ParseError, LamExpr> _buildPipeOp() {
   // Custom ops: hand-written rules, in the order the grammar wants
   // to try them. Currently just `as(fmt)`.
   alternatives.add(_asOp);
+  // jq-idiom aliases. Registered last so a canonical spec always wins
+  // the parse; the alias only fires when nothing else matches.
+  for (final entry in _jqAliases.entries) {
+    final canonical = shape_ops.pipeOpInfoForName(entry.value);
+    if (canonical == null) continue;
+    switch (canonical.parseKind) {
+      case shape_ops.PipeOpParseKind.zeroArg:
+        alternatives.add(_kw(entry.key).as<LamExpr>(canonical.zeroArgCtor!()));
+      case shape_ops.PipeOpParseKind.oneArg:
+        alternatives.add(_paramOp(entry.key, canonical.oneArgCtor!));
+      case shape_ops.PipeOpParseKind.custom:
+        break;
+    }
+  }
   return alternatives.reduce((a, b) => a | b);
 }
 
@@ -317,10 +350,29 @@ final Parser<ParseError, LamExpr> _unary =
     ) |
     _postfix;
 
-Parser<ParseError, LamExpr Function(LamExpr, LamExpr)> _binOp(String op) =>
-    _sym(
-      op,
-    ).as<LamExpr Function(LamExpr, LamExpr)>((l, r) => BinaryOp(op, l, r));
+Parser<ParseError, LamExpr Function(LamExpr, LamExpr)> _binOp(String op) {
+  // `/` must not match the first `/` of `//` (alternative operator).
+  // Other single-char ops don't have a longer variant that would be
+  // ambiguous at this level, so we only special-case `/`.
+  final sym = op == '/'
+      ? _lex(string('/').thenSkip(char('/').notFollowedBy))
+      : _sym(op);
+  return sym.as<LamExpr Function(LamExpr, LamExpr)>(
+    (l, r) => BinaryOp(op, l, r),
+  );
+}
+
+/// Word-boundary binary op for keyword aliases like `and` / `or`.
+///
+/// `_sym` matches any substring; for keyword aliases we need
+/// `.andy` / `.orbit` to keep working. The result node carries the
+/// canonical symbol so shape/eval don't see the alias.
+Parser<ParseError, LamExpr Function(LamExpr, LamExpr)> _binOpKw(
+  String keyword,
+  String canonical,
+) => _kw(keyword).as<LamExpr Function(LamExpr, LamExpr)>(
+  (l, r) => BinaryOp(canonical, l, r),
+);
 
 Parser<ParseError, LamExpr Function(LamExpr, LamExpr)> _binOps(
   List<String> ops,
@@ -349,8 +401,36 @@ final Parser<ParseError, LamExpr> _equality = _comparison.chainl1(
   _binOps(['==', '!=']),
 );
 
-final Parser<ParseError, LamExpr> _logicAnd = _equality.chainl1(_binOp('&&'));
+final Parser<ParseError, LamExpr> _logicAnd = _equality.chainl1(
+  _binOp('&&') | _binOpKw('and', '&&'),
+);
 
-final Parser<ParseError, LamExpr> _logicOr = _logicAnd.chainl1(_binOp('||'));
+final Parser<ParseError, LamExpr> _logicOr = _logicAnd.chainl1(
+  _binOp('||') | _binOpKw('or', '||'),
+);
 
-final Parser<ParseError, LamExpr> _expr = _logicOr;
+/// `//` alternative: `a // b` returns `a` if non-null, else `b`.
+/// Right-associative, one level above `||` so `a // b // c` means
+/// `a // (b // c)`. Built by hand because Lambé's parser combinators
+/// ship `chainl1` (left-associative) only.
+final Parser<ParseError, LamExpr> _alternative =
+    _logicOr.flatMap(
+      (first) => _altTail.many.map(
+        (tail) {
+          if (tail.isEmpty) return first;
+          final all = [first, ...tail];
+          LamExpr acc = all.last;
+          for (var i = all.length - 2; i >= 0; i--) {
+            acc = Alternative(all[i], acc);
+          }
+          return acc;
+        },
+      ),
+    );
+
+/// A single `// expr` suffix. Matched against the `//` symbol directly
+/// to avoid ambiguity with `/` (division).
+final Parser<ParseError, LamExpr> _altTail =
+    _sym('//').skipThen(_logicOr);
+
+final Parser<ParseError, LamExpr> _expr = _alternative;

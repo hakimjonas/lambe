@@ -38,7 +38,7 @@ Object? evaluate(LamExpr expr, Object? ctx) => switch (expr) {
     op,
     evaluate(operand, ctx),
   ),
-  BinaryOp(:final op, :final left, :final right) => applyBinaryOp(
+  BinaryOp(:final op, :final left, :final right) => _binaryOp(
     op,
     evaluate(left, ctx),
     evaluate(right, ctx),
@@ -50,6 +50,10 @@ Object? evaluate(LamExpr expr, Object? ctx) => switch (expr) {
     asBool(evaluate(condition, ctx), 'if')
         ? evaluate(then_, ctx)
         : evaluate(else_, ctx),
+  Alternative(:final left, :final right) => _alternative(left, right, ctx),
+  ListConstruct(:final parts) => [
+    for (final p in parts) evaluate(p, ctx),
+  ],
   StringInterp(:final parts) => _interpolate(parts, ctx),
   Slice(:final target, :final start, :final end) => _slice(
     evaluate(target, ctx),
@@ -140,6 +144,32 @@ Object? _index(Object? target, Object? idx) {
 Object? _pipe(Object? input, LamExpr op) {
   if (input == null) return null;
   return evaluate(op, input);
+}
+
+/// Evaluate `left // right`: returns `left`'s value if non-null,
+/// otherwise `right`'s value. `right` is only evaluated on fallback,
+/// so `.a // someExpensiveFallback` pays nothing when `.a` hits.
+Object? _alternative(LamExpr left, LamExpr right, Object? ctx) {
+  final primary = evaluate(left, ctx);
+  if (primary != null) return primary;
+  return evaluate(right, ctx);
+}
+
+/// Lambé's binary-op wrapper. Intercepts `+` on two lists for
+/// concatenation; delegates everything else to rumil_expressions'
+/// scalar dispatcher. A mixed list/scalar `+` is a type error —
+/// Lambé's strictness stance over silent lifting.
+Object _binaryOp(String op, Object? l, Object? r) {
+  if (op == '+' && l is List<Object?> && r is List<Object?>) {
+    return [...l, ...r];
+  }
+  if (op == '+' && (l is List<Object?>) != (r is List<Object?>)) {
+    throw QueryError(
+      '+: cannot mix list with ${typeName(r is List ? l : r)}; '
+      'coerce one side explicitly.',
+    );
+  }
+  return applyBinaryOp(op, l, r);
 }
 
 List<Object?> _filter(Object? input, LamExpr predicate) {

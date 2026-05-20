@@ -186,6 +186,138 @@ void main() {
     });
   });
 
+  group('jq-ism aliases', () {
+    test('`and` parses as `&&`', () {
+      final expr = _parse('.a and .b');
+      expect(expr, isA<BinaryOp>());
+      expect((expr as BinaryOp).op, '&&');
+    });
+
+    test('`or` parses as `||`', () {
+      final expr = _parse('.a or .b');
+      expect(expr, isA<BinaryOp>());
+      expect((expr as BinaryOp).op, '||');
+    });
+
+    test('`and` keeps word boundary: .andy is still a field', () {
+      final expr = _parse('.andy');
+      expect(expr, isA<Field>());
+      expect((expr as Field).name, 'andy');
+    });
+
+    test('`or` keeps word boundary: .orbit is still a field', () {
+      final expr = _parse('.orbit');
+      expect(expr, isA<Field>());
+      expect((expr as Field).name, 'orbit');
+    });
+
+    test('`tonumber` parses as to_number', () {
+      final expr = _parse('.x | tonumber');
+      expect(expr, isA<Pipe>());
+      final pipe = expr as Pipe;
+      expect(pipe.op, isA<ToNumberOp>());
+    });
+
+    test('`and` precedence: .a or .b and .c == .a or (.b and .c)', () {
+      final expr = _parse('.a or .b and .c');
+      expect(expr, isA<BinaryOp>());
+      final top = expr as BinaryOp;
+      expect(top.op, '||');
+      expect(top.right, isA<BinaryOp>());
+      expect((top.right as BinaryOp).op, '&&');
+    });
+  });
+
+  group('`//` alternative', () {
+    test('.a // .b is Alternative', () {
+      final expr = _parse('.a // .b');
+      expect(expr, isA<Alternative>());
+      final alt = expr as Alternative;
+      expect(alt.left, isA<Field>());
+      expect(alt.right, isA<Field>());
+    });
+
+    test('chained .a // .b // .c is right-associative', () {
+      final expr = _parse('.a // .b // .c');
+      expect(expr, isA<Alternative>());
+      final outer = expr as Alternative;
+      expect((outer.left as Field).name, 'a');
+      expect(outer.right, isA<Alternative>());
+      final inner = outer.right as Alternative;
+      expect((inner.left as Field).name, 'b');
+      expect((inner.right as Field).name, 'c');
+    });
+
+    test('// does not swallow / (division)', () {
+      final expr = _parse('.x / .y');
+      expect(expr, isA<BinaryOp>());
+      expect((expr as BinaryOp).op, '/');
+    });
+
+    test('// binds looser than ||', () {
+      // `.a || .b // .c` should parse as `(.a || .b) // .c`
+      final expr = _parse('.a || .b // .c');
+      expect(expr, isA<Alternative>());
+      final alt = expr as Alternative;
+      expect(alt.left, isA<BinaryOp>());
+      expect((alt.left as BinaryOp).op, '||');
+    });
+
+    test('// is lower precedence than pipe | (jq-compatible)', () {
+      // `.a // .b | length` parses as `.a // (.b | length)` — same as jq.
+      // Right side of // is a full pipeline expression.
+      final expr = _parse('.a // .b | length');
+      expect(expr, isA<Alternative>());
+      expect((expr as Alternative).right, isA<Pipe>());
+    });
+
+    test('parens override: (.a // .b) | length forces the alt first', () {
+      final expr = _parse('(.a // .b) | length');
+      expect(expr, isA<Pipe>());
+      expect((expr as Pipe).input, isA<Alternative>());
+    });
+  });
+
+  group('List literals', () {
+    test('[] is empty ListConstruct', () {
+      final expr = _parse('[]');
+      expect(expr, isA<ListConstruct>());
+      expect((expr as ListConstruct).parts, isEmpty);
+    });
+
+    test('[1, 2, 3] is a three-part ListConstruct', () {
+      final expr = _parse('[1, 2, 3]');
+      expect(expr, isA<ListConstruct>());
+      final list = expr as ListConstruct;
+      expect(list.parts.length, 3);
+      expect(list.parts.every((p) => p is NumLit), true);
+    });
+
+    test('[.a, .b] collects fields', () {
+      final expr = _parse('[.a, .b]');
+      expect(expr, isA<ListConstruct>());
+      final list = expr as ListConstruct;
+      expect(list.parts.length, 2);
+      expect(list.parts.every((p) => p is Field), true);
+    });
+
+    test('list literal at atom level does not conflict with indexing', () {
+      // `.users[0]` must still parse as Index, not ListConstruct.
+      final expr = _parse('.users[0]');
+      expect(expr, isA<Index>());
+    });
+
+    test('pipeline can feed into a list literal', () {
+      // `.users | map([.name, .age])` — list literal inside map's
+      // transform expression.
+      final expr = _parse('.users | map([.name, .age])');
+      expect(expr, isA<Pipe>());
+      final pipe = expr as Pipe;
+      expect(pipe.op, isA<MapOp>());
+      expect((pipe.op as MapOp).transform, isA<ListConstruct>());
+    });
+  });
+
   group('Pipeline operations', () {
     test('.users | filter(.age > 30)', () {
       final expr = _parse('.users | filter(.age > 30)');

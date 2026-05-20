@@ -452,6 +452,10 @@ String _render(LamExpr expr) => switch (expr) {
         '${end == null ? '' : _render(end)}]',
   Conditional(:final condition, :final then_, :final else_) =>
     'if ${_render(condition)} then ${_render(then_)} else ${_render(else_)}',
+  Alternative(:final left, :final right) =>
+    '${_render(left)} // ${_render(right)}',
+  ListConstruct(:final parts) =>
+    '[${parts.map(_render).join(', ')}]',
 };
 
 /// Render an [ExplainReport] as a plaintext table suitable for stdout.

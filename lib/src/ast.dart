@@ -373,6 +373,44 @@ final class As extends LamExpr {
   const As(this.target);
 }
 
+/// Alternative: `a // b` — evaluate [left]; if it is `null`, evaluate
+/// [right] instead. Otherwise return [left]'s result unchanged.
+///
+/// Lambé's semantics differ deliberately from jq's: jq's `//` fires on
+/// "null or false". Lambé's fires only on `null`. A genuine `false`
+/// passes through — matching Lambé's broader strictness stance.
+///
+/// Because field access on a missing key already yields `null` via
+/// null-propagation, `//` doubles as a missing-key fallback:
+/// `.user.email // .user.contact.email // "unknown"`.
+final class Alternative extends LamExpr {
+  /// The primary expression, tried first.
+  final LamExpr left;
+
+  /// The fallback, evaluated only when [left] yields `null`.
+  final LamExpr right;
+
+  /// Creates an alternative expression.
+  const Alternative(this.left, this.right);
+}
+
+/// List construction: `[expr, expr, ...]`.
+///
+/// Each [parts] expression is evaluated against the current context
+/// and the results are collected into a list. Empty list literals
+/// `[]` produce the empty list.
+///
+/// Distinct from [Index] (postfix `expr[i]`): list construction has
+/// no target on the left, so it can never parse in a context where
+/// indexing would apply.
+final class ListConstruct extends LamExpr {
+  /// The member expressions, evaluated per-call against the context.
+  final List<LamExpr> parts;
+
+  /// Creates a list construction.
+  const ListConstruct(this.parts);
+}
+
 /// Conditional expression: `if cond then a else b`.
 final class Conditional extends LamExpr {
   /// The condition (must evaluate to bool).
