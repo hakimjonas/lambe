@@ -281,6 +281,15 @@ String _formatParseErrors(String expression, List<ParseError> errors) {
     }
   }
 
+  // Before the verbose "expected ..." fallback, check whether the
+  // failure matches a recognisable jq idiom and surface a targeted
+  // hint instead. Keeps the error short and actionable for agents
+  // trained on jq priors.
+  final idiom = _jqIdiomHint(expression, offset);
+  if (idiom != null) {
+    return _renderParseError(expression, line, col, idiom);
+  }
+
   final what =
       expected.isEmpty
           ? 'unexpected input'
@@ -335,6 +344,8 @@ String _describeLeftover(String expression, int offset) {
     if (after.isEmpty) return 'unexpected | at end of expression';
     final word = after.split(RegExp(r'[^a-zA-Z_]')).first;
     if (word.isNotEmpty && !parser_.pipeOpNames.contains(word)) {
+      final jqHint = _jqPipeOpHint(word);
+      if (jqHint != null) return 'unknown operation "$word" after |\n  help: $jqHint';
       final suggestion = _closestMatch(word, parser_.pipeOpNames);
       final hint =
           suggestion != null ? '\n  help: did you mean "$suggestion"?' : '';
@@ -342,10 +353,117 @@ String _describeLeftover(String expression, int offset) {
     }
     return 'unexpected input after |';
   }
+  final idiom = _jqIdiomHint(expression, offset);
+  if (idiom != null) return idiom;
   final token = rest.split(RegExp(r'\s')).first;
   if (token.isNotEmpty) return 'unexpected "$token"';
   return 'unexpected input';
 }
+
+/// Hint for a jq pipe-op name that Lambé does not support. Returns null
+/// for unknown names.
+///
+/// Fires when the model wrote `.x | empty` or `.x | select(...)` —
+/// jq pipe stages Lambé rejects. The hint points at the Lambé
+/// equivalent so the retry lands the right idiom.
+String? _jqPipeOpHint(String word) {
+  switch (word) {
+    case 'select':
+      return '`select(pred)` only works inside `filter(...)`; '
+          'write `filter(pred)` as the pipe stage instead.';
+    case 'empty':
+      return '`empty` does not exist in Lambé. '
+          'Use `filter(pred)` to drop items that fail a predicate.';
+    case 'if':
+      return '`if/then/else/end` is not a pipe stage in Lambé. '
+          'Use it as an expression inside `map(...)` or `filter(...)`, '
+          'or replace it with `filter(pred)`.';
+    case 'not':
+      return '`not` is a prefix in Lambé: write `!pred`.';
+    default:
+      return null;
+  }
+}
+
+/// Hint for a jq idiom detected at [offset] in [expression]. Returns
+/// null if the surrounding context doesn't match a known pattern.
+///
+/// Recognises:
+/// - `[]` iterate-all (Lambé has no iterate-all; use `map(...)`).
+/// - `?` optional suffix (no optional-suffix; filter or shape-check).
+/// - `..` recursive descent (no recursive descent; explicit paths).
+/// - `select(...)` in non-filter position (only valid inside
+///   `filter(...)`).
+/// - `empty` keyword (no `empty`; use `filter(pred)`).
+/// - `end` from a stranded `if/then/else/end` tail.
+/// - `//` alternative operator (no `//` in Lambé; use `if` or
+///   `filter`).
+String? _jqIdiomHint(String expression, int offset) {
+  // `.users[]`: parser expected an index expression after `[` and
+  // failed on `]`. Detect by: offset points at `]` and the previous
+  // non-whitespace char is `[`.
+  if (offset < expression.length && expression[offset] == ']') {
+    final before = expression.substring(0, offset).trimRight();
+    if (before.endsWith('[')) {
+      return 'Lambé has no `[]` iterate-all. '
+          'Use `map(.)` to fan out, or `map(.field)` to project. '
+          'E.g. `.users | map(.name)` not `.users[].name`, '
+          '`.items | map(.spec.containers) | flatten | map(.name)` '
+          'for nested fan-out.';
+    }
+  }
+  // `.foo?`: `?` immediately after an identifier or bracket.
+  if (offset < expression.length && expression[offset] == '?') {
+    return 'Lambé has no `?` optional-path suffix. '
+        'Use `filter(has("foo")) | .foo`, or check the shape with '
+        '`--print-shape` (CLI) / `lambe_print_shape` (MCP) first.';
+  }
+  // `..`: second `.` with no identifier.
+  if (offset < expression.length && expression[offset] == '.') {
+    final before = expression.substring(0, offset).trimRight();
+    if (before.endsWith('.') &&
+        !before.endsWith('..')) {
+      return 'Lambé has no `..` recursive descent. '
+          'Use explicit paths; combine `map(...)` and `flatten` for '
+          'nested fan-out.';
+    }
+  }
+  final rest = expression.substring(offset).trimLeft();
+  // `select(...)` in non-filter position. Fires anywhere — inside
+  // `map(...)`, at top level, in the middle of a pipeline — since
+  // `select` is only valid inside `filter(...)` in Lambé.
+  if (rest.startsWith('select(') || rest == 'select' ||
+      (rest.startsWith('select') &&
+          rest.length >= 7 &&
+          !_isIdentChar(rest.codeUnitAt(6)))) {
+    return '`select(pred)` is only valid inside `filter(...)` in '
+        'Lambé. Replace `map(select(pred))` with `filter(pred)`, and '
+        '`map(select(pred) | .field)` with '
+        '`filter(pred) | map(.field)`.';
+  }
+  // `empty` keyword. Similar: may appear inside `map(if ... then ... else empty end)`.
+  if (rest.startsWith('empty') &&
+      (rest.length == 5 || !_isIdentChar(rest.codeUnitAt(5)))) {
+    return 'Lambé has no `empty` keyword. '
+        'Drop items with `filter(pred)` instead of '
+        '`map(if pred then x else empty end)`.';
+  }
+  // `end` from a stranded `if/then/else/end`.
+  if (rest.startsWith('end') &&
+      (rest.length == 3 ||
+          !_isIdentChar(rest.codeUnitAt(3)))) {
+    return '`if/then/else/end` is an expression in Lambé, not a pipe '
+        'stage. Use it inside `map(...)` / `filter(...)`, and drop '
+        'the `end` keyword — Lambé terminates `if` at the else branch.';
+  }
+  return null;
+}
+
+bool _isIdentChar(int code) =>
+    (code >= 0x30 && code <= 0x39) || // 0-9
+    (code >= 0x41 && code <= 0x5a) || // A-Z
+    (code >= 0x61 && code <= 0x7a) || // a-z
+    code == 0x5f; // _
 
 String? _closestMatch(String input, List<String> candidates) {
   final maxDist = (input.length / 2).ceil().clamp(1, 3);
