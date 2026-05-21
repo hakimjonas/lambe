@@ -188,11 +188,17 @@ final class Slice extends LamExpr {
 ///
 /// At runtime the evaluator infers the shape of the current context and
 /// checks it against the target format's requirement. If the shape is
-/// already compatible, [As] returns the context unchanged. If exactly
-/// one curated remediation exists for the mismatch, it is applied. If
-/// the combination has no curated remediation, or more than one,
-/// evaluation throws a [QueryError] listing the available candidates
-/// so the caller can pick one explicitly.
+/// already compatible, [As] returns the context unchanged. If a curated
+/// remediation exists for the mismatch, it is applied. Otherwise
+/// evaluation throws a [QueryError].
+///
+/// The curated remediation table in `shape/check.dart:_suggestionsFor`
+/// returns at most one bridge per `(input shape, format)` pair, so in
+/// practice "no curated bridge" is the only failure mode users hit.
+/// A defensive multi-bridge branch in the evaluator (`_as` in
+/// `evaluator.dart`) guards against future curation errors that might
+/// add competing bridges; if that path ever fires the user will get a
+/// listing and a request to pick one explicitly.
 final class As extends LamExpr {
   /// The target output format the pipeline should fit.
   final OutputFormat target;

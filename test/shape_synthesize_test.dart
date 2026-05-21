@@ -116,4 +116,39 @@ void main() {
       expect(composed.op, same(bridge));
     });
   });
+
+  group('curated table: at most one bridge per (shape, format)', () {
+    // Pins the invariant the documented "ambiguous bridge" error path
+    // currently relies on by being unreachable. If a future curation
+    // adds a second bridge for any pair, this test fails and the
+    // contributor either picks one or accepts that the multi-bridge
+    // branch in `evaluator.dart` becomes user-visible.
+    final shapes = <Shape>[
+      const SNull(),
+      const SBool(),
+      const SNum(),
+      const SString(),
+      const SList(SAny()),
+      const SList(SString()),
+      const SList(SNum()),
+      const SMap(<String, Shape>{}),
+      const SMap({'a': SNum()}),
+    ];
+    for (final shape in shapes) {
+      for (final fmt in OutputFormat.values) {
+        test('${shape.runtimeType} -> ${fmt.name}: ≤ 1 bridge', () {
+          final bridges = synthesize(shape, fmt);
+          expect(
+            bridges.length,
+            lessThanOrEqualTo(1),
+            reason:
+                'Curated table produced ${bridges.length} bridges for '
+                '${shape.runtimeType} -> ${fmt.name}; if this is '
+                'intentional, the multi-bridge ambiguity path becomes '
+                'reachable and the As class doc should be updated.',
+          );
+        });
+      }
+    }
+  });
 }
