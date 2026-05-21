@@ -2,8 +2,92 @@
 
 Closes the shape feedback loop. Declare a JSON Schema, check queries
 against it, round-trip schemas with the ecosystem. Plus: richer
-static analysis in `--explain`, line-delimited JSON input, and an
-opt-in CSV escape hatch for nested cells.
+static analysis in `--explain`, line-delimited JSON input, an opt-in
+CSV escape hatch for nested cells, an architectural pipe-op
+consolidation, and a `rumil_tokens`-based REPL highlighter.
+
+### Pipe-op AST consolidation
+
+- The 27 per-op AST classes (`FilterOp`, `MapOp`, `SortOp`, …)
+  collapse into a single `BuiltinPipeOp(name, args)`. The spec table
+  in `pipe_ops.dart` is now the only place per-op behaviour lives:
+  acceptance, shape inference, runtime evaluation, and parse arity
+  all live on the same record. Adding or renaming a pipe op is a
+  one-file change.
+- `As(target)` keeps a dedicated AST class for its typed
+  `OutputFormat` argument — it's the only custom-arity op.
+- `pipeOpInfoFor(LamExpr)` recognises both `BuiltinPipeOp` and `As`.
+- Source-breaking for external code that constructed pipe-op AST
+  nodes directly. The pre-1.0 contract here was that AST classes
+  were internals; we're taking that out properly. Tests that
+  assembled `MapOp(.x)` etc. now write `BuiltinPipeOp('map', [.x])`.
+
+### REPL syntax highlighter on `rumil_tokens`
+
+- `lib/src/readline.dart`'s 100-line hand-rolled tokenizer is gone.
+  The highlighter now consumes a `Token` stream from the
+  `rumil_tokens` `LangGrammar` defined in
+  `lib/src/highlight_grammar.dart`. The grammar lives in lambé (not
+  in `rumil_tokens`' built-in five) because it's lambé-specific.
+- New runtime dependency: `rumil_tokens ^0.1.0`.
+- Visible behavioural change in the REPL: `.field` colours as two
+  tokens (`.` punctuation + `field` identifier) rather than one
+  cyan run; negative literals colour as `-` operator + number
+  rather than one yellow run. The audit determined the new
+  behaviour is more principled; the visual effect is subtle.
+
+### `queryNdjsonString` convenience
+
+- New `queryNdjsonString(Iterable<String> lines, String expression)`
+  parses the expression once and delegates to `queryNdjson`. Resolves
+  the asymmetry where the existing `queryNdjson` took a pre-parsed
+  AST while every other `query*` took a string.
+
+### Performance
+
+- `_normalize` short-circuits canonical inputs.
+  `Map<String, Object?>` / `List<Object?>` / scalars round-trip
+  through the public API without allocating a copy. Non-canonical
+  inputs (e.g. `Map<dynamic, dynamic>` from some YAML decoders)
+  still rebuild as before.
+
+### Documentation precision
+
+- Six per-op behavioural details now have load-bearing docstrings:
+  `//` is a null-fallback (not an error-handler), the empty-list
+  policy (`first`/`last` return null; `min`/`max`/`avg` throw; `sum`
+  returns 0), `unique` distinguishes int from double by canonical
+  encoding, duplicate keys in `{a: x, a: y}` follow Dart map literal
+  semantics (last wins), `from_entries` rejects non-map / non-string-
+  key entries explicitly (was silent skip), `type` rejects non-JSON
+  runtime values with a hint pointing at `parseInput` / `jsonDecode`.
+- The `from_entries` change is the only behavioural one — non-map
+  entries used to be dropped silently, now they throw `QueryError`.
+  Hides a class of bugs where upstream pipelines emit the wrong
+  shape.
+
+### Bug fixes
+
+- **TSV input now honors header rows the same way CSV does.** Pre-0.9.0
+  every TSV file returned `List<List<String>>` because the parser
+  passed a static `defaultTsvConfig` and skipped dialect detection.
+  Now `parseInput` runs `detectDialect` for TSV with the tab
+  delimiter forced, so files where the first row looks like headers
+  return `List<Map<String, Object?>>`. `--print-shape data.tsv` and
+  `--print-shape data.csv` agree on logical content.
+- **String single-char indexing.** `.name[0]` now returns a
+  one-character substring instead of erroring with `Cannot index
+  string`. Slicing (`.name[0:3]`) already worked; the asymmetry is
+  gone. Out-of-range returns `null` (mirrors list indexing);
+  non-int still throws.
+
+### jq compatibility
+
+- **`add` is now recognized as an alias for `sum`.** A jq idiom that
+  matches Lambé's `sum` exactly. `_jqAliases` in `parser.dart` is the
+  table; entries belong there only when the jq semantics are an
+  exact match. Other unsupported jq idioms still surface a
+  "did you mean" hint or an explanatory message via `_jqIdiomHint`.
 
 ### Schemas as a first-class contract
 

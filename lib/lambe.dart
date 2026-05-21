@@ -174,6 +174,12 @@ Object? queryJson(String expression, String json) =>
 ///
 /// Lazy: returns an [Iterable] that evaluates on demand. Safe to use
 /// over large inputs as long as individual lines fit in memory.
+///
+/// For one-shot use where the expression is a string, see
+/// [queryNdjsonString], which parses the expression once and delegates
+/// here. Use this AST-taking variant when you've parsed the expression
+/// up front (REPL session, bench harness) and want to apply it to many
+/// ndjson lines without re-parsing.
 Iterable<Object?> queryNdjson(Iterable<String> lines, LamExpr ast) sync* {
   var lineNum = 0;
   for (final raw in lines) {
@@ -194,6 +200,23 @@ Iterable<Object?> queryNdjson(Iterable<String> lines, LamExpr ast) sync* {
       throw QueryError('line $lineNum: ${e.message}');
     }
   }
+}
+
+/// Evaluate [expression] against each non-empty line of [lines]
+/// independently as a JSON document.
+///
+/// Convenience equivalent to parsing [expression] once via [parseAst]
+/// and calling [queryNdjson] with the resulting AST. The parse cost is
+/// paid once, then amortized across every line. Errors flow through
+/// the same `line N:` prefix machinery as [queryNdjson].
+///
+/// Throws [QueryError] if [expression] fails to parse, or on the first
+/// per-line parse or evaluation error. Lazy in [lines]: parsing of
+/// [expression] is eager (so syntax errors fire before any line is
+/// read), but evaluation per line happens on demand.
+Iterable<Object?> queryNdjsonString(Iterable<String> lines, String expression) {
+  final ast = parseAst(expression);
+  return queryNdjson(lines, ast);
 }
 
 /// Parse a query expression string into a [LamExpr] AST.
@@ -218,14 +241,45 @@ Object? eval(LamExpr ast, Object? data) {
 
 /// Normalize [value] into the canonical shape the evaluator expects.
 ///
-/// Recursively converts any `Map` into `Map<String, Object?>` and any `List`
-/// into `List<Object?>`, regardless of original element type parameters.
-/// Canonical collections from `parseInput`, `jsonDecode`, and hand-written
-/// typed literals round-trip through this cheaply (one traversal, no per-
-/// value reconstruction of scalars).
+/// Already-canonical inputs (`Map<String, Object?>`, `List<Object?>`,
+/// scalars) are returned unchanged via an identity-pass check. Non-
+/// canonical inputs (e.g. `Map<dynamic, dynamic>` from some third-party
+/// JSON decoders) are recursively rebuilt as canonical types.
 ///
 /// Throws [QueryError] if a map has a non-string key.
 Object? _normalize(Object? value) {
+  if (_isCanonical(value)) return value;
+  return _rebuild(value);
+}
+
+/// Returns `true` iff [value] already matches the canonical shape the
+/// evaluator expects: scalars, `Map<String, Object?>` (recursively), or
+/// `List<Object?>` (recursively). The recursive walk short-circuits on
+/// the first non-canonical element, so canonical inputs cost one
+/// traversal and no allocation.
+bool _isCanonical(Object? value) {
+  if (value == null || value is num || value is bool || value is String) {
+    return true;
+  }
+  // Match the same `is List<Object?>` / `is Map<String, Object?>` checks
+  // the evaluator and pipe-op specs use, so canonical-by-evaluator-rules
+  // inputs always short-circuit here.
+  if (value is Map<String, Object?>) {
+    for (final v in value.values) {
+      if (!_isCanonical(v)) return false;
+    }
+    return true;
+  }
+  if (value is List<Object?>) {
+    for (final e in value) {
+      if (!_isCanonical(e)) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+Object? _rebuild(Object? value) {
   if (value == null || value is num || value is bool || value is String) {
     return value;
   }
@@ -345,7 +399,9 @@ String _describeLeftover(String expression, int offset) {
     final word = after.split(RegExp(r'[^a-zA-Z_]')).first;
     if (word.isNotEmpty && !parser_.pipeOpNames.contains(word)) {
       final jqHint = _jqPipeOpHint(word);
-      if (jqHint != null) return 'unknown operation "$word" after |\n  help: $jqHint';
+      if (jqHint != null) {
+        return 'unknown operation "$word" after |\n  help: $jqHint';
+      }
       final suggestion = _closestMatch(word, parser_.pipeOpNames);
       final hint =
           suggestion != null ? '\n  help: did you mean "$suggestion"?' : '';
@@ -396,8 +452,6 @@ String? _jqPipeOpHint(String word) {
 ///   `filter(...)`).
 /// - `empty` keyword (no `empty`; use `filter(pred)`).
 /// - `end` from a stranded `if/then/else/end` tail.
-/// - `//` alternative operator (no `//` in Lambé; use `if` or
-///   `filter`).
 String? _jqIdiomHint(String expression, int offset) {
   // `.users[]`: parser expected an index expression after `[` and
   // failed on `]`. Detect by: offset points at `]` and the previous
@@ -421,8 +475,7 @@ String? _jqIdiomHint(String expression, int offset) {
   // `..`: second `.` with no identifier.
   if (offset < expression.length && expression[offset] == '.') {
     final before = expression.substring(0, offset).trimRight();
-    if (before.endsWith('.') &&
-        !before.endsWith('..')) {
+    if (before.endsWith('.') && !before.endsWith('..')) {
       return 'Lambé has no `..` recursive descent. '
           'Use explicit paths; combine `map(...)` and `flatten` for '
           'nested fan-out.';
@@ -432,7 +485,8 @@ String? _jqIdiomHint(String expression, int offset) {
   // `select(...)` in non-filter position. Fires anywhere — inside
   // `map(...)`, at top level, in the middle of a pipeline — since
   // `select` is only valid inside `filter(...)` in Lambé.
-  if (rest.startsWith('select(') || rest == 'select' ||
+  if (rest.startsWith('select(') ||
+      rest == 'select' ||
       (rest.startsWith('select') &&
           rest.length >= 7 &&
           !_isIdentChar(rest.codeUnitAt(6)))) {
@@ -450,8 +504,7 @@ String? _jqIdiomHint(String expression, int offset) {
   }
   // `end` from a stranded `if/then/else/end`.
   if (rest.startsWith('end') &&
-      (rest.length == 3 ||
-          !_isIdentChar(rest.codeUnitAt(3)))) {
+      (rest.length == 3 || !_isIdentChar(rest.codeUnitAt(3)))) {
     return '`if/then/else/end` is an expression in Lambé, not a pipe '
         'stage. Use it inside `map(...)` / `filter(...)`, and drop '
         'the `end` keyword — Lambé terminates `if` at the else branch.';

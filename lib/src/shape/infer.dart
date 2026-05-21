@@ -109,11 +109,10 @@ Shape inferShape(LamExpr expr, Shape input) {
 
     // `[e1, e2, ...]` yields `SList(join(parts))`. Empty list literal
     // has no element shape, so widen to `SList(SAny)`.
-    ListConstruct(:final parts) => parts.isEmpty
-        ? const SList(SAny())
-        : SList(parts
-            .map((p) => inferShape(p, input))
-            .reduce(_joinBranches)),
+    ListConstruct(:final parts) =>
+      parts.isEmpty
+          ? const SList(SAny())
+          : SList(parts.map((p) => inferShape(p, input)).reduce(_joinBranches)),
 
     // Pipe ops are handled above via [pipeOpInfoFor]; reaching this
     // case means the spec table is missing an op AST subtype. Falling

@@ -238,21 +238,22 @@ String? _analyzePredicate(LamExpr op, Shape inputShape) {
   // determined by the inner shape; absence is handled by the
   // runtime-rejection warning elsewhere.
   final concrete = inputShape is SOptional ? inputShape.inner : inputShape;
-  switch (op) {
-    case FilterOp(:final predicate):
+  if (op is! BuiltinPipeOp) return null;
+  switch (op.name) {
+    case 'filter':
       final element = concrete is SList ? concrete.element : const SAny();
-      return _predicateWarning(predicate, element, 'filter', 'element');
-    case FilterValuesOp(:final predicate):
+      return _predicateWarning(op.args[0], element, 'filter', 'element');
+    case 'filter_values':
       final value = switch (concrete) {
         SMap(:final fields) when fields.isNotEmpty => fields.values.reduce(
           (a, b) => a == b ? a : const SAny(),
         ),
         _ => const SAny(),
       };
-      return _predicateWarning(predicate, value, 'filter_values', 'value');
-    case FilterKeysOp(:final predicate):
+      return _predicateWarning(op.args[0], value, 'filter_values', 'value');
+    case 'filter_keys':
       return _predicateWarning(
-        predicate,
+        op.args[0],
         const SString(),
         'filter_keys',
         'key',
@@ -320,11 +321,9 @@ String? _analyzeRejection(LamExpr op, Shape inputShape) {
 /// lists (outer shape errors surface as runtime-rejection warnings
 /// instead), or when the argument references a field that may exist.
 String? _analyzeTrivial(LamExpr op, Shape inputShape) {
-  final (argExpr, opName) = switch (op) {
-    SortByOp(:final key) => (key, 'sort_by'),
-    GroupByOp(:final key) => (key, 'group_by'),
-    MapOp(:final transform) => (transform, 'map'),
-    UniqueByOp(:final key) => (key, 'unique_by'),
+  if (op is! BuiltinPipeOp) return null;
+  final (argExpr, opName) = switch (op.name) {
+    'sort_by' || 'group_by' || 'map' || 'unique_by' => (op.args[0], op.name),
     _ => (null, null),
   };
   if (argExpr == null || opName == null) return null;
@@ -417,32 +416,9 @@ String _render(LamExpr expr) => switch (expr) {
   UnaryOp(:final op, :final operand) => '$op${_render(operand)}',
   BinaryOp(:final op, :final left, :final right) =>
     '${_render(left)} $op ${_render(right)}',
-  FilterOp(:final predicate) => 'filter(${_render(predicate)})',
-  MapOp(:final transform) => 'map(${_render(transform)})',
-  SortByOp(:final key) => 'sort_by(${_render(key)})',
-  GroupByOp(:final key) => 'group_by(${_render(key)})',
-  UniqueByOp(:final key) => 'unique_by(${_render(key)})',
-  FilterValuesOp(:final predicate) => 'filter_values(${_render(predicate)})',
-  MapValuesOp(:final transform) => 'map_values(${_render(transform)})',
-  FilterKeysOp(:final predicate) => 'filter_keys(${_render(predicate)})',
-  HasOp(:final key) => 'has(${_render(key)})',
-  SortOp() => 'sort',
-  ReverseOp() => 'reverse',
-  KeysOp() => 'keys',
-  ValuesOp() => 'values',
-  LengthOp() => 'length',
-  FirstOp() => 'first',
-  LastOp() => 'last',
-  SumOp() => 'sum',
-  AvgOp() => 'avg',
-  MinOp() => 'min',
-  MaxOp() => 'max',
-  UniqueOp() => 'unique',
-  FlattenOp() => 'flatten',
-  ToEntriesOp() => 'to_entries',
-  FromEntriesOp() => 'from_entries',
-  ToNumberOp() => 'to_number',
-  TypeOp() => 'type',
+  BuiltinPipeOp(:final name, :final args) when args.isEmpty => name,
+  BuiltinPipeOp(:final name, :final args) =>
+    '$name(${args.map(_render).join(', ')})',
   As(:final target) => 'as(${target.name})',
   ObjConstruct(:final entries) =>
     '{${[for (final (k, v) in entries) '$k: ${_render(v)}'].join(', ')}}',
@@ -454,8 +430,7 @@ String _render(LamExpr expr) => switch (expr) {
     'if ${_render(condition)} then ${_render(then_)} else ${_render(else_)}',
   Alternative(:final left, :final right) =>
     '${_render(left)} // ${_render(right)}',
-  ListConstruct(:final parts) =>
-    '[${parts.map(_render).join(', ')}]',
+  ListConstruct(:final parts) => '[${parts.map(_render).join(', ')}]',
 };
 
 /// Render an [ExplainReport] as a plaintext table suitable for stdout.

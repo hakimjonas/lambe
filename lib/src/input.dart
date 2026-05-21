@@ -43,7 +43,7 @@ Object? parseInput(String input, Format format) => switch (format) {
   Format.toml => _parse(parseToml(input), tomlDocToNative, 'TOML'),
   Format.hcl => _parse(parseHcl(input), hclDocToNative, 'HCL'),
   Format.csv => _parseDelimited(input, null),
-  Format.tsv => _parseDelimited(input, defaultTsvConfig),
+  Format.tsv => _parseDelimited(input, _detectTsvDialect(input)),
   Format.markdown => _parseMd(input),
 };
 
@@ -93,6 +93,23 @@ Object? _parse<A>(
   Failure<ParseError, A>() =>
     throw QueryError('$formatName parse error: ${result.errors}'),
 };
+
+/// Detect a TSV dialect by reusing [detectDialect]'s header and quote
+/// inference, but force the tab delimiter.
+///
+/// The file extension (or explicit `Format.tsv`) is the strongest signal
+/// that fields are tab-separated; `detectDialect` would otherwise be free
+/// to pick `,` or `;` if the sample is ambiguous. Header detection still
+/// runs because TSV's documented model matches CSV: a header row produces
+/// `List<Map<String, Object?>>`.
+DelimitedConfig _detectTsvDialect(String input) {
+  final detected = detectDialect(input);
+  return DelimitedConfig(
+    delimiter: '\t',
+    quote: detected.quote,
+    hasHeader: detected.hasHeader,
+  );
+}
 
 /// Parse delimited input, auto-detecting dialect if [config] is null.
 ///

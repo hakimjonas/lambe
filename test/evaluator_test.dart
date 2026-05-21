@@ -623,10 +623,7 @@ void main() {
     });
 
     test('last fallback wins when all are null', () {
-      expect(
-        query('.a // .b // "default"', {'a': null, 'b': null}),
-        'default',
-      );
+      expect(query('.a // .b // "default"', {'a': null, 'b': null}), 'default');
     });
 
     test('right expression not evaluated when left is non-null', () {

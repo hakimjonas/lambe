@@ -234,7 +234,6 @@ void main() {
       }
     });
 
-
     test('| if as pipe stage explains the expression-only rule', () {
       try {
         parseAst('.x | if . > 0 then . else null end');

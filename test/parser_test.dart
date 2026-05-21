@@ -11,6 +11,11 @@ LamExpr _parse(String input) {
   };
 }
 
+void _expectOp(LamExpr op, String name) {
+  expect(op, isA<BuiltinPipeOp>());
+  expect((op as BuiltinPipeOp).name, name);
+}
+
 void main() {
   group('Atoms', () {
     test('identity (.)', () {
@@ -215,7 +220,22 @@ void main() {
       final expr = _parse('.x | tonumber');
       expect(expr, isA<Pipe>());
       final pipe = expr as Pipe;
-      expect(pipe.op, isA<ToNumberOp>());
+      expect(pipe.op, isA<BuiltinPipeOp>());
+      expect((pipe.op as BuiltinPipeOp).name, 'to_number');
+    });
+
+    test('`add` parses as sum (jq alias)', () {
+      // jq's `add` reduces a list of numbers to their sum, matching
+      // Lambé's `sum` exactly. Aliased so jq-trained agents land the
+      // right idiom; the AST and `--explain` output use the canonical
+      // name.
+      final viaAlias = _parse('.x | add') as Pipe;
+      final viaCanonical = _parse('.x | sum') as Pipe;
+      _expectOp(viaAlias.op, 'sum');
+      _expectOp(viaCanonical.op, 'sum');
+      // Args identical (both empty) on both sides — same canonical AST.
+      expect((viaAlias.op as BuiltinPipeOp).args, isEmpty);
+      expect((viaCanonical.op as BuiltinPipeOp).args, isEmpty);
     });
 
     test('`and` precedence: .a or .b and .c == .a or (.b and .c)', () {
@@ -313,8 +333,9 @@ void main() {
       final expr = _parse('.users | map([.name, .age])');
       expect(expr, isA<Pipe>());
       final pipe = expr as Pipe;
-      expect(pipe.op, isA<MapOp>());
-      expect((pipe.op as MapOp).transform, isA<ListConstruct>());
+      expect(pipe.op, isA<BuiltinPipeOp>());
+      expect((pipe.op as BuiltinPipeOp).name, 'map');
+      expect((pipe.op as BuiltinPipeOp).args[0], isA<ListConstruct>());
     });
   });
 
@@ -324,8 +345,8 @@ void main() {
       expect(expr, isA<Pipe>());
       final pipe = expr as Pipe;
       expect(pipe.input, isA<Field>());
-      expect(pipe.op, isA<FilterOp>());
-      final pred = (pipe.op as FilterOp).predicate;
+      _expectOp(pipe.op, 'filter');
+      final pred = (pipe.op as BuiltinPipeOp).args[0];
       expect(pred, isA<BinaryOp>());
       expect((pred as BinaryOp).op, '>');
     });
@@ -334,21 +355,21 @@ void main() {
       final expr = _parse('.users | map(.name)');
       expect(expr, isA<Pipe>());
       final pipe = expr as Pipe;
-      expect(pipe.op, isA<MapOp>());
-      expect((pipe.op as MapOp).transform, isA<Field>());
+      _expectOp(pipe.op, 'map');
+      expect((pipe.op as BuiltinPipeOp).args[0], isA<Field>());
     });
 
     test('chained: .users | filter(.active) | map(.name) | sort', () {
       final expr = _parse('.users | filter(.active) | map(.name) | sort');
       expect(expr, isA<Pipe>());
       final sort = expr as Pipe;
-      expect(sort.op, isA<SortOp>());
+      _expectOp(sort.op, 'sort');
       expect(sort.input, isA<Pipe>());
       final map = sort.input as Pipe;
-      expect(map.op, isA<MapOp>());
+      _expectOp(map.op, 'map');
       expect(map.input, isA<Pipe>());
       final filter = map.input as Pipe;
-      expect(filter.op, isA<FilterOp>());
+      _expectOp(filter.op, 'filter');
       expect(filter.input, isA<Field>());
     });
 
@@ -357,43 +378,43 @@ void main() {
       expect(expr, isA<Pipe>());
       final pipe = expr as Pipe;
       expect(pipe.input, isA<Identity>());
-      expect(pipe.op, isA<KeysOp>());
+      _expectOp(pipe.op, 'keys');
     });
 
     test('. | values', () {
       final expr = _parse('. | values');
       expect(expr, isA<Pipe>());
-      expect((expr as Pipe).op, isA<ValuesOp>());
+      _expectOp((expr as Pipe).op, 'values');
     });
 
     test('. | length', () {
       final expr = _parse('. | length');
       expect(expr, isA<Pipe>());
-      expect((expr as Pipe).op, isA<LengthOp>());
+      _expectOp((expr as Pipe).op, 'length');
     });
 
     test('. | sort', () {
       final expr = _parse('. | sort');
       expect(expr, isA<Pipe>());
-      expect((expr as Pipe).op, isA<SortOp>());
+      _expectOp((expr as Pipe).op, 'sort');
     });
 
     test('. | reverse', () {
       final expr = _parse('. | reverse');
       expect(expr, isA<Pipe>());
-      expect((expr as Pipe).op, isA<ReverseOp>());
+      _expectOp((expr as Pipe).op, 'reverse');
     });
 
     test('. | first', () {
       final expr = _parse('. | first');
       expect(expr, isA<Pipe>());
-      expect((expr as Pipe).op, isA<FirstOp>());
+      _expectOp((expr as Pipe).op, 'first');
     });
 
     test('. | last', () {
       final expr = _parse('. | last');
       expect(expr, isA<Pipe>());
-      expect((expr as Pipe).op, isA<LastOp>());
+      _expectOp((expr as Pipe).op, 'last');
     });
   });
 
@@ -423,7 +444,7 @@ void main() {
     test('named ops still parse as before', () {
       final expr = _parse('. | filter(.age > 30)');
       expect(expr, isA<Pipe>());
-      expect((expr as Pipe).op, isA<FilterOp>());
+      _expectOp((expr as Pipe).op, 'filter');
     });
   });
 
@@ -476,14 +497,14 @@ void main() {
       final expr = _parse('.users | filter(.tags | length > 0)');
       expect(expr, isA<Pipe>());
       final pipe = expr as Pipe;
-      expect(pipe.op, isA<FilterOp>());
-      final pred = (pipe.op as FilterOp).predicate;
+      _expectOp(pipe.op, 'filter');
+      final pred = (pipe.op as BuiltinPipeOp).args[0];
       expect(pred, isA<BinaryOp>());
       final gt = pred as BinaryOp;
       expect(gt.op, '>');
       expect(gt.left, isA<Pipe>());
       final inner = gt.left as Pipe;
-      expect(inner.op, isA<LengthOp>());
+      _expectOp(inner.op, 'length');
       expect(inner.input, isA<Field>());
     });
 

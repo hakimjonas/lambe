@@ -177,4 +177,31 @@ void main() {
       ]);
     });
   });
+
+  group('queryNdjsonString: string-expression convenience', () {
+    test('parses once, applies to every line', () {
+      final results =
+          queryNdjsonString([
+            '{"name": "alice"}',
+            '{"name": "bob"}',
+          ], '.name').toList();
+      expect(results, ['alice', 'bob']);
+    });
+
+    test('expression syntax error throws QueryError', () {
+      expect(
+        () => queryNdjsonString(['{"a": 1}'], '.a |').toList(),
+        throwsA(isA<QueryError>()),
+      );
+    });
+
+    test('per-line errors carry line number', () {
+      expect(
+        () => queryNdjsonString(['{"a": 1}', 'not json'], '.a').toList(),
+        throwsA(
+          predicate((e) => e is QueryError && e.message.contains('line 2')),
+        ),
+      );
+    });
+  });
 }

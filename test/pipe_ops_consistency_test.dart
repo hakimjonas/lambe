@@ -35,38 +35,49 @@ final _representatives = <Shape, Object?>{
 
 /// AST node to evaluate for each op. Parameterized ops use a minimal
 /// inner expression — `Identity()` where the evaluator just passes
-/// through, and a string literal for `HasOp` which needs a key.
-LamExpr _opNode(String name) => switch (name) {
-  'filter' => const FilterOp(BoolLit(true)),
-  'map' => const MapOp(Identity()),
-  'sort' => const SortOp(),
-  'reverse' => const ReverseOp(),
-  'keys' => const KeysOp(),
-  'values' => const ValuesOp(),
-  'length' => const LengthOp(),
-  'first' => const FirstOp(),
-  'last' => const LastOp(),
-  'sum' => const SumOp(),
-  'avg' => const AvgOp(),
-  'min' => const MinOp(),
-  'max' => const MaxOp(),
-  'sort_by' => const SortByOp(Identity()),
-  'group_by' => const GroupByOp(Identity()),
-  'unique' => const UniqueOp(),
-  'unique_by' => const UniqueByOp(Identity()),
-  'flatten' => const FlattenOp(),
-  'filter_values' => const FilterValuesOp(BoolLit(true)),
-  'map_values' => const MapValuesOp(Identity()),
-  'filter_keys' => const FilterKeysOp(BoolLit(true)),
-  'has' => const HasOp(StrLit('a')),
-  'to_entries' => const ToEntriesOp(),
-  'from_entries' => const FromEntriesOp(),
-  'to_number' => const ToNumberOp(),
-  'type' => const TypeOp(),
-  // `as(json)` is universal; every shape is writable as JSON.
-  'as' => const As(OutputFormat.json),
-  _ => throw StateError('No test AST for op "$name"'),
-};
+/// through, `BoolLit(true)` for filter predicates, and a string literal
+/// for `has` which needs a key. After the pipe-op AST consolidation,
+/// every built-in op resolves to a [BuiltinPipeOp]; the only exception
+/// is `as(...)`, which keeps a dedicated AST class for its typed
+/// argument.
+LamExpr _opNode(String name) {
+  switch (name) {
+    case 'as':
+      return const As(OutputFormat.json);
+    case 'filter':
+    case 'filter_values':
+    case 'filter_keys':
+      return BuiltinPipeOp(name, const [BoolLit(true)]);
+    case 'has':
+      return BuiltinPipeOp(name, const [StrLit('a')]);
+    case 'map':
+    case 'map_values':
+    case 'sort_by':
+    case 'group_by':
+    case 'unique_by':
+      return BuiltinPipeOp(name, const [Identity()]);
+    case 'sort':
+    case 'reverse':
+    case 'keys':
+    case 'values':
+    case 'length':
+    case 'first':
+    case 'last':
+    case 'sum':
+    case 'avg':
+    case 'min':
+    case 'max':
+    case 'unique':
+    case 'flatten':
+    case 'to_entries':
+    case 'from_entries':
+    case 'to_number':
+    case 'type':
+      return BuiltinPipeOp(name, const []);
+    default:
+      throw StateError('No test AST for op "$name"');
+  }
+}
 
 /// Runtime outcome of evaluating an op against a representative value
 /// of some shape.
@@ -214,58 +225,26 @@ void main() {
       }
     });
 
-    test('zeroArg specs have a zeroArgCtor', () {
-      // The parser iterates over pipeOpSpecs and dereferences
-      // zeroArgCtor / oneArgCtor based on parseKind. Missing a ctor
-      // where one is required would be a runtime null-deref in
-      // parser initialization — catch it here with a clearer error.
+    test('BuiltinPipeOp(name) round-trips through pipeOpInfoFor', () {
+      // Round-trip: building a [BuiltinPipeOp] with a spec's name and
+      // looking it up via pipeOpInfoFor must yield the same spec. This
+      // pins the unified dispatch — renaming a spec or breaking the
+      // name lookup fails here.
       for (final spec in pipeOpSpecs) {
-        if (spec.parseKind == PipeOpParseKind.zeroArg) {
-          expect(
-            spec.zeroArgCtor,
-            isNotNull,
-            reason:
-                '${spec.name}.zeroArgCtor must be set when '
-                'parseKind is zeroArg',
-          );
-        }
-      }
-    });
-
-    test('oneArg specs have a oneArgCtor', () {
-      for (final spec in pipeOpSpecs) {
-        if (spec.parseKind == PipeOpParseKind.oneArg) {
-          expect(
-            spec.oneArgCtor,
-            isNotNull,
-            reason:
-                '${spec.name}.oneArgCtor must be set when '
-                'parseKind is oneArg',
-          );
-        }
-      }
-    });
-
-    test('spec ctor output matches pipeOpInfoFor lookup', () {
-      // Round-trip: the AST produced by a spec's ctor must map back
-      // to the same spec via pipeOpInfoFor. This pins the ctor and
-      // the AST-subtype switch together — renaming one without the
-      // other fails here.
-      for (final spec in pipeOpSpecs) {
-        final LamExpr? node = switch (spec.parseKind) {
-          PipeOpParseKind.zeroArg => spec.zeroArgCtor!(),
-          PipeOpParseKind.oneArg => spec.oneArgCtor!(const Identity()),
-          PipeOpParseKind.custom => null,
-        };
-        if (node == null) continue;
+        if (spec.parseKind == PipeOpParseKind.custom) continue;
+        final args =
+            spec.parseKind == PipeOpParseKind.oneArg
+                ? const [Identity()]
+                : const <LamExpr>[];
+        final node = BuiltinPipeOp(spec.name, args);
         final resolved = pipeOpInfoFor(node);
         expect(
           resolved?.name,
           spec.name,
           reason:
-              'Ctor for ${spec.name} produced an AST that '
-              'pipeOpInfoFor resolved to "${resolved?.name}" instead. '
-              'Ensure the new AST subtype is wired into pipeOpInfoFor.',
+              'BuiltinPipeOp("${spec.name}", ...) resolved to '
+              '"${resolved?.name}" instead. Ensure the spec is '
+              'registered in _specsByName.',
         );
       }
     });

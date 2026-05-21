@@ -327,17 +327,11 @@ Shape _resolveTarget(LamExpr? ast, Shape inputShape) {
 
 /// Extract the inner expression from a parameterized pipe operation.
 ///
-/// Returns `null` for simple (no-arg) ops like [SortOp], [ReverseOp],
-/// etc. and for non-operation expressions like [ObjConstruct].
-LamExpr? _innerExpr(LamExpr op) => switch (op) {
-  FilterOp(:final predicate) => predicate,
-  MapOp(:final transform) => transform,
-  SortByOp(:final key) => key,
-  GroupByOp(:final key) => key,
-  UniqueByOp(:final key) => key,
-  FilterValuesOp(:final predicate) => predicate,
-  MapValuesOp(:final transform) => transform,
-  FilterKeysOp(:final predicate) => predicate,
-  HasOp(:final key) => key,
-  _ => null,
-};
+/// Returns `null` for zero-arg ops (`sort`, `reverse`, `length`, ...)
+/// and for non-operation expressions like [ObjConstruct]. The unified
+/// [BuiltinPipeOp] dispatch makes this trivial: any one-arg op stores
+/// its inner expression at `args[0]`.
+LamExpr? _innerExpr(LamExpr op) {
+  if (op is! BuiltinPipeOp) return null;
+  return op.args.isEmpty ? null : op.args[0];
+}

@@ -187,7 +187,8 @@ void main() {
     test('parse structure', () {
       final expr = _parse('. | has("name")');
       expect(expr, isA<Pipe>());
-      expect((expr as Pipe).op, isA<HasOp>());
+      expect((expr as Pipe).op, isA<BuiltinPipeOp>());
+      expect(((expr).op as BuiltinPipeOp).name, 'has');
     });
   });
 
@@ -237,7 +238,8 @@ void main() {
     test('parse structure', () {
       final expr = _parse('. | to_entries');
       expect(expr, isA<Pipe>());
-      expect((expr as Pipe).op, isA<ToEntriesOp>());
+      expect((expr as Pipe).op, isA<BuiltinPipeOp>());
+      expect(((expr).op as BuiltinPipeOp).name, 'to_entries');
     });
   });
 

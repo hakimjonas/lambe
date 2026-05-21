@@ -231,12 +231,17 @@ final Parser<ParseError, String> _closeBracket = _sym(']').recover(succeed(''));
 final Parser<ParseError, String> _closeBrace = _sym('}').recover(succeed(''));
 
 /// Parameterized pipe op: `name(expr)` with tolerant inner and close.
-Parser<ParseError, LamExpr> _paramOp(
-  String name,
-  LamExpr Function(LamExpr) ctor,
-) => _sym(
-  name,
-).skipThen(_sym('(')).skipThen(_innerExpr).thenSkip(_closeParen).map(ctor);
+///
+/// [astName] is the canonical op name written into [BuiltinPipeOp];
+/// [synName] is the keyword the parser matches in the source. They
+/// differ for jq-idiom aliases (e.g. parser sees `tonumber`, AST says
+/// `to_number`). For canonical ops the two are equal.
+Parser<ParseError, LamExpr> _paramOp(String synName, String astName) =>
+    _sym(synName)
+        .skipThen(_sym('('))
+        .skipThen(_innerExpr)
+        .thenSkip(_closeParen)
+        .map((inner) => BuiltinPipeOp(astName, [inner]));
 
 /// `as(format)` parser: shape-directed bridge to an output format.
 ///
@@ -260,8 +265,8 @@ final Parser<ParseError, LamExpr> _asOp = _sym('as')
 /// so `sort_by` is tried before `sort`). Each spec contributes one
 /// alternative whose shape depends on [shape_ops.PipeOpParseKind]:
 ///
-/// - `zeroArg` → `_kw(name).as(zeroArgCtor())`
-/// - `oneArg`  → `_paramOp(name, oneArgCtor)`
+/// - `zeroArg` → `_kw(name).as(BuiltinPipeOp(name, const []))`
+/// - `oneArg`  → `_paramOp(name, name)` (builds `BuiltinPipeOp(name, [arg])`)
 /// - `custom`  → hand-written rule (currently only `as(fmt)`, which
 ///   takes a closed keyword set rather than an arbitrary expression).
 ///
@@ -274,18 +279,24 @@ final Parser<ParseError, LamExpr> _pipeOp = _buildPipeOp();
 /// existing Lambé op. Registered at the parser layer so shape/eval
 /// stay unaware. Canonical name is what `--print-shape` / `--explain`
 /// emit; these just let jq-trained agents land the query.
-const Map<String, String> _jqAliases = {
-  'tonumber': 'to_number',
-};
+///
+/// Only entries whose jq semantics match an existing Lambé op exactly
+/// belong here. `select` deliberately stays out — `select(p)` is only
+/// valid inside `filter(...)` in Lambé and an alias would mislead;
+/// `_jqIdiomHint` already steers users to `filter`. `paths`,
+/// `recurse`, etc. need pattern hints, not aliases.
+const Map<String, String> _jqAliases = {'tonumber': 'to_number', 'add': 'sum'};
 
 Parser<ParseError, LamExpr> _buildPipeOp() {
   final alternatives = <Parser<ParseError, LamExpr>>[];
   for (final spec in shape_ops.pipeOpSpecs) {
     switch (spec.parseKind) {
       case shape_ops.PipeOpParseKind.zeroArg:
-        alternatives.add(_kw(spec.name).as<LamExpr>(spec.zeroArgCtor!()));
+        alternatives.add(
+          _kw(spec.name).as<LamExpr>(BuiltinPipeOp(spec.name, const [])),
+        );
       case shape_ops.PipeOpParseKind.oneArg:
-        alternatives.add(_paramOp(spec.name, spec.oneArgCtor!));
+        alternatives.add(_paramOp(spec.name, spec.name));
       case shape_ops.PipeOpParseKind.custom:
         // Handled below.
         break;
@@ -301,9 +312,11 @@ Parser<ParseError, LamExpr> _buildPipeOp() {
     if (canonical == null) continue;
     switch (canonical.parseKind) {
       case shape_ops.PipeOpParseKind.zeroArg:
-        alternatives.add(_kw(entry.key).as<LamExpr>(canonical.zeroArgCtor!()));
+        alternatives.add(
+          _kw(entry.key).as<LamExpr>(BuiltinPipeOp(canonical.name, const [])),
+        );
       case shape_ops.PipeOpParseKind.oneArg:
-        alternatives.add(_paramOp(entry.key, canonical.oneArgCtor!));
+        alternatives.add(_paramOp(entry.key, canonical.name));
       case shape_ops.PipeOpParseKind.custom:
         break;
     }
@@ -356,8 +369,9 @@ final Parser<ParseError, LamExpr> _postfix = rule(
 /// `/` must not match the first `/` of `//` (alternative operator). Other
 /// single-char ops don't have a longer variant that would be ambiguous at
 /// the binary-operator level, so only `/` needs a notFollowedBy guard.
-final Parser<ParseError, String> _divSym =
-    _lex(string('/').thenSkip(char('/').notFollowedBy));
+final Parser<ParseError, String> _divSym = _lex(
+  string('/').thenSkip(char('/').notFollowedBy),
+);
 
 /// Lambé's symbol parser routing: `/` requires a not-followed-by guard
 /// so it doesn't shadow the `//` alternative; everything else is a

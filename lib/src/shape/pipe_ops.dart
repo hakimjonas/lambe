@@ -1,10 +1,11 @@
-/// Single source of truth for pipe-op metadata.
+/// Single source of truth for pipe-op metadata, runtime, and parsing.
 ///
 /// Each [PipeOpInfo] record describes one pipe operation: its canonical
 /// name, which input [Shape]s it accepts (structurally; element-level
-/// constraints are not modelled), and how it transforms the input shape
-/// into an output shape. The parser's [pipeOpNames], the completer's
-/// shape-gated candidate filter, and [inferShape]'s per-op cases all
+/// constraints are not modelled), how it transforms the input shape into
+/// an output shape, and how it evaluates at runtime. The parser's
+/// [pipeOpNames], the completer's shape-gated candidate filter,
+/// [inferShape]'s per-op cases, and the evaluator's per-op dispatch all
 /// derive from these specs, so adding or renaming an op is a single-
 /// file change.
 ///
@@ -25,34 +26,48 @@
 ///   kind and cross-checking with the evaluator.
 library;
 
+import 'dart:convert';
+
+import 'package:rumil_expressions/rumil_expressions.dart'
+    show compareValues, typeName;
+
 import '../ast.dart';
+import '../errors.dart';
 import 'shape.dart';
+
+/// Recursive evaluator callback. The spec's `eval` field invokes this to
+/// evaluate sub-expressions (predicates, key extractors, transforms)
+/// against a given context. Pipe ops do not import the evaluator
+/// directly; they reach back through this callback to keep the
+/// dependency direction acyclic.
+typedef PipeOpEval = Object? Function(LamExpr expr, Object? ctx);
 
 /// How the parser should build a grammar rule for this op.
 ///
 /// - [zeroArg]: bare keyword followed by a word boundary — `sort`,
-///   `length`, `to_entries`. Constructed via the spec's `zeroArgCtor`.
+///   `length`, `to_entries`. Parser builds `BuiltinPipeOp(name, [])`.
 /// - [oneArg]: keyword followed by `(expr)` with tolerant inner and
-///   close paren — `filter(...)`, `map(...)`. Constructed via the
-///   spec's `oneArgCtor`.
+///   close paren — `filter(...)`, `map(...)`. Parser builds
+///   `BuiltinPipeOp(name, [innerExpr])`.
 /// - [custom]: the op has grammar the generic rules cannot express
-///   (e.g. `as(fmt)` takes a keyword set, not an arbitrary expression).
-///   The parser hand-writes these rules and the spec table provides
-///   metadata only.
+///   (e.g. `as(fmt)` takes a closed keyword set, not an arbitrary
+///   expression). The parser hand-writes these rules and the spec
+///   provides shape metadata only; runtime dispatch lives outside
+///   [BuiltinPipeOp] (see [As]).
 enum PipeOpParseKind {
   /// Bare keyword followed by a word boundary — `sort`, `length`,
-  /// `to_entries`. Parser builds `_kw(name).as(zeroArgCtor())`.
+  /// `to_entries`. Parser builds `BuiltinPipeOp(name, const [])`.
   zeroArg,
 
   /// Keyword followed by `(expr)` with a tolerant inner expression and
   /// close paren — `filter(.x)`, `map(.y)`, `sort_by(.name)`. Parser
-  /// builds `_paramOp(name, oneArgCtor)`.
+  /// builds `BuiltinPipeOp(name, [innerExpr])`.
   oneArg,
 
   /// Op has custom grammar not expressible as `zeroArg` or `oneArg`,
   /// e.g. `as(fmt)` takes a closed keyword set instead of an arbitrary
-  /// expression. Parser hand-writes the rule; the spec table supplies
-  /// only the name and shape-inference metadata.
+  /// expression. Parser hand-writes the rule; runtime dispatch lives
+  /// in a dedicated AST node (see [As]).
   custom,
 }
 
@@ -60,70 +75,39 @@ enum PipeOpParseKind {
 ///
 /// The `accepts` field is a structural predicate on the input shape.
 /// The `infer` field is the shape transformer — given the input shape
-/// and the AST node for this op (so parameterized ops can recurse
-/// into their inner expression), it returns the output shape.
+/// and the AST node for this op (so parameterized ops can recurse into
+/// their inner expression), it returns the output shape. The `eval`
+/// field is the runtime evaluator — given the input value, the parsed
+/// argument expressions, and the recursive [PipeOpEval] callback, it
+/// returns the op's result.
 ///
-/// The `parseKind`, `zeroArgCtor`, and `oneArgCtor` fields let the
-/// parser build its pipe-op grammar rules from this table rather
-/// than hand-writing them per op. A spec's `parseKind` determines
-/// which constructor reference is consulted:
-///
-/// - `zeroArg` → `zeroArgCtor!()` produces the AST node.
-/// - `oneArg` → `oneArgCtor!(innerExpr)` produces the AST node.
-/// - `custom` → the parser handles it with a hand-written rule; both
-///   ctor fields may be null.
-///
-/// The `infer` function receives the op AST node itself, not the
-/// surrounding [Pipe] — callers must destructure the specific op type
-/// they expect. Since [PipeOpInfo] is looked up by AST runtime type,
-/// the match is exhaustive at registration time.
+/// `parseKind` tells the parser which generic rule shape this op uses.
+/// `custom` ops are hand-written in the parser and use dedicated AST
+/// nodes; their `eval` field is unreachable via the [BuiltinPipeOp]
+/// dispatch and may be omitted.
 typedef PipeOpInfo =
     ({
       String name,
       bool Function(Shape input) accepts,
       Shape Function(Shape input, LamExpr op) infer,
+      Object? Function(Object? ctx, List<LamExpr> args, PipeOpEval eval) eval,
       PipeOpParseKind parseKind,
-      LamExpr Function()? zeroArgCtor,
-      LamExpr Function(LamExpr)? oneArgCtor,
     });
 
 /// Look up the spec for a pipe-op AST node, or `null` if [node] is not
 /// a pipe op.
 ///
-/// Returns `null` for non-op expressions that happen to appear on the
-/// right-hand side of a pipe (object constructors, literals, etc.).
-/// The shape inference and completer code paths that consume the spec
-/// must handle `null` by falling back to generic expression inference.
-PipeOpInfo? pipeOpInfoFor(LamExpr node) => switch (node) {
-  FilterOp _ => _filterSpec,
-  MapOp _ => _mapSpec,
-  SortOp _ => _sortSpec,
-  ReverseOp _ => _reverseSpec,
-  KeysOp _ => _keysSpec,
-  ValuesOp _ => _valuesSpec,
-  LengthOp _ => _lengthSpec,
-  FirstOp _ => _firstSpec,
-  LastOp _ => _lastSpec,
-  SumOp _ => _sumSpec,
-  AvgOp _ => _avgSpec,
-  MinOp _ => _minSpec,
-  MaxOp _ => _maxSpec,
-  SortByOp _ => _sortBySpec,
-  GroupByOp _ => _groupBySpec,
-  UniqueOp _ => _uniqueSpec,
-  UniqueByOp _ => _uniqueBySpec,
-  FlattenOp _ => _flattenSpec,
-  FilterValuesOp _ => _filterValuesSpec,
-  MapValuesOp _ => _mapValuesSpec,
-  FilterKeysOp _ => _filterKeysSpec,
-  HasOp _ => _hasSpec,
-  ToEntriesOp _ => _toEntriesSpec,
-  FromEntriesOp _ => _fromEntriesSpec,
-  ToNumberOp _ => _toNumberSpec,
-  TypeOp _ => _typeSpec,
-  As _ => _asSpec,
-  _ => null,
-};
+/// Recognises the unified [BuiltinPipeOp] dispatch and the dedicated
+/// [As] node (the only custom-arity op). Returns `null` for non-op
+/// expressions that happen to appear on the right-hand side of a pipe
+/// (object constructors, literals, etc.). The shape inference and
+/// completer code paths that consume the spec must handle `null` by
+/// falling back to generic expression inference.
+PipeOpInfo? pipeOpInfoFor(LamExpr node) {
+  if (node is BuiltinPipeOp) return _specsByName[node.name];
+  if (node is As) return _asSpec;
+  return null;
+}
 
 /// Spec lookup by op name. Returns `null` for names that are not in
 /// the spec table.
@@ -189,27 +173,26 @@ Shape inferPipeOpShape(Shape input, LamExpr op) {
   return info.infer(input, op);
 }
 
-// Sentinel specs. Each is a one-shot record whose `infer` closes over
-// its own op-type expectations; the AST parameter is destructured
-// where needed (parameterized ops only).
-//
-// Conventions:
-// - `identity` in `infer` means "this op does not change the shape"
-//   (e.g. `sort` on a list). Ops whose output shape equals the input
-//   shape by design use this.
-// - For ops that only work on one shape kind, `accepts` is the
-//   positive predicate and `infer` can rely on the input matching.
-//   [inferPipeOpShape] has already gated on `accepts`, so the pattern
-//   match on `input` is exhaustive against the accepted cases.
+/// Evaluate a built-in pipe op against [ctx].
+///
+/// Looks up the spec for [op]'s name and invokes its `eval` field with
+/// the parsed argument expressions and the recursive evaluator
+/// callback. Throws [QueryError] if [op]'s name has no registered
+/// spec — that means the parser produced a node the table does not
+/// know about, which is a programmer error rather than a user-input
+/// error.
+Object? evalBuiltinPipeOp(BuiltinPipeOp op, Object? ctx, PipeOpEval eval) {
+  final spec = _specsByName[op.name];
+  if (spec == null) {
+    throw QueryError('${op.name}: no registered pipe-op spec');
+  }
+  return spec.eval(ctx, op.args, eval);
+}
 
 // Every predicate treats [SAny] as accepted. Inference cannot prove
 // an SAny input will fail at runtime, so rejecting it would hide
 // correct candidates from the completer — a violation of the
 // design invariant documented at the top of this file.
-//
-// Putting the SAny check inside every predicate, rather than at the
-// call site, keeps the invariant a property of the spec table
-// itself: any new spec defined via these helpers inherits it.
 
 // Optional wraps the value's potential absence. For acceptance
 // purposes, unwrap: if the inner shape is accepted, so is the
@@ -246,6 +229,44 @@ bool _acceptsStringOrNum(Shape s) {
 
 bool _acceptsAny(Shape _) => true;
 
+// ------------------------------------------------------------------
+// Runtime helpers shared across op evals.
+// ------------------------------------------------------------------
+
+List<Object?> _asList(Object? v, String ctx) {
+  if (v is List<Object?>) return v;
+  throw QueryError('$ctx: expected list, got ${typeName(v)}');
+}
+
+Map<String, Object?> _asMap(Object? v, String ctx) {
+  if (v is Map<String, Object?>) return v;
+  throw QueryError('$ctx: expected map, got ${typeName(v)}');
+}
+
+/// Canonical string representation of [value] for use as a hash key.
+///
+/// Dart's native equality on `List` and `Map` is reference-based, so
+/// structurally-equal collections compare as unequal. `unique`,
+/// `unique_by`, and `group_by` need structural equality to behave
+/// sensibly. Encoding the value as JSON with sorted map keys gives a
+/// stable, equality-friendly key.
+String _canonicalKey(Object? value) => jsonEncode(_sortKeys(value));
+
+Object? _sortKeys(Object? value) {
+  if (value is Map<String, Object?>) {
+    final sorted = <String, Object?>{};
+    final keys = value.keys.toList()..sort();
+    for (final k in keys) {
+      sorted[k] = _sortKeys(value[k]);
+    }
+    return sorted;
+  }
+  if (value is List<Object?>) {
+    return [for (final e in value) _sortKeys(e)];
+  }
+  return value;
+}
+
 // --- List-consuming ops --------------------------------------------
 
 final PipeOpInfo _filterSpec = (
@@ -253,9 +274,15 @@ final PipeOpInfo _filterSpec = (
   accepts: _acceptsList,
   // `filter` preserves the list-of-elements shape.
   infer: (input, _) => input,
+  eval: (ctx, args, eval) {
+    final list = _asList(ctx, 'filter');
+    final pred = args[0];
+    return [
+      for (final item in list)
+        if (eval(pred, item) == true) item,
+    ];
+  },
   parseKind: PipeOpParseKind.oneArg,
-  zeroArgCtor: null,
-  oneArgCtor: FilterOp.new,
 );
 
 final PipeOpInfo _mapSpec = (
@@ -263,59 +290,87 @@ final PipeOpInfo _mapSpec = (
   accepts: _acceptsList,
   infer:
       (input, op) => switch ((input, op)) {
-        (SList(element: final e), MapOp(:final transform)) => SList(
-          _inferSubExpr(transform, e),
-        ),
+        (
+          SList(element: final e),
+          BuiltinPipeOp(name: 'map', args: [final transform]),
+        ) =>
+          SList(_inferSubExpr(transform, e)),
         _ => const SAny(),
       },
+  eval: (ctx, args, eval) {
+    final list = _asList(ctx, 'map');
+    final transform = args[0];
+    return [for (final item in list) eval(transform, item)];
+  },
   parseKind: PipeOpParseKind.oneArg,
-  zeroArgCtor: null,
-  oneArgCtor: MapOp.new,
 );
 
 final PipeOpInfo _sortSpec = (
   name: 'sort',
   accepts: _acceptsList,
   infer: (input, _) => input,
+  eval: (ctx, _, _) {
+    final list = List<Object?>.of(_asList(ctx, 'sort'));
+    list.sort(compareValues);
+    return list;
+  },
   parseKind: PipeOpParseKind.zeroArg,
-  zeroArgCtor: SortOp.new,
-  oneArgCtor: null,
 );
 
 final PipeOpInfo _reverseSpec = (
   name: 'reverse',
   accepts: _acceptsList,
   infer: (input, _) => input,
+  eval: (ctx, _, _) => List<Object?>.of(_asList(ctx, 'reverse').reversed),
   parseKind: PipeOpParseKind.zeroArg,
-  zeroArgCtor: ReverseOp.new,
-  oneArgCtor: null,
 );
 
 final PipeOpInfo _sortBySpec = (
   name: 'sort_by',
   accepts: _acceptsList,
   infer: (input, _) => input,
+  eval: (ctx, args, eval) {
+    final list = List<Object?>.of(_asList(ctx, 'sort_by'));
+    final key = args[0];
+    list.sort((a, b) => compareValues(eval(key, a), eval(key, b)));
+    return list;
+  },
   parseKind: PipeOpParseKind.oneArg,
-  zeroArgCtor: null,
-  oneArgCtor: SortByOp.new,
 );
 
 final PipeOpInfo _uniqueSpec = (
   name: 'unique',
   accepts: _acceptsList,
   infer: (input, _) => input,
+  // `unique` distinguishes int from double even when numerically
+  // equal: `unique([1, 1.0])` keeps both because the canonical
+  // encodings differ. Use `unique_by(.)` with `to_number` if numeric
+  // equality is required.
+  eval: (ctx, _, _) {
+    final list = _asList(ctx, 'unique');
+    final seen = <String>{};
+    return [
+      for (final item in list)
+        if (seen.add(_canonicalKey(item))) item,
+    ];
+  },
   parseKind: PipeOpParseKind.zeroArg,
-  zeroArgCtor: UniqueOp.new,
-  oneArgCtor: null,
 );
 
 final PipeOpInfo _uniqueBySpec = (
   name: 'unique_by',
   accepts: _acceptsList,
   infer: (input, _) => input,
+  eval: (ctx, args, eval) {
+    final list = _asList(ctx, 'unique_by');
+    final key = args[0];
+    final seen = <String>{};
+    return [
+      for (final item in list)
+        if (seen.add(_canonicalKey(eval(key, item)))) item,
+    ];
+  },
   parseKind: PipeOpParseKind.oneArg,
-  zeroArgCtor: null,
-  oneArgCtor: UniqueByOp.new,
 );
 
 final PipeOpInfo _flattenSpec = (
@@ -330,11 +385,24 @@ final PipeOpInfo _flattenSpec = (
         SList() => const SList(SAny()),
         _ => const SAny(),
       },
+  eval: (ctx, _, _) {
+    final list = _asList(ctx, 'flatten');
+    return [
+      for (final item in list)
+        if (item is List<Object?>) ...item else item,
+    ];
+  },
   parseKind: PipeOpParseKind.zeroArg,
-  zeroArgCtor: FlattenOp.new,
-  oneArgCtor: null,
 );
 
+// Empty-list policy:
+// - Operations with an identity element (sum -> 0) return that.
+// - Operations that pick an existing element (first, last) return
+//   null.
+// - Operations that compute a property of the elements (min, max,
+//   avg) throw, because no sensible result exists.
+//
+// This mirrors how most languages handle the same situations.
 final PipeOpInfo _firstSpec = (
   name: 'first',
   accepts: _acceptsList,
@@ -343,9 +411,11 @@ final PipeOpInfo _firstSpec = (
         SList(element: final e) => e,
         _ => const SAny(),
       },
+  eval: (ctx, _, _) {
+    final list = _asList(ctx, 'first');
+    return list.isEmpty ? null : list.first;
+  },
   parseKind: PipeOpParseKind.zeroArg,
-  zeroArgCtor: FirstOp.new,
-  oneArgCtor: null,
 );
 
 final PipeOpInfo _lastSpec = (
@@ -356,27 +426,48 @@ final PipeOpInfo _lastSpec = (
         SList(element: final e) => e,
         _ => const SAny(),
       },
+  eval: (ctx, _, _) {
+    final list = _asList(ctx, 'last');
+    return list.isEmpty ? null : list.last;
+  },
   parseKind: PipeOpParseKind.zeroArg,
-  zeroArgCtor: LastOp.new,
-  oneArgCtor: null,
 );
 
 final PipeOpInfo _sumSpec = (
   name: 'sum',
   accepts: _acceptsList,
   infer: (_, _) => const SNum(),
+  eval: (ctx, _, _) {
+    final list = _asList(ctx, 'sum');
+    num total = 0;
+    for (final item in list) {
+      if (item is! num) {
+        throw QueryError('sum: expected number, got ${typeName(item)}');
+      }
+      total += item;
+    }
+    return total;
+  },
   parseKind: PipeOpParseKind.zeroArg,
-  zeroArgCtor: SumOp.new,
-  oneArgCtor: null,
 );
 
 final PipeOpInfo _avgSpec = (
   name: 'avg',
   accepts: _acceptsList,
   infer: (_, _) => const SNum(),
+  eval: (ctx, _, _) {
+    final list = _asList(ctx, 'avg');
+    if (list.isEmpty) throw const QueryError('avg: empty list');
+    num total = 0;
+    for (final item in list) {
+      if (item is! num) {
+        throw QueryError('avg: expected number, got ${typeName(item)}');
+      }
+      total += item;
+    }
+    return total.toDouble() / list.length;
+  },
   parseKind: PipeOpParseKind.zeroArg,
-  zeroArgCtor: AvgOp.new,
-  oneArgCtor: null,
 );
 
 final PipeOpInfo _minSpec = (
@@ -387,9 +478,16 @@ final PipeOpInfo _minSpec = (
         SList(element: final e) => e,
         _ => const SAny(),
       },
+  eval: (ctx, _, _) {
+    final list = _asList(ctx, 'min');
+    if (list.isEmpty) throw const QueryError('min: empty list');
+    var best = list.first;
+    for (var i = 1; i < list.length; i++) {
+      if (compareValues(list[i], best) < 0) best = list[i];
+    }
+    return best;
+  },
   parseKind: PipeOpParseKind.zeroArg,
-  zeroArgCtor: MinOp.new,
-  oneArgCtor: null,
 );
 
 final PipeOpInfo _maxSpec = (
@@ -400,9 +498,16 @@ final PipeOpInfo _maxSpec = (
         SList(element: final e) => e,
         _ => const SAny(),
       },
+  eval: (ctx, _, _) {
+    final list = _asList(ctx, 'max');
+    if (list.isEmpty) throw const QueryError('max: empty list');
+    var best = list.first;
+    for (var i = 1; i < list.length; i++) {
+      if (compareValues(list[i], best) > 0) best = list[i];
+    }
+    return best;
+  },
   parseKind: PipeOpParseKind.zeroArg,
-  zeroArgCtor: MaxOp.new,
-  oneArgCtor: null,
 );
 
 final PipeOpInfo _groupBySpec = (
@@ -415,9 +520,26 @@ final PipeOpInfo _groupBySpec = (
         ),
         _ => const SAny(),
       },
+  eval: (ctx, args, eval) {
+    final list = _asList(ctx, 'group_by');
+    final key = args[0];
+    // Group on a canonical string representation so structurally-equal
+    // Maps and Lists compare as equal. A side map preserves the
+    // original key value for the output record.
+    final groups = <String, List<Object?>>{};
+    final originalKeys = <String, Object?>{};
+    for (final item in list) {
+      final k = eval(key, item);
+      final canonical = _canonicalKey(k);
+      originalKeys[canonical] = k;
+      (groups[canonical] ??= []).add(item);
+    }
+    return [
+      for (final entry in groups.entries)
+        {'key': originalKeys[entry.key], 'values': entry.value},
+    ];
+  },
   parseKind: PipeOpParseKind.oneArg,
-  zeroArgCtor: null,
-  oneArgCtor: GroupByOp.new,
 );
 
 final PipeOpInfo _fromEntriesSpec = (
@@ -427,9 +549,28 @@ final PipeOpInfo _fromEntriesSpec = (
   // Callers that only need to know "is it a map" (e.g. TOML/HCL
   // writability) still get a correct answer.
   infer: (_, _) => const SMap(<String, Shape>{}),
+  // Non-map entries are rejected explicitly. Earlier silent skipping
+  // hid bugs where upstream pipelines emitted the wrong shape.
+  eval: (ctx, _, _) {
+    final list = _asList(ctx, 'from_entries');
+    final result = <String, Object?>{};
+    for (final item in list) {
+      if (item is! Map<String, Object?>) {
+        throw QueryError(
+          'from_entries: entry must be a map, got ${typeName(item)}',
+        );
+      }
+      final key = item['key'];
+      if (key is! String) {
+        throw QueryError(
+          'from_entries: entry "key" must be a string, got ${typeName(key)}',
+        );
+      }
+      result[key] = item['value'];
+    }
+    return result;
+  },
   parseKind: PipeOpParseKind.zeroArg,
-  zeroArgCtor: FromEntriesOp.new,
-  oneArgCtor: null,
 );
 
 // --- Map-consuming ops ---------------------------------------------
@@ -438,9 +579,15 @@ final PipeOpInfo _filterValuesSpec = (
   name: 'filter_values',
   accepts: _acceptsMap,
   infer: (input, _) => input,
+  eval: (ctx, args, eval) {
+    final map = _asMap(ctx, 'filter_values');
+    final predicate = args[0];
+    return {
+      for (final MapEntry(:key, :value) in map.entries)
+        if (eval(predicate, value) == true) key: value,
+    };
+  },
   parseKind: PipeOpParseKind.oneArg,
-  zeroArgCtor: null,
-  oneArgCtor: FilterValuesOp.new,
 );
 
 final PipeOpInfo _mapValuesSpec = (
@@ -448,33 +595,61 @@ final PipeOpInfo _mapValuesSpec = (
   accepts: _acceptsMap,
   infer:
       (input, op) => switch ((input, op)) {
-        (SMap(fields: final fields), MapValuesOp(:final transform)) => SMap({
-          for (final MapEntry(:key, :value) in fields.entries)
-            key: _inferSubExpr(transform, value),
-        }),
+        (
+          SMap(fields: final fields),
+          BuiltinPipeOp(name: 'map_values', args: [final transform]),
+        ) =>
+          SMap({
+            for (final MapEntry(:key, :value) in fields.entries)
+              key: _inferSubExpr(transform, value),
+          }),
         _ => const SAny(),
       },
+  eval: (ctx, args, eval) {
+    final map = _asMap(ctx, 'map_values');
+    final transform = args[0];
+    return {
+      for (final MapEntry(:key, :value) in map.entries)
+        key: eval(transform, value),
+    };
+  },
   parseKind: PipeOpParseKind.oneArg,
-  zeroArgCtor: null,
-  oneArgCtor: MapValuesOp.new,
 );
 
 final PipeOpInfo _filterKeysSpec = (
   name: 'filter_keys',
   accepts: _acceptsMap,
   infer: (input, _) => input,
+  eval: (ctx, args, eval) {
+    final map = _asMap(ctx, 'filter_keys');
+    final predicate = args[0];
+    return {
+      for (final MapEntry(:key, :value) in map.entries)
+        if (eval(predicate, key) == true) key: value,
+    };
+  },
   parseKind: PipeOpParseKind.oneArg,
-  zeroArgCtor: null,
-  oneArgCtor: FilterKeysOp.new,
 );
 
 final PipeOpInfo _hasSpec = (
   name: 'has',
   accepts: _acceptsMap,
   infer: (_, _) => const SBool(),
+  eval: (ctx, args, eval) {
+    final key = args[0];
+    if (ctx is Map<String, Object?>) {
+      final k = eval(key, ctx);
+      if (k is String) return ctx.containsKey(k);
+      throw QueryError('has: key must be a string, got ${typeName(k)}');
+    }
+    if (ctx is List<Object?>) {
+      final k = eval(key, ctx);
+      if (k is num) return k.toInt() >= 0 && k.toInt() < ctx.length;
+      throw QueryError('has: index must be a number, got ${typeName(k)}');
+    }
+    throw QueryError('has: expected map or list, got ${typeName(ctx)}');
+  },
   parseKind: PipeOpParseKind.oneArg,
-  zeroArgCtor: null,
-  oneArgCtor: HasOp.new,
 );
 
 final PipeOpInfo _toEntriesSpec = (
@@ -490,9 +665,14 @@ final PipeOpInfo _toEntriesSpec = (
         ),
         _ => const SAny(),
       },
+  eval: (ctx, _, _) {
+    final map = _asMap(ctx, 'to_entries');
+    return [
+      for (final MapEntry(:key, :value) in map.entries)
+        {'key': key, 'value': value},
+    ];
+  },
   parseKind: PipeOpParseKind.zeroArg,
-  zeroArgCtor: ToEntriesOp.new,
-  oneArgCtor: null,
 );
 
 // --- List-or-map ops -----------------------------------------------
@@ -506,9 +686,14 @@ final PipeOpInfo _keysSpec = (
         SList() => const SList(SNum()),
         _ => const SAny(),
       },
+  eval: (ctx, _, _) {
+    if (ctx is Map<String, Object?>) return ctx.keys.toList();
+    if (ctx is List<Object?>) {
+      return [for (var i = 0; i < ctx.length; i++) i];
+    }
+    throw QueryError('keys: expected map or list, got ${typeName(ctx)}');
+  },
   parseKind: PipeOpParseKind.zeroArg,
-  zeroArgCtor: KeysOp.new,
-  oneArgCtor: null,
 );
 
 final PipeOpInfo _valuesSpec = (
@@ -521,9 +706,12 @@ final PipeOpInfo _valuesSpec = (
         SList() => input,
         _ => const SAny(),
       },
+  eval: (ctx, _, _) {
+    if (ctx is Map<String, Object?>) return ctx.values.toList();
+    if (ctx is List<Object?>) return ctx;
+    throw QueryError('values: expected map or list, got ${typeName(ctx)}');
+  },
   parseKind: PipeOpParseKind.zeroArg,
-  zeroArgCtor: ValuesOp.new,
-  oneArgCtor: null,
 );
 
 // --- List, map, or string ------------------------------------------
@@ -532,9 +720,15 @@ final PipeOpInfo _lengthSpec = (
   name: 'length',
   accepts: _acceptsListMapOrString,
   infer: (_, _) => const SNum(),
+  eval: (ctx, _, _) {
+    if (ctx is List<Object?>) return ctx.length;
+    if (ctx is Map<String, Object?>) return ctx.length;
+    if (ctx is String) return ctx.length;
+    throw QueryError(
+      'length: expected list, map, or string, got ${typeName(ctx)}',
+    );
+  },
   parseKind: PipeOpParseKind.zeroArg,
-  zeroArgCtor: LengthOp.new,
-  oneArgCtor: null,
 );
 
 // --- String or number ----------------------------------------------
@@ -543,9 +737,18 @@ final PipeOpInfo _toNumberSpec = (
   name: 'to_number',
   accepts: _acceptsStringOrNum,
   infer: (_, _) => const SNum(),
+  eval: (ctx, _, _) {
+    if (ctx is num) return ctx;
+    if (ctx is String) {
+      final parsed = num.tryParse(ctx);
+      if (parsed != null) return parsed;
+      throw QueryError('to_number: cannot parse "$ctx" as a number');
+    }
+    throw QueryError(
+      'to_number: expected string or number, got ${typeName(ctx)}',
+    );
+  },
   parseKind: PipeOpParseKind.zeroArg,
-  zeroArgCtor: ToNumberOp.new,
-  oneArgCtor: null,
 );
 
 // --- Universal ops -------------------------------------------------
@@ -554,9 +757,22 @@ final PipeOpInfo _typeSpec = (
   name: 'type',
   accepts: _acceptsAny,
   infer: (_, _) => const SString(),
+  eval:
+      (ctx, _, _) => switch (ctx) {
+        null => 'null',
+        bool() => 'boolean',
+        num() => 'number',
+        String() => 'string',
+        List<Object?>() => 'array',
+        Map<String, Object?>() => 'object',
+        _ =>
+          throw QueryError(
+            'type: data contains a non-JSON value (${ctx.runtimeType}). '
+            'Lambé queries operate on JSON-shaped data — pass results of '
+            'parseInput, jsonDecode, or canonical literals.',
+          ),
+      },
   parseKind: PipeOpParseKind.zeroArg,
-  zeroArgCtor: TypeOp.new,
-  oneArgCtor: null,
 );
 
 /// `as(target)` is structurally universal: it accepts any shape and
@@ -570,14 +786,17 @@ final PipeOpInfo _typeSpec = (
 /// `parseKind` is `custom` because `as(fmt)` takes a keyword set
 /// (`json`, `yaml`, etc.) rather than an arbitrary expression — the
 /// generic `oneArg` rule cannot express that. The parser hand-writes
-/// `_asOp` and this spec provides the name/shape metadata only.
+/// `_asOp` and the runtime evaluator handles [As] directly. The `eval`
+/// field here is unreachable via [BuiltinPipeOp] dispatch and is a
+/// stub.
 final PipeOpInfo _asSpec = (
   name: 'as',
   accepts: _acceptsAny,
   infer: (_, _) => const SAny(),
+  eval:
+      (_, _, _) =>
+          throw const QueryError('as: dispatched outside BuiltinPipeOp'),
   parseKind: PipeOpParseKind.custom,
-  zeroArgCtor: null,
-  oneArgCtor: null,
 );
 
 // ------------------------------------------------------------------

@@ -288,8 +288,12 @@ Group elements by a key. Returns `[{key, values}]`.
 Remove duplicate values.
 
 ```
-[1, 2, 2, 3, 1] | unique
--> [1, 2, 3]
+$ echo '[1, 2, 2, 3, 1]' | lam '. | unique'
+[
+  1,
+  2,
+  3
+]
 ```
 
 ### unique_by(key)
@@ -306,8 +310,14 @@ Remove duplicates by a key expression.
 Flatten one level of nesting.
 
 ```
-[[1, 2], [3, 4], [5]] | flatten
--> [1, 2, 3, 4, 5]
+$ echo '[[1, 2], [3, 4], [5]]' | lam '. | flatten'
+[
+  1,
+  2,
+  3,
+  4,
+  5
+]
 ```
 
 ### reverse
@@ -402,8 +412,10 @@ Convert between maps and `[{key, value}]` lists.
 .config.database | to_entries
 -> [{"key": "host", "value": "localhost"}, {"key": "port", "value": 5432}]
 
-[{"key": "a", "value": 1}] | from_entries
--> {"a": 1}
+$ echo '[{"key": "a", "value": 1}]' | lam '. | from_entries'
+{
+  "a": 1
+}
 ```
 
 ### to_number
@@ -414,11 +426,17 @@ CSV and TSV cells are strings by default; use `to_number` to coerce them
 before arithmetic.
 
 ```
-"42" | to_number       -> 42
-"3.14" | to_number     -> 3.14
-100 | to_number        -> 100
+$ echo '"42"' | lam '. | to_number'
+42
 
-.price | to_number     on {price: "29.99"} -> 29.99
+$ echo '"3.14"' | lam '. | to_number'
+3.14
+
+$ echo '100' | lam '. | to_number'
+100
+
+$ echo '{"price": "29.99"}' | lam '.price | to_number'
+29.99
 ```
 
 Throws on strings that do not parse, and on inputs that are not strings
@@ -432,13 +450,26 @@ Possible return values: `"null"`, `"boolean"`, `"number"`, `"string"`,
 `"array"`, `"object"`.
 
 ```
-42 | type              -> "number"
-"hello" | type         -> "string"
-null | type            -> "null"
-[1, 2] | type          -> "array"
-{"a": 1} | type        -> "object"
+$ echo '42' | lam '. | type'
+"number"
 
-. | filter((. | type) == "number")   on [1, "two", 3] -> [1, 3]
+$ echo '"hello"' | lam '. | type'
+"string"
+
+$ echo 'null' | lam '. | type'
+"null"
+
+$ echo '[1, 2]' | lam '. | type'
+"array"
+
+$ echo '{"a": 1}' | lam '. | type'
+"object"
+
+$ echo '[1, "two", 3]' | lam '. | filter((. | type) == "number")'
+[
+  1,
+  3
+]
 ```
 
 ### filter_values(predicate)
@@ -455,8 +486,11 @@ Filter a map's values.
 Transform a map's values.
 
 ```
-{"a": 1, "b": 2} | map_values(. * 10)
--> {"a": 10, "b": 20}
+$ echo '{"a": 1, "b": 2}' | lam '. | map_values(. * 10)'
+{
+  "a": 10,
+  "b": 20
+}
 ```
 
 ### filter_keys(predicate)
