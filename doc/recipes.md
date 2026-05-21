@@ -336,6 +336,72 @@ $ lam '.spec.template.spec' deployment.yaml
 $ lam -i deployment.yaml
 ```
 
+## Bridging shapes to output formats with `as(fmt)`
+
+Some output formats restrict the root shape: TOML and HCL want a map
+at the top level; CSV and TSV want a list of records. When the
+pipeline produces something else, `as(fmt)` applies a curated bridge
+so the value fits.
+
+There are four canonical bridges. All four are reachable via `as(...)`
+or via the CLI's `--to` flag with `--flatten-cells refuse` (the
+default).
+
+### `list<scalar> | as(toml)` and `as(hcl)`
+
+Wrap a list under a single `items` key.
+
+```
+$ lam -n --to toml '["a", "b", "c"] | as(toml)'
+items = ["a", "b", "c"]
+
+
+$ lam -n --to hcl '["a", "b"] | as(hcl)'
+items = ["a", "b"]
+```
+
+### `scalar | as(toml)` and `as(hcl)`
+
+Wrap a scalar under a single `value` key.
+
+```
+$ lam -n --to toml '"hello" | as(toml)'
+value = "hello"
+
+
+$ lam -n --to hcl '"hello" | as(hcl)'
+value = "hello"
+```
+
+### `map | as(csv)` and `as(tsv)`
+
+Convert a map to a two-column key/value list of records via
+`to_entries`.
+
+```
+$ lam -n --to csv '{a: 1, b: 2} | as(csv)'
+key,value
+a,1
+b,2
+```
+
+### `scalar | as(csv)` and `as(tsv)`
+
+Compose: wrap the scalar under `value`, then `to_entries`. The
+result is a one-row CSV with a `key`/`value` header.
+
+```
+$ lam -n --to csv '42 | as(csv)'
+key,value
+value,42
+```
+
+### When `as(fmt)` does nothing
+
+A shape that already satisfies the format's requirement passes
+through unchanged: `map | as(toml)` is identity, as is `list<map> |
+as(csv)`. The bridge fires only when there's a real mismatch.
+
 ## Next steps
 
 - [Getting started](getting-started.md) for installation
