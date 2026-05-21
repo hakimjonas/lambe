@@ -59,7 +59,18 @@ Map<String, Object?> _encode(Shape shape) {
     SBool() => {'type': 'boolean'},
     SNum() => {'type': 'number'},
     SString() => {'type': 'string'},
-    SList(:final element) => {'type': 'array', 'items': _encode(element)},
+    SList(:final element) => {
+      'type': 'array',
+      'items': _encode(element),
+      // SList(SAny()) means "this list contained heterogeneous or
+      // unknown elements" — `shapeOf` collapses to SAny when it can't
+      // narrow the element type. Surface the hint so users know the
+      // schema reflects sampling, not a guarantee. The lambé schema
+      // parser ignores unknown keywords (per JSON Schema's
+      // extensibility convention for metadata), so this round-trips
+      // safely.
+      if (element is SAny) 'description': 'sampled, may be heterogeneous',
+    },
     SMap(:final fields) => _encodeMap(fields),
     // Unreachable: SOptional was unwrapped above. Present for
     // exhaustive-switch conformance.

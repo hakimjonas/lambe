@@ -49,6 +49,32 @@ void main() {
       expect(out, contains('"items":'));
     });
 
+    test('SList<SAny> carries a "sampled, may be heterogeneous" hint', () {
+      // shapeOf collapses heterogeneous elements to SAny. The
+      // renderer surfaces that via a description so users know the
+      // schema reflects sampling, not a guarantee.
+      final out = renderJsonSchema(const SList(SAny()));
+      expect(out, contains('"description"'));
+      expect(out, contains('sampled, may be heterogeneous'));
+    });
+
+    test('typed list does NOT carry the heterogeneous hint', () {
+      final out = renderJsonSchema(const SList(SString()));
+      expect(out, isNot(contains('description')));
+    });
+
+    test(
+      'SList<SAny> heterogeneous hint round-trips through parseJsonSchema',
+      () {
+        // The hint is metadata; the parser ignores unknown keywords.
+        // Round-trip preserves the SList<SAny> shape.
+        const shape = SList(SAny());
+        final out = renderJsonSchema(shape);
+        final reparsed = parseJsonSchema(out);
+        expect(reparsed, shape);
+      },
+    );
+
     test('SMap with all required fields lists all in required', () {
       final out = renderJsonSchema(const SMap({'a': SNum(), 'b': SString()}));
       expect(out, contains('"type": "object"'));
