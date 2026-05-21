@@ -65,6 +65,24 @@ consolidation, and a `rumil_tokens`-based REPL highlighter.
   entries used to be dropped silently, now they throw `QueryError`.
   Hides a class of bugs where upstream pipelines emit the wrong
   shape.
+- **`as(fmt)` bridges reference** in `doc/recipes.md`. Documents the
+  four canonical bridges with runnable examples: `list<scalar> |
+  as(toml/hcl)` wraps as `{items: ...}`; `scalar | as(toml/hcl)`
+  wraps as `{value: ...}`; `map | as(csv/tsv)` derives via
+  `to_entries`; `scalar | as(csv/tsv)` composes both.
+- **`As` class doc** softened to be honest about which error paths
+  users will and won't hit. The "ambiguous bridge" runtime branch is
+  defensive against future curation errors but unreachable with the
+  current curated table — the doc no longer claims otherwise. A new
+  invariant test in `shape_synthesize_test` pins `≤ 1 bridge per
+  (shape, format)` so the path becomes reachable only by a
+  deliberate change.
+- **`syntax.md` examples** revert from `echo … | lam '. | op'` to
+  the cleaner `lam -n '… | op'` form now that `-n` exists. Several
+  pre-A6 examples were also silently broken: lambé object
+  construction uses bare identifiers (`{a: 1}`), not JSON-string
+  keys (`{"a": 1}`), so `[{"key": "a"}] | from_entries` was never
+  runnable. Fixed.
 
 ### Bug fixes
 
@@ -80,14 +98,39 @@ consolidation, and a `rumil_tokens`-based REPL highlighter.
   string`. Slicing (`.name[0:3]`) already worked; the asymmetry is
   gone. Out-of-range returns `null` (mirrors list indexing);
   non-int still throws.
+- **`--explain` writability section is suppressed when a
+  runtime-rejection warning fires.** When a pipe op's input shape is
+  provably incompatible the post-stage shape widens to `SAny`, which
+  used to make every output format pass `canWriteAs` — so the
+  explain report listed every format for a pipeline that would throw
+  before any writer ran. Both `Writable as:` and `Not writable as:`
+  are now suppressed; the text renderer prints a one-line note in
+  their place, and the JSON renderer sets both keys to `null`.
+- **Heterogeneous list rendering hint.** `shapeOf([1, "two", true])`
+  collapses the element type to `SAny`. The rendered JSON Schema now
+  carries a `description: "sampled, may be heterogeneous"` so
+  `--print-shape` users see that the schema reflects sampling, not
+  a guarantee. The hint round-trips through `parseJsonSchema`
+  (unknown keywords are ignored per JSON Schema's extensibility
+  convention).
+- **Empty piped stdin.** Empty stdin in evaluation mode now surfaces
+  the standard "no input" error rather than a confusing JSON parse
+  error on the empty string.
 
 ### jq compatibility
 
 - **`add` is now recognized as an alias for `sum`.** A jq idiom that
   matches Lambé's `sum` exactly. `_jqAliases` in `parser.dart` is the
   table; entries belong there only when the jq semantics are an
-  exact match. Other unsupported jq idioms still surface a
-  "did you mean" hint or an explanatory message via `_jqIdiomHint`.
+  exact match.
+- **Idiom hints for column-1 jq keywords.** `_jqIdiomHint` and
+  `_jqPipeOpHint` now recognise `try` / `try ... catch`, `recurse`,
+  `walk`, `paths`, `leaf_paths`, `range`, `limit`, `nth`, `@csv`,
+  `@tsv`, and `@base64`. Each produces a one-liner pointing at the
+  lambé equivalent (or, for `@base64`, the explicit "not supported"
+  signal) instead of the giant op-vocabulary dump. Folds into the
+  pre-existing hints for `[]`, `?`, `..`, `select`, `empty`, and
+  stranded `end`.
 
 ### Schemas as a first-class contract
 
@@ -104,6 +147,12 @@ consolidation, and a `rumil_tokens`-based REPL highlighter.
   same shape-to-JSON-Schema rendering powers
   `renderJsonSchema(shape)` on the library and the MCP
   `lambe_print_shape` tool.
+- **`--print-shape EXPR` composes with the query.** When given an
+  expression, `lam --print-shape '.users' data.json` now returns the
+  schema of the result of evaluating `.users` rather than the schema
+  of the whole document. Pre-0.9.0 the expression was silently
+  ignored. Without data, falls back to inferring from `SAny` —
+  matches the `--explain`-without-data flow.
 - **REPL: `:schema [path]` and `:print-shape`.** `:schema <path>`
   loads a schema for the session and reports agreement/disagreement
   vs current data. `:schema` (no arg) prints the active schema.
@@ -180,6 +229,18 @@ mode:
 - Cannot combine with `--interactive`, `--schema`, `--assert`, or
   `--explain`; output is restricted to JSON (`--to` other than
   `json` is refused).
+
+### Null input
+
+- **`-n` / `--null-input` flag.** Run a query against `null` context
+  with no input file. Useful for value computations:
+  `lam -n '[1,2,3] | unique'`. Without `-n`, the missing-input guard
+  fires (typo'd filename or missing redirect is a common footgun);
+  the flag puts the "I have no input" intent on the command line
+  where it's visible in scripts and code review. The `--null-input`
+  spelling matches jq exactly.
+- Cannot combine with `--interactive`, `--ndjson`, `--schema`, or
+  `--assert`. The TTY stdin guard is unchanged.
 
 ### `--flatten-cells` for CSV/TSV
 
