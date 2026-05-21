@@ -13,6 +13,7 @@ doc/api/
 Thumbs.db
 
 # Compiled binaries
+lam
 lam-mcp
 
 # Local dependency overrides

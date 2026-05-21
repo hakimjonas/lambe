@@ -409,8 +409,17 @@ Check if a map contains a key.
 Convert between maps and `[{key, value}]` lists.
 
 ```
-.config.database | to_entries
--> [{"key": "host", "value": "localhost"}, {"key": "port", "value": 5432}]
+$ echo '{"config":{"database":{"host":"localhost","port":5432}}}' | lam '.config.database | to_entries'
+[
+  {
+    "key": "host",
+    "value": "localhost"
+  },
+  {
+    "key": "port",
+    "value": 5432
+  }
+]
 
 $ echo '[{"key": "a", "value": 1}]' | lam '. | from_entries'
 {
