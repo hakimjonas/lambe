@@ -465,23 +465,36 @@ String renderExplain(ExplainReport report) {
   }
 
   buf.write('\n');
-  if (report.writableAs.isNotEmpty) {
-    buf.write(
-      'Writable as: ${report.writableAs.map((f) => f.name).join(", ")}',
-    );
-    buf.write('\n');
-  }
-  if (report.notWritableAs.isNotEmpty) {
-    buf.write(
-      'Not writable as: ${report.notWritableAs.map((f) => f.name).join(", ")}',
-    );
-    buf.write('\n');
+  // When a runtime-rejection warning is present earlier in the
+  // pipeline, the writability lists are misleading: the pipeline will
+  // throw before any writer runs, but inferShape widens the post-
+  // rejection shape to SAny, which makes every format pass canWriteAs.
+  // Suppress the section and surface why.
+  if (_hasRuntimeRejection(report)) {
+    buf.write('Writable as: (suppressed — runtime-rejection warning above)\n');
+  } else {
+    if (report.writableAs.isNotEmpty) {
+      buf.write(
+        'Writable as: ${report.writableAs.map((f) => f.name).join(", ")}',
+      );
+      buf.write('\n');
+    }
+    if (report.notWritableAs.isNotEmpty) {
+      buf.write(
+        'Not writable as: '
+        '${report.notWritableAs.map((f) => f.name).join(", ")}',
+      );
+      buf.write('\n');
+    }
   }
   if (report.flattenCells != CellPolicy.refuse) {
     buf.write('Cell policy: ${report.flattenCells.name}\n');
   }
   return buf.toString();
 }
+
+bool _hasRuntimeRejection(ExplainReport report) =>
+    report.warnings.any((w) => w.kind == WarningKind.runtimeRejection);
 
 /// Render an [ExplainReport] as a JSON string for programmatic
 /// consumers (agent tooling, build pipelines).
@@ -494,6 +507,11 @@ String renderExplain(ExplainReport report) {
 /// carries `stage_index`, `kind` (one of `empty_filter`,
 /// `runtime_rejection`, `trivial_result`), and `message`.
 String renderExplainJson(ExplainReport report) {
+  // Suppress writability when a runtime-rejection warning fires —
+  // listing every format would mislead, since the pipeline throws
+  // before any writer runs. Agents should pattern-match on warnings
+  // first; null on writability is the explicit "uncertain" signal.
+  final suppressWritability = _hasRuntimeRejection(report);
   final payload = <String, Object?>{
     'stages': [
       for (final s in report.stages)
@@ -507,8 +525,14 @@ String renderExplainJson(ExplainReport report) {
           'message': w.message,
         },
     ],
-    'writable_as': [for (final f in report.writableAs) f.name],
-    'not_writable_as': [for (final f in report.notWritableAs) f.name],
+    'writable_as':
+        suppressWritability
+            ? null
+            : [for (final f in report.writableAs) f.name],
+    'not_writable_as':
+        suppressWritability
+            ? null
+            : [for (final f in report.notWritableAs) f.name],
     'flatten_cells': report.flattenCells.name,
   };
   return const JsonEncoder.withIndent('  ').convert(payload);

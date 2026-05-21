@@ -146,6 +146,78 @@ void main() {
       expect(text, contains('Not writable as:'));
       expect(text, contains('toml'));
     });
+
+    test('suppresses writability when a runtime-rejection warning fires', () {
+      // `.config | flatten` on a map shape: flatten rejects map at
+      // runtime, so the post-stage shape is SAny — which would
+      // otherwise pass canWriteAs for every format. Listing every
+      // format would mislead because the pipeline will throw before
+      // any writer runs.
+      final report = explain(
+        _parse('.config | flatten'),
+        const SMap({
+          'config': SMap({'host': SString()}),
+        }),
+      );
+      // Sanity: the rejection warning is in fact present.
+      expect(
+        report.warnings.any((w) => w.kind == WarningKind.runtimeRejection),
+        isTrue,
+      );
+      final text = renderExplain(report);
+      expect(text, contains('runtime-rejection warning above'));
+      expect(text, isNot(contains('Writable as: json')));
+      expect(text, isNot(contains('Not writable as:')));
+    });
+
+    test('empty-filter warning alone does NOT suppress writability', () {
+      // emptyFilter is not runtimeRejection — the pipeline runs to
+      // completion, just produces an empty result. Writability still
+      // applies.
+      final report = explain(
+        _parse('.users | filter(.missing)'),
+        const SMap({
+          'users': SList(SMap({'name': SString()})),
+        }),
+      );
+      expect(
+        report.warnings.any((w) => w.kind == WarningKind.emptyFilter),
+        isTrue,
+      );
+      expect(
+        report.warnings.any((w) => w.kind == WarningKind.runtimeRejection),
+        isFalse,
+      );
+      final text = renderExplain(report);
+      expect(text, contains('Writable as:'));
+      expect(text, isNot(contains('runtime-rejection warning above')));
+    });
+  });
+
+  group('renderExplainJson: writability suppression', () {
+    test('writable_as / not_writable_as become null on runtime-rejection', () {
+      final report = explain(
+        _parse('.config | flatten'),
+        const SMap({
+          'config': SMap({'host': SString()}),
+        }),
+      );
+      final json =
+          jsonDecode(renderExplainJson(report)) as Map<String, Object?>;
+      expect(json['writable_as'], isNull);
+      expect(json['not_writable_as'], isNull);
+      // warnings still present so consumers can see why.
+      expect(json['warnings'], isA<List<Object?>>());
+      expect((json['warnings'] as List<Object?>), isNotEmpty);
+    });
+
+    test('clean pipeline keeps both writability lists', () {
+      final report = explain(_parse('.'), const SMap({'a': SNum()}));
+      final json =
+          jsonDecode(renderExplainJson(report)) as Map<String, Object?>;
+      expect(json['writable_as'], isA<List<Object?>>());
+      expect(json['not_writable_as'], isA<List<Object?>>());
+    });
   });
 
   group('explain: predicate warnings for provably-empty filters', () {
