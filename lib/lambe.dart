@@ -407,6 +407,15 @@ String _describeLeftover(String expression, int offset) {
           suggestion != null ? '\n  help: did you mean "$suggestion"?' : '';
       return 'unknown operation "$word" after |$hint';
     }
+    // Word-based dispatch didn't fire (often because the next token
+    // starts with a non-identifier char like `@`). Try the
+    // idiom-detection pass against the post-pipe content before
+    // falling back to the generic message.
+    final pipeIdiom = _jqIdiomHint(
+      expression,
+      expression.length - rest.length + 1,
+    );
+    if (pipeIdiom != null) return pipeIdiom;
     return 'unexpected input after |';
   }
   final idiom = _jqIdiomHint(expression, offset);
@@ -436,6 +445,27 @@ String? _jqPipeOpHint(String word) {
           'or replace it with `filter(pred)`.';
     case 'not':
       return '`not` is a prefix in Lambé: write `!pred`.';
+    case 'try':
+      return 'Lambé has no exception model. '
+          'Use `if`/`else` or shape checks (`has("k")`, '
+          '`--print-shape`) instead of `try ... catch`.';
+    case 'recurse':
+    case 'walk':
+      return 'Lambé has no recursive descent. Use explicit paths; '
+          'combine `map(...)` and `flatten` for nested fan-out.';
+    case 'paths':
+    case 'leaf_paths':
+      return 'Lambé has no `$word` op. Use `--print-shape` (CLI) or '
+          '`lambe_print_shape` (MCP) to see the structure of the data.';
+    case 'range':
+      return 'Lambé has no `range` generator. Build the list inline '
+          '(`[0,1,2,...]`) or pre-compute it; lambé queries are '
+          'data-driven, not generator-driven.';
+    case 'limit':
+    case 'nth':
+      return '`$word` is not a lambé op. Use slicing `[:n]` to take a '
+          'prefix, `[n:n+1]` to take an index, or `first`/`last` for '
+          'the ends.';
     default:
       return null;
   }
@@ -452,6 +482,12 @@ String? _jqPipeOpHint(String word) {
 ///   `filter(...)`).
 /// - `empty` keyword (no `empty`; use `filter(pred)`).
 /// - `end` from a stranded `if/then/else/end` tail.
+/// - `try` / `try ... catch` (Lambé has no exception model).
+/// - `recurse`, `walk` (no recursive descent; explicit paths).
+/// - `paths`, `leaf_paths` (use `--print-shape` to inspect structure).
+/// - `range`, `limit`, `nth` (use slicing or `first`/`last`).
+/// - `@csv`, `@tsv`, `@base64` (use `as(csv)` / `as(tsv)`; base64 is
+///   not supported).
 String? _jqIdiomHint(String expression, int offset) {
   // `.users[]`: parser expected an index expression after `[` and
   // failed on `]`. Detect by: offset points at `]` and the previous
@@ -509,7 +545,60 @@ String? _jqIdiomHint(String expression, int offset) {
         'stage. Use it inside `map(...)` / `filter(...)`, and drop '
         'the `end` keyword — Lambé terminates `if` at the else branch.';
   }
+  // `try` / `try ... catch`. jq's exception model has no lambé
+  // analogue.
+  if (_atKeyword(rest, 'try')) {
+    return 'Lambé has no exception model. '
+        'Use `if`/`else` or shape checks (`has("k")`, `--print-shape`) '
+        'instead of `try ... catch`.';
+  }
+  // `recurse`, `walk` — both jq's recursive-descent operators.
+  if (_atKeyword(rest, 'recurse') || _atKeyword(rest, 'walk')) {
+    return 'Lambé has no recursive descent. Use explicit paths; '
+        'combine `map(...)` and `flatten` for nested fan-out.';
+  }
+  // `paths`, `leaf_paths` — jq's path enumeration. Lambé exposes
+  // structure via `--print-shape` instead.
+  if (_atKeyword(rest, 'paths') || _atKeyword(rest, 'leaf_paths')) {
+    return 'Lambé has no `paths`/`leaf_paths`. Use `--print-shape` '
+        '(CLI) or `lambe_print_shape` (MCP) to see the structure of '
+        'the data.';
+  }
+  // `range`, `limit`, `nth` — jq generators / slicing helpers.
+  if (_atKeyword(rest, 'range')) {
+    return 'Lambé has no `range` generator. Build the list inline '
+        '(`[0,1,2,...]`) or pre-compute it; lambé queries are '
+        'data-driven, not generator-driven.';
+  }
+  if (_atKeyword(rest, 'limit') || _atKeyword(rest, 'nth')) {
+    final word = _atKeyword(rest, 'limit') ? 'limit' : 'nth';
+    return '`$word` is not a lambé op. Use slicing `[:n]` to take a '
+        'prefix, `[n:n+1]` to take an index, or `first`/`last` for '
+        'the ends.';
+  }
+  // `@csv` / `@tsv` — jq's format strings. Lambé routes through
+  // `as(csv)` / `as(tsv)` instead.
+  if (rest.startsWith('@csv') || rest.startsWith('@tsv')) {
+    final fmt = rest.startsWith('@csv') ? 'csv' : 'tsv';
+    return 'Lambé has no `@$fmt` format string. Use `as($fmt)` to '
+        'serialize a list-of-records as $fmt, or `--to $fmt` at the '
+        'CLI level.';
+  }
+  // `@base64` — explicitly unsupported.
+  if (rest.startsWith('@base64')) {
+    return 'Lambé does not support `@base64` encoding/decoding. '
+        'Pre-process the data outside lambé if you need it.';
+  }
   return null;
+}
+
+/// Whether [rest] begins with [keyword] followed by a non-identifier
+/// character (or end-of-string). Mirrors the `select`/`empty`/`end`
+/// detection above; centralised here to keep the new cases compact.
+bool _atKeyword(String rest, String keyword) {
+  if (!rest.startsWith(keyword)) return false;
+  if (rest.length == keyword.length) return true;
+  return !_isIdentChar(rest.codeUnitAt(keyword.length));
 }
 
 bool _isIdentChar(int code) =>
