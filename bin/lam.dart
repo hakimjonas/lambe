@@ -139,9 +139,27 @@ void main(List<String> arguments) {
     exit(1);
   }
 
-  final expression = rest.isNotEmpty ? rest[0] : '.';
-  final fileArgIndex =
-      (isPrintShapeMode || isInteractive) && rest.length == 1 ? 0 : 1;
+  final int fileArgIndex;
+  if (isInteractive && rest.length == 1) {
+    fileArgIndex = 0;
+  } else if (isPrintShapeMode && rest.length == 1) {
+    // --print-shape is overloaded: a single positional may be either
+    // a file (legacy form: `lam --print-shape data.json`) or an
+    // expression (compose form: `lam --print-shape '.users'` with
+    // piped or no data). Disambiguate by file existence — if rest[0]
+    // names an existing file, treat it as the file; otherwise treat
+    // it as an expression. The collision case (a file whose name
+    // happens to be a valid lambé expression like `.users`) is
+    // vanishingly unlikely; plain identifier filenames aren't valid
+    // queries either.
+    fileArgIndex = File(rest[0]).existsSync() ? 0 : 1;
+  } else {
+    fileArgIndex = 1;
+  }
+  // The expression sits at rest[0] when fileArgIndex isn't 0; when
+  // fileArgIndex == 0 the user gave a file but no expression, so the
+  // identity expression is the right default.
+  final expression = (rest.isNotEmpty && fileArgIndex != 0) ? rest[0] : '.';
 
   // Auto-enable ndjson mode when the file extension suggests it, even
   // without an explicit --ndjson flag. Consistent with the existing
@@ -197,9 +215,11 @@ void main(List<String> arguments) {
     }
     input = file.readAsStringSync();
   } else if (stdin.hasTerminal) {
-    // `--explain` performs static analysis and can run without input.
-    // Every other mode requires a file argument or piped stdin.
-    if (!isExplainMode) {
+    // `--explain` and `--print-shape` perform static analysis and can
+    // run without input — `--print-shape EXPR` falls back to inferring
+    // from SAny, mirroring the explain-without-data flow. Every other
+    // mode requires a file argument or piped stdin.
+    if (!isExplainMode && !isPrintShapeMode) {
       stderr.writeln('Error: no input. Provide a file or pipe data via stdin.');
       stderr.writeln();
       _usage(argParser);
@@ -211,7 +231,14 @@ void main(List<String> arguments) {
     while ((line = stdin.readLineSync()) != null) {
       buffer.writeln(line);
     }
-    input = buffer.toString();
+    // Empty stdin in static-analysis modes (--explain, --print-shape):
+    // treat as "no data" rather than trying to parse the empty string
+    // as JSON. This matches the no-stdin branch's contract.
+    if (buffer.isEmpty && (isExplainMode || isPrintShapeMode)) {
+      input = null;
+    } else {
+      input = buffer.toString();
+    }
   }
 
   // Determine input format (only relevant when we have input).
@@ -256,6 +283,11 @@ void main(List<String> arguments) {
   }
 
   // --print-shape mode: emit the inferred shape as JSON Schema.
+  // Composes with the query expression — `lam --print-shape '.users'
+  // data.json` prints the shape of the result of evaluating `.users`,
+  // not the whole document. With no expression, prints the document
+  // shape (the legacy 0.8.0 form). Without data, falls back to
+  // inferShape against SAny — same as `--explain` without data.
   if (isPrintShapeMode) {
     if (schemaPath != null) {
       stderr.writeln(
@@ -264,8 +296,36 @@ void main(List<String> arguments) {
       );
       exit(1);
     }
-    final shape = data == null ? const SAny() : shapeOf(data);
-    stdout.writeln(renderJsonSchema(shape));
+    // No expression: print the document shape directly.
+    final hasExpression = rest.isNotEmpty && fileArgIndex != 0;
+    if (!hasExpression) {
+      final shape = data == null ? const SAny() : shapeOf(data);
+      stdout.writeln(renderJsonSchema(shape));
+      return;
+    }
+    final LamExpr ast;
+    try {
+      ast = parseAst(expression);
+    } on QueryError catch (e) {
+      stderr.writeln('Error: ${e.message}');
+      exit(1);
+    }
+    final Shape resultShape;
+    if (data == null) {
+      // Mirror --explain-without-data: infer shape statically against
+      // the empty-prior SAny. The user gets the static shape of the
+      // query, the same answer --explain would give.
+      resultShape = inferShape(ast, const SAny());
+    } else {
+      try {
+        final result = evaluateAst(ast, data);
+        resultShape = shapeOf(result);
+      } on QueryError catch (e) {
+        stderr.writeln('Error: ${e.message}');
+        exit(1);
+      }
+    }
+    stdout.writeln(renderJsonSchema(resultShape));
     return;
   }
 

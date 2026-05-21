@@ -493,6 +493,72 @@ void main() {
       );
     });
 
+    test('composes with EXPR: shape of evaluated result', () async {
+      // `--print-shape '.users' data.json` returns the schema of the
+      // users array, not the schema of the whole document. Pre-0.9.0
+      // (when this composed) the expression was silently ignored.
+      final file = File('${tmp.path}/data.json')..writeAsStringSync(
+        '{"users":[{"name":"alice","age":30}],"version":"1.0.0"}',
+      );
+      final (code, out, _) = await _runLam([
+        '--print-shape',
+        '.users',
+        file.path,
+      ]);
+      expect(code, 0);
+      final parsed = jsonDecode(out) as Map<String, Object?>;
+      expect(parsed['type'], 'array');
+      // items reflect a user, not the whole doc.
+      final items = parsed['items'] as Map<String, Object?>;
+      expect(items['type'], 'object');
+      final props = items['properties'] as Map<String, Object?>;
+      expect(props.keys, containsAll(<String>['name', 'age']));
+    });
+
+    test('no expression form unchanged (legacy)', () async {
+      // `--print-shape data.json` (single positional that's a file)
+      // continues to print the whole-document shape, matching the
+      // 0.8.0 -> 0.9.0 contract.
+      final file = File('${tmp.path}/data.json')
+        ..writeAsStringSync('{"a":1,"b":"x"}');
+      final (code, out, _) = await _runLam(['--print-shape', file.path]);
+      expect(code, 0);
+      final parsed = jsonDecode(out) as Map<String, Object?>;
+      expect(parsed['type'], 'object');
+      expect(
+        (parsed['properties'] as Map<String, Object?>).keys,
+        containsAll(<String>['a', 'b']),
+      );
+    });
+
+    test('EXPR with no data: matches --explain-without-data', () async {
+      // `lam --print-shape '.users'` (no file, no piped stdin)
+      // infers statically from SAny. Because . | .users on SAny
+      // resolves to SAny, the rendered schema is the empty
+      // (any-typed) schema.
+      final (code, out, _) = await _runLam(['--print-shape', '.users']);
+      expect(code, 0);
+      // Non-empty output, valid JSON.
+      expect(out.trim(), isNotEmpty);
+      final parsed = jsonDecode(out);
+      expect(parsed, isA<Map<String, Object?>>());
+    });
+
+    test('EXPR result is null: schema is the null/empty form', () async {
+      // .field-that-does-not-exist evaluates to null; shapeOf(null)
+      // is SNull. The renderer must produce valid JSON Schema for
+      // that case rather than crashing.
+      final file = File('${tmp.path}/data.json')..writeAsStringSync('{"a":1}');
+      final (code, out, _) = await _runLam([
+        '--print-shape',
+        '.missing',
+        file.path,
+      ]);
+      expect(code, 0);
+      final parsed = jsonDecode(out);
+      expect(parsed, isA<Map<String, Object?>>());
+    });
+
     test('rejects combination with --schema (redundant)', () async {
       final data = File('${tmp.path}/d.json')..writeAsStringSync('{}');
       final schema = File('${tmp.path}/s.json')
