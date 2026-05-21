@@ -288,7 +288,7 @@ Group elements by a key. Returns `[{key, values}]`.
 Remove duplicate values.
 
 ```
-$ echo '[1, 2, 2, 3, 1]' | lam '. | unique'
+$ lam -n '[1, 2, 2, 3, 1] | unique'
 [
   1,
   2,
@@ -310,7 +310,7 @@ Remove duplicates by a key expression.
 Flatten one level of nesting.
 
 ```
-$ echo '[[1, 2], [3, 4], [5]]' | lam '. | flatten'
+$ lam -n '[[1, 2], [3, 4], [5]] | flatten'
 [
   1,
   2,
@@ -421,7 +421,7 @@ $ echo '{"config":{"database":{"host":"localhost","port":5432}}}' | lam '.config
   }
 ]
 
-$ echo '[{"key": "a", "value": 1}]' | lam '. | from_entries'
+$ lam -n '[{key: "a", value: 1}] | from_entries'
 {
   "a": 1
 }
@@ -435,13 +435,13 @@ CSV and TSV cells are strings by default; use `to_number` to coerce them
 before arithmetic.
 
 ```
-$ echo '"42"' | lam '. | to_number'
+$ lam -n '"42" | to_number'
 42
 
-$ echo '"3.14"' | lam '. | to_number'
+$ lam -n '"3.14" | to_number'
 3.14
 
-$ echo '100' | lam '. | to_number'
+$ lam -n '100 | to_number'
 100
 
 $ echo '{"price": "29.99"}' | lam '.price | to_number'
@@ -459,22 +459,22 @@ Possible return values: `"null"`, `"boolean"`, `"number"`, `"string"`,
 `"array"`, `"object"`.
 
 ```
-$ echo '42' | lam '. | type'
+$ lam -n '42 | type'
 "number"
 
-$ echo '"hello"' | lam '. | type'
+$ lam -n '"hello" | type'
 "string"
 
-$ echo 'null' | lam '. | type'
+$ lam -n 'null | type'
 "null"
 
-$ echo '[1, 2]' | lam '. | type'
+$ lam -n '[1, 2] | type'
 "array"
 
-$ echo '{"a": 1}' | lam '. | type'
+$ lam -n '{a: 1} | type'
 "object"
 
-$ echo '[1, "two", 3]' | lam '. | filter((. | type) == "number")'
+$ lam -n '[1, "two", 3] | filter((. | type) == "number")'
 [
   1,
   3
@@ -495,7 +495,7 @@ Filter a map's values.
 Transform a map's values.
 
 ```
-$ echo '{"a": 1, "b": 2}' | lam '. | map_values(. * 10)'
+$ lam -n '{a: 1, b: 2} | map_values(. * 10)'
 {
   "a": 10,
   "b": 20

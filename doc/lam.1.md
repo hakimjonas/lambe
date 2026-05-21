@@ -68,6 +68,9 @@ If no file is given, reads from standard input.
 **--ndjson**
 :   Treat input as ndjson or jsonl: one JSON document per line, evaluated independently with no state shared between lines. Emits one compact JSON result per line on stdout. Auto-enabled when the file extension is **.ndjson** or **.jsonl**. Cannot combine with **--interactive**, **--schema**, **--print-shape**, **--assert**, or **--explain**. Output must be JSON (**--to json** or default); other **--to** values are refused.
 
+**-n**, **--null-input**
+:   Run the query against **null** context with no input. Useful for value computations like `lam -n '[1,2,3] | unique'`. Without **-n**, the missing-input guard fires (a typo'd filename or missing redirect is a common footgun); the flag makes the "I have no input" intent explicit. Cannot combine with **--interactive**, **--ndjson**, **--schema**, or **--assert**.
+
 **-h**, **--help**
 :   Show usage information.
 

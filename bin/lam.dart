@@ -95,6 +95,14 @@ void main(List<String> arguments) {
               'evaluated independently. One result per line on stdout.',
           negatable: false,
         )
+        ..addFlag(
+          'null-input',
+          abbr: 'n',
+          help:
+              'Run the query against null context with no input. Useful '
+              'for value computations: `lam -n \'[1,2,3] | unique\'`.',
+          negatable: false,
+        )
         ..addFlag('help', abbr: 'h', negatable: false, help: 'Show usage');
 
   final ArgResults args;
@@ -123,6 +131,29 @@ void main(List<String> arguments) {
   final explainJson = args.flag('explain-json');
   final isExplainMode = args.flag('explain') || explainTrivial || explainJson;
   var isNdjsonMode = args.flag('ndjson');
+  final nullInput = args.flag('null-input');
+
+  // -n / --null-input combinations. The flag's purpose is "run the
+  // query against null with no input"; combinations that take input
+  // (REPL, ndjson, schema validation, assert) are nonsensical.
+  if (nullInput) {
+    if (isInteractive) {
+      stderr.writeln('Error: -n cannot be combined with --interactive.');
+      exit(1);
+    }
+    if (isNdjsonMode) {
+      stderr.writeln('Error: -n cannot be combined with --ndjson.');
+      exit(1);
+    }
+    if (schemaPath != null) {
+      stderr.writeln('Error: -n cannot be combined with --schema.');
+      exit(1);
+    }
+    if (isAssertMode) {
+      stderr.writeln('Error: -n cannot be combined with --assert.');
+      exit(1);
+    }
+  }
 
   final rest = args.rest;
   if (rest.isEmpty && !isPrintShapeMode && !isInteractive) {
@@ -217,9 +248,10 @@ void main(List<String> arguments) {
   } else if (stdin.hasTerminal) {
     // `--explain` and `--print-shape` perform static analysis and can
     // run without input — `--print-shape EXPR` falls back to inferring
-    // from SAny, mirroring the explain-without-data flow. Every other
-    // mode requires a file argument or piped stdin.
-    if (!isExplainMode && !isPrintShapeMode) {
+    // from SAny, mirroring the explain-without-data flow. `-n` is the
+    // explicit "run against null" opt-in. Every other mode requires
+    // a file argument or piped stdin.
+    if (!isExplainMode && !isPrintShapeMode && !nullInput) {
       stderr.writeln('Error: no input. Provide a file or pipe data via stdin.');
       stderr.writeln();
       _usage(argParser);
@@ -231,11 +263,25 @@ void main(List<String> arguments) {
     while ((line = stdin.readLineSync()) != null) {
       buffer.writeln(line);
     }
-    // Empty stdin in static-analysis modes (--explain, --print-shape):
-    // treat as "no data" rather than trying to parse the empty string
-    // as JSON. This matches the no-stdin branch's contract.
-    if (buffer.isEmpty && (isExplainMode || isPrintShapeMode)) {
-      input = null;
+    // Empty stdin in static-analysis modes (--explain, --print-shape)
+    // and explicit null-input mode (-n): treat as "no data" rather
+    // than trying to parse the empty string as JSON. This matches the
+    // no-stdin branch's contract.
+    if (buffer.isEmpty) {
+      if (isExplainMode || isPrintShapeMode || nullInput) {
+        input = null;
+      } else {
+        // Empty piped stdin in evaluation mode is the same footgun as
+        // a missing file argument: surface the "no input" message
+        // rather than confusing the user with a JSON parse error on
+        // the empty string.
+        stderr.writeln(
+          'Error: no input. Provide a file or pipe data via stdin.',
+        );
+        stderr.writeln();
+        _usage(argParser);
+        exit(1);
+      }
     } else {
       input = buffer.toString();
     }

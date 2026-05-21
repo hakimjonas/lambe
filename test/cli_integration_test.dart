@@ -673,4 +673,91 @@ void main() {
       expect(err, contains('--schema'));
     });
   });
+
+  group('-n / --null-input: input-less queries', () {
+    test('-n with literal-list query', () async {
+      final (code, out, _) = await _runLam(['-n', '[1,2,3] | unique']);
+      expect(code, 0);
+      expect(jsonDecode(out), [1, 2, 3]);
+    });
+
+    test('-n with identity returns null', () async {
+      final (code, out, _) = await _runLam(['-n', '.']);
+      expect(code, 0);
+      expect(jsonDecode(out), isNull);
+    });
+
+    test('-n with field access on null is null (null-propagation)', () async {
+      final (code, out, _) = await _runLam(['-n', '.name']);
+      expect(code, 0);
+      expect(jsonDecode(out), isNull);
+    });
+
+    test('--null-input long form works the same', () async {
+      final (code, out, _) = await _runLam([
+        '--null-input',
+        '[1,2,2,3] | unique',
+      ]);
+      expect(code, 0);
+      expect(jsonDecode(out), [1, 2, 3]);
+    });
+
+    test('-n without expression errors with missing-query message', () async {
+      final (code, _, err) = await _runLam(['-n']);
+      expect(code, 1);
+      expect(err, contains('missing query expression'));
+    });
+
+    test('rejects -n -i', () async {
+      final (code, _, err) = await _runLam(['-n', '-i', '.']);
+      expect(code, 1);
+      expect(err, contains('-n'));
+      expect(err, contains('--interactive'));
+    });
+
+    test('rejects -n --ndjson', () async {
+      final (code, _, err) = await _runLam(['-n', '--ndjson', '.']);
+      expect(code, 1);
+      expect(err, contains('-n'));
+      expect(err, contains('--ndjson'));
+    });
+
+    test('rejects -n --schema', () async {
+      final schema = File('${tmp.path}/s.json')
+        ..writeAsStringSync('{"type":"object"}');
+      final (code, _, err) = await _runLam([
+        '-n',
+        '--schema',
+        schema.path,
+        '.',
+      ]);
+      expect(code, 1);
+      expect(err, contains('-n'));
+      expect(err, contains('--schema'));
+    });
+
+    test('rejects -n --assert', () async {
+      final (code, _, err) = await _runLam(['-n', '--assert', 'true']);
+      expect(code, 1);
+      expect(err, contains('-n'));
+      expect(err, contains('--assert'));
+    });
+
+    test(
+      'without -n, no input still errors with the standard message',
+      () async {
+        // The default footgun catch must stay. `-n` is the explicit
+        // opt-in.
+        final (code, _, err) = await _runLam(['[1,2,3] | unique']);
+        expect(code, 1);
+        expect(err, contains('no input'));
+      },
+    );
+
+    test('-n with sum on a literal list', () async {
+      final (code, out, _) = await _runLam(['-n', '[1,2,3] | sum']);
+      expect(code, 0);
+      expect(jsonDecode(out), 6);
+    });
+  });
 }

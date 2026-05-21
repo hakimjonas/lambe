@@ -60,6 +60,9 @@ Start the interactive REPL. Requires a file argument.
 \fB--ndjson\fR
 Treat input as ndjson or jsonl: one JSON document per line, evaluated independently with no state shared between lines. Emits one compact JSON result per line on stdout. Auto-enabled when the file extension is \fB.ndjson\fR or \fB.jsonl\fR. Cannot combine with \fB--interactive\fR, \fB--schema\fR, \fB--print-shape\fR, \fB--assert\fR, or \fB--explain\fR. Output must be JSON (\fB--to json\fR or default); other \fB--to\fR values are refused.
 .TP
+\fB-n\fR, \fB--null-input\fR
+Run the query against \fBnull\fR context with no input. Useful for value computations like \fClam -n '[1,2,3] | unique'\fR. Without \fB-n\fR, the missing-input guard fires (a typo'd filename or missing redirect is a common footgun); the flag makes the "I have no input" intent explicit. Cannot combine with \fB--interactive\fR, \fB--ndjson\fR, \fB--schema\fR, or \fB--assert\fR.
+.TP
 \fB-h\fR, \fB--help\fR
 Show usage information.
 .SH QUERY LANGUAGE
