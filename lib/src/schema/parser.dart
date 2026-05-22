@@ -198,7 +198,7 @@ void _rejectUnsupportedKeywords(JsonObject node, {required String path}) {
 String _kindOf(JsonValue v) => switch (v) {
   JsonNull() => 'null',
   JsonBool() => 'bool',
-  JsonNumber() => 'number',
+  JsonInt() || JsonDouble() => 'number',
   JsonString() => 'string',
   JsonArray() => 'array',
   JsonObject() => 'object',

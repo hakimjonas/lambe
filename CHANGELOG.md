@@ -166,10 +166,27 @@ consolidation, and a `rumil_tokens`-based REPL highlighter.
   shape checks in queries. Now `.variable` is always a list, regardless
   of count. Common Terraform patterns (one `terraform`, one `provider`,
   single `variable`) no longer require N=1-vs-N≥2 branching. Fixed
-  upstream in `rumil_parsers 0.7.1` (decoder uses the `HclBlock`
+  upstream in `rumil_parsers 0.8.0` (decoder uses the `HclBlock`
   discriminator already present in the AST instead of inferring shape
-  from key collisions); lambé picks it up via the existing `^0.7.0`
-  constraint.
+  from key collisions); lambé adopts it via a constraint bump from
+  `^0.7.0` to `^0.8.0`.
+
+### Dependencies
+
+- **`rumil_parsers ^0.8.0`.** The JSON parser AST splits `JsonNumber`
+  into a sealed `JsonInt | JsonDouble` sum. Lambé propagates the
+  change through one schema-parser switch case — `JsonInt() ||
+  JsonDouble() => 'number'` in `lib/src/schema/parser.dart`. No
+  user-visible behavior change at the lambé surface; downstream
+  consumers of lambé's library API see no shape difference because
+  `parseInput`-flavored Map/List types remain canonical Dart types
+  (the AST split is only visible when you reach into the JSON AST
+  directly via the lambé schema layer). The HCL fix described above
+  also rides this dependency bump (originally scoped as
+  `rumil_parsers 0.7.1`; rolled into 0.8.0 alongside the AST split).
+  See `rumil_parsers/BENCHMARKS.md` for the JSON parser perf wins on
+  the 0.8.0 release; lambé queries operating on JSON inputs benefit
+  transparently.
 - **Object construction accepts JSON-string keys.** `{name: .x}` was
   the only spelling; `{"name": .x}` errored with a confusing
   "unexpected" message. Now both spellings produce the same map. Keys

@@ -17,7 +17,7 @@ environment:
 
 dependencies:
   rumil: ^0.7.0
-  rumil_parsers: ^0.7.0
+  rumil_parsers: ^0.8.0
   rumil_expressions: ^0.7.0
   rumil_tokens: ^0.1.0
   args: ^2.6.0
