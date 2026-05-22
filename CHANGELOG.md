@@ -36,6 +36,30 @@ consolidation, and a `rumil_tokens`-based REPL highlighter.
   rather than one yellow run. The audit determined the new
   behaviour is more principled; the visual effect is subtle.
 
+### Markdown text extraction
+
+- **`text` pipe op.** Walks a markdown node (or list of nodes) and
+  concatenates every prose-bearing leaf — `text`, `code`, `code_block`,
+  and `image.alt` — in document order. Container nodes recurse through
+  their `children`. `html_block` and `html_inline` are skipped (avoids
+  the `Node.textContent` trap of dragging raw HTML, scripts, and styles
+  into "give me the text"); `hard_break` and `soft_break` contribute
+  the empty string. The previous recommendation,
+  `.children[0].text`, is structurally wrong for non-trivial markdown
+  (nested emphasis, inline code, links) and the existing pipe surface
+  cannot fix that without recursion.
+- **First op tuned to a specific input format's vocabulary.** This is
+  the only pipe op whose `eval` switches on a value's `type` field.
+  The behaviour is bounded to markdown's node-type vocabulary as
+  defined in `lib/src/input.dart`'s `_nodeToNative`. It does NOT
+  authorise content-level dispatch in any other op — the spec entry
+  carries a load-bearing comment to that effect. Prior art (XPath
+  `string(node)`, mdast-util-to-string) converges on the same shape:
+  format-aware leaf primitive with hardcoded knowledge of which fields
+  carry prose vs metadata. jq's `..` approach drags in `link.href`,
+  `image.src`, and `code_block.language` — exactly the trap this op
+  avoids.
+
 ### `queryNdjsonString` convenience
 
 - New `queryNdjsonString(Iterable<String> lines, String expression)`
@@ -83,6 +107,26 @@ consolidation, and a `rumil_tokens`-based REPL highlighter.
   construction uses bare identifiers (`{a: 1}`), not JSON-string
   keys (`{"a": 1}`), so `[{"key": "a"}] | from_entries` was never
   runnable. Fixed.
+- **`-r` / `--raw` semantics** — man page entry now states the option
+  only affects top-level string scalars and is a silent no-op on
+  structured output (objects, arrays, numbers, booleans, null). The
+  previous wording ("Output strings without quotes") read as a
+  pretty-print toggle and surprised users on non-string values.
+- **`doc/non-goals.md`** — new page enumerating the features lambé
+  deliberately omits, with the lambé idiom that replaces each one.
+  Cross-linked from `README.md` ("What lambé is not"),
+  `jq-to-lambe.md`, and `AGENTS.md`. Covers Turing-completeness,
+  recursive descent (`..`), `try`/`catch`, `select` outside `filter`,
+  `paths`/`leaf_paths`/`getpath`/`setpath`, regex, `range`/`limit`/
+  `nth`, `.[]` iteration, `def`/lambdas, `@base64`/`@uri`,
+  streaming, `env`/`$__loc__`, HCL evaluation, and XML. Staying
+  bounded is a feature; the page makes that legible.
+- **`text` op precedent** — the new `text` pipe op (see Markdown text
+  extraction) is the only op tuned to a specific input format's
+  vocabulary. The spec entry carries a load-bearing dartdoc comment
+  declaring this is bounded to markdown's node-type vocabulary as
+  defined in `_nodeToNative`, and does NOT authorise content-level
+  dispatch in any other op.
 
 ### Bug fixes
 
@@ -116,6 +160,29 @@ consolidation, and a `rumil_tokens`-based REPL highlighter.
 - **Empty piped stdin.** Empty stdin in evaluation mode now surfaces
   the standard "no input" error rather than a confusing JSON parse
   error on the empty string.
+- **HCL block access is now uniform across N=1 and N≥2 cases.**
+  Previously, querying `.variable` returned a single map for one
+  `variable` block but a list for two or more — forcing defensive
+  shape checks in queries. Now `.variable` is always a list, regardless
+  of count. Common Terraform patterns (one `terraform`, one `provider`,
+  single `variable`) no longer require N=1-vs-N≥2 branching. Fixed
+  upstream in `rumil_parsers 0.7.1` (decoder uses the `HclBlock`
+  discriminator already present in the AST instead of inferring shape
+  from key collisions); lambé picks it up via the existing `^0.7.0`
+  constraint.
+- **Object construction accepts JSON-string keys.** `{name: .x}` was
+  the only spelling; `{"name": .x}` errored with a confusing
+  "unexpected" message. Now both spellings produce the same map. Keys
+  that are valid identifiers should still use the bare form (`name:`);
+  keys that aren't (hyphenated, spaces, leading digits) use a
+  JSON-string literal in key position — `{"x-axis": .a}`,
+  `{"Content-Type": "application/json"}`, `{"my key": 1}`. Lambé's
+  data model accepts any string as a key; the construction grammar
+  now matches. Interpolation (`{"\(expr)": .y}`) is rejected with a
+  clear message — key position is structurally not an expression
+  position; build dynamic keys via `from_entries` on a list of
+  `{key, value}` maps. Shorthand `{name}` continues to require a bare
+  identifier (`{"name"}` alone is intentionally not supported).
 
 ### jq compatibility
 
