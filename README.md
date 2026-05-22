@@ -445,6 +445,17 @@ expect(data, lamHas('.users[0].address.city'));
 - [Recipes](doc/recipes.md) - real-world patterns for Kubernetes, Terraform, CI, CSV
 - [Man page](doc/lam.1.md) - Unix man page (`man -l doc/lam.1`)
 
+## What lambé is not
+
+Lambé is a bounded tree transformer over JSON-shaped data. It
+deliberately omits Turing-completeness, user-defined functions,
+recursive descent (`..`), `try`/`catch`, regex, streaming, and
+in-place mutation. Staying bounded is what makes shape inference,
+`--explain`, and `as(fmt)` bridging work.
+
+See [doc/non-goals.md](doc/non-goals.md) for the full list and the
+lambé idiom that replaces each omission.
+
 ## Design
 
 See [DESIGN.md](DESIGN.md) for architecture and design decisions.

@@ -46,6 +46,17 @@ lam -i data.json
 Input: JSON, YAML, TOML, HCL/Terraform, CSV, TSV, Markdown (auto-detected from file extension).
 Output: JSON (default), YAML, TOML, CSV, TSV, HCL.
 
+### What lambé is not
+
+Lambé is a bounded tree transformer. If a query you're drafting needs
+recursive descent (`..`), user-defined functions (`def`), `try`/`catch`,
+regex, streaming, or in-place mutation, lambé deliberately doesn't
+support it. See
+[doc/non-goals.md](https://github.com/hakimjonas/lambe/blob/main/doc/non-goals.md)
+for the full list and the lambé idiom that replaces each omission. If
+you hit an "unknown pipe op" or `_jqIdiomHint`, that page is the
+canonical reference.
+
 ### As MCP Tool
 
 The `lambe_query` MCP tool is available for querying structured data. Connect with:
