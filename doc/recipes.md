@@ -127,6 +127,39 @@ $ lam '. | map(.count | to_number) | max' inventory.csv
 942
 ```
 
+## Markdown
+
+Extract heading text (`text` walks the node tree, so it handles
+emphasis, inline code, links, and nested formatting):
+
+```bash
+$ lam '.children | filter(.type == "heading") | map(text)' README.md
+```
+
+Headings paired with their level:
+
+```bash
+$ lam '.children | filter(.type == "heading") | map({level, text: text})' README.md
+```
+
+Plain text from each paragraph:
+
+```bash
+$ lam '.children | filter(.type == "paragraph") | map(text)' doc.md
+```
+
+Code-block contents by language:
+
+```bash
+$ lam '.children | filter(.type == "code_block" && .language == "python") | map(.code)' tutorial.md
+```
+
+Full document prose, no markup:
+
+```bash
+$ lam '. | text' README.md
+```
+
 ## TOML (Rust, Python config)
 
 Get a dependency version from Cargo.toml:

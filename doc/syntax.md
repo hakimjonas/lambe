@@ -511,6 +511,33 @@ Filter a map's keys.
 -> {"database": {"host": "localhost", "port": 5432}}
 ```
 
+### text
+
+Markdown-only. Walks a node or list of nodes and concatenates every
+prose-bearing leaf — `text`, `code`, `code_block`, and `image.alt` — in
+document order. Container nodes recurse through their `children`.
+`html_block` and `html_inline` are skipped (a deliberate divergence
+from mdast: raw HTML in "give me the text" is the same trap that drags
+`<script>` content into `Node.textContent`). `hard_break` and
+`soft_break` contribute the empty string. Maps without a recognised
+`type` yield the empty string; non-map non-list inputs throw.
+
+The only pipe op tuned to a specific input format. It exists because
+`.children[0].text` is structurally wrong for non-trivial markdown
+(nested emphasis, links, code) and "compose with explicit paths" cannot
+fix that without recursion.
+
+```
+.children[0] | text
+-> "hello"     # for `# *hello*`
+
+.children | filter(.type == "heading") | map(text)
+-> ["First", "Second"]
+
+. | text
+-> "FirstA paragraph.Second"   # full document prose
+```
+
 ## Null propagation
 
 Navigation on null returns null. Computation on null throws.

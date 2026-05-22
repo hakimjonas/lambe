@@ -775,6 +775,80 @@ final PipeOpInfo _typeSpec = (
   parseKind: PipeOpParseKind.zeroArg,
 );
 
+/// Markdown text extraction.
+///
+/// Walks the typed-node tree produced by `parseInput` on a Markdown
+/// document and concatenates every prose-bearing leaf — `text`, `code`,
+/// `code_block`, and `image.alt` — in document order. Container nodes
+/// recurse element-wise through their `children`. `html_block` and
+/// `html_inline` are skipped (the `Node.textContent` trap of dragging
+/// raw HTML, scripts, and styles into "give me the text"). `hard_break`
+/// and `soft_break` contribute the empty string. Maps that are not
+/// markdown nodes (no recognised `type`) yield the empty string;
+/// non-map non-list values throw.
+///
+/// PRECEDENT: this is the only op whose `eval` switches on a value's
+/// `type` field. The behaviour is bounded to markdown's node-type
+/// vocabulary as defined in `lib/src/input.dart`'s `_nodeToNative`. It
+/// does NOT authorise content-level dispatch in any other op.
+final PipeOpInfo _textSpec = (
+  name: 'text',
+  accepts: _acceptsListOrMap,
+  infer: (_, _) => const SString(),
+  eval: (ctx, _, _) {
+    if (ctx is! List<Object?> && ctx is! Map<String, Object?>) {
+      throw QueryError('text: expected map or list, got ${typeName(ctx)}');
+    }
+    final buf = StringBuffer();
+    _appendMarkdownText(buf, ctx);
+    return buf.toString();
+  },
+  parseKind: PipeOpParseKind.zeroArg,
+);
+
+void _appendMarkdownText(StringBuffer buf, Object? node) {
+  if (node is List<Object?>) {
+    for (final child in node) {
+      _appendMarkdownText(buf, child);
+    }
+    return;
+  }
+  if (node is! Map<String, Object?>) {
+    throw QueryError(
+      'text: child must be a markdown node (map) or list of nodes, '
+      'got ${typeName(node)}',
+    );
+  }
+  final type = node['type'];
+  switch (type) {
+    case 'text':
+      final t = node['text'];
+      if (t is String) buf.write(t);
+    case 'code':
+      final c = node['code'];
+      if (c is String) buf.write(c);
+    case 'code_block':
+      final c = node['code'];
+      if (c is String) buf.write(c);
+    case 'image':
+      final alt = node['alt'];
+      if (alt is String) buf.write(alt);
+    case 'html_block':
+    case 'html_inline':
+    case 'hard_break':
+    case 'soft_break':
+    case 'thematic_break':
+      return;
+    default:
+      final children = node['children'];
+      if (children is List<Object?>) {
+        for (final child in children) {
+          _appendMarkdownText(buf, child);
+        }
+      }
+  }
+}
+
 /// `as(target)` is structurally universal: it accepts any shape and
 /// returns the input shape when already writable, or [SAny] when the
 /// bridging path is ambiguous or missing. The concrete logic lives in
@@ -831,6 +905,7 @@ final Map<String, PipeOpInfo> _specsByName = Map.unmodifiable({
     _lengthSpec,
     _toNumberSpec,
     _typeSpec,
+    _textSpec,
     _asSpec,
   ])
     s.name: s,

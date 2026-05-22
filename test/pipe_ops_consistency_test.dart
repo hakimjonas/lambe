@@ -73,6 +73,7 @@ LamExpr _opNode(String name) {
     case 'from_entries':
     case 'to_number':
     case 'type':
+    case 'text':
       return BuiltinPipeOp(name, const []);
     default:
       throw StateError('No test AST for op "$name"');

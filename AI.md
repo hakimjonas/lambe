@@ -38,7 +38,7 @@ Use Lambë when the user needs to **extract, filter, transform, validate, or con
 | "Query CSV data" | `lam '. \| filter(.status != "closed") \| map(.title)' issues.csv` |
 | "Sum a CSV numeric column" | `lam '. \| map(.price \| to_number) \| sum' orders.csv` |
 | "Inspect a value's type" | `lam '.config \| type' data.yaml` |
-| "List all headings in this markdown" | `lam '.children \| filter(.type == "heading") \| map(.children[0].text)' README.md` |
+| "List all headings in this markdown" | `lam '.children \| filter(.type == "heading") \| map(text)' README.md` |
 | "What languages are in the code blocks?" | `lam '.children \| filter(.type == "code_block") \| map(.language)' tutorial.md` |
 | "Explore interactively" | `lam -i data.json` |
 
@@ -124,11 +124,11 @@ Inline nodes (text, emphasis, strong, code, link, image, etc.) appear inside the
 ### Common markdown query patterns
 
 ```bash
-# All heading texts
-lam '.children | filter(.type == "heading") | map(.children[0].text)' README.md
+# All heading texts (text recursively walks markdown nodes for prose)
+lam '.children | filter(.type == "heading") | map(text)' README.md
 
 # Headings with levels
-lam '.children | filter(.type == "heading") | map({level, text: .children[0].text})' README.md
+lam '.children | filter(.type == "heading") | map({level, text: text})' README.md
 
 # Code block languages
 lam '.children | filter(.type == "code_block") | map(.language)' tutorial.md
@@ -139,8 +139,8 @@ lam '.children | filter(.type == "code_block" && .language == "python") | map(.c
 # Count headings by level
 lam '.children | filter(.type == "heading") | group_by(.level) | map({level: .values[0].level, count: .values | length})' README.md
 
-# Extract plain text from paragraphs
-lam '.children | filter(.type == "paragraph") | map(.children | filter(.type == "text") | map(.text))' doc.md
+# Plain text from paragraphs (concatenates text nodes recursively)
+lam '.children | filter(.type == "paragraph") | map(text)' doc.md
 ```
 
 ## Error Patterns
