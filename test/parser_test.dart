@@ -677,4 +677,74 @@ void main() {
       });
     });
   });
+
+  group('Object construction key forms', () {
+    test('shorthand mixed with explicit key + list value', () {
+      // Discovery 4.1 regression: this case was reported as broken on
+      // 0.8.0 but evaluates correctly post-Pratt migration. The test
+      // pins the case so it can't silently break in the future.
+      final expr = _parse('{name, tags: ["x", "y"]}');
+      expect(expr, isA<ObjConstruct>());
+      final entries = (expr as ObjConstruct).entries;
+      expect(entries.length, 2);
+      expect(entries[0].$1, 'name');
+      expect(entries[0].$2, isA<Field>());
+      expect(entries[1].$1, 'tags');
+      expect(entries[1].$2, isA<ListConstruct>());
+    });
+
+    test('JSON-string key parses to same AST as bare identifier', () {
+      final bare = _parse('{name: .x}');
+      final quoted = _parse('{"name": .x}');
+      expect(bare, isA<ObjConstruct>());
+      expect(quoted, isA<ObjConstruct>());
+      final bareEntries = (bare as ObjConstruct).entries;
+      final quotedEntries = (quoted as ObjConstruct).entries;
+      expect(quotedEntries.length, bareEntries.length);
+      expect(quotedEntries[0].$1, bareEntries[0].$1);
+      expect(quotedEntries[0].$2, isA<Field>());
+    });
+
+    test('hyphenated keys via JSON-string spelling', () {
+      final expr = _parse('{"x-axis": .a, "y-axis": .b}');
+      expect(expr, isA<ObjConstruct>());
+      final entries = (expr as ObjConstruct).entries;
+      expect(entries.map((e) => e.$1).toList(), ['x-axis', 'y-axis']);
+    });
+
+    test('keys with spaces', () {
+      final expr = _parse('{"my key": 1}');
+      expect(expr, isA<ObjConstruct>());
+      final entries = (expr as ObjConstruct).entries;
+      expect(entries[0].$1, 'my key');
+    });
+
+    test('mixed forms: shorthand, JSON-string, bare', () {
+      final expr = _parse('{name, "x-axis": .a, age: .b}');
+      expect(expr, isA<ObjConstruct>());
+      final entries = (expr as ObjConstruct).entries;
+      expect(entries.length, 3);
+      expect(entries[0].$1, 'name');
+      expect(entries[0].$2, isA<Field>());
+      expect(entries[1].$1, 'x-axis');
+      expect(entries[2].$1, 'age');
+    });
+
+    test('escapes inside JSON-string key', () {
+      final expr = _parse(r'{"a\nb": 1}');
+      expect(expr, isA<ObjConstruct>());
+      final entries = (expr as ObjConstruct).entries;
+      expect(entries[0].$1, 'a\nb');
+    });
+
+    test('interpolation in key position is rejected', () {
+      final result = parse(r'{"\(x)": .y}');
+      expect(result, isA<Failure<ParseError, LamExpr>>());
+    });
+
+    test('JSON-string key roundtrips through query()', () {
+      final result = query('{"x-axis": .a, "y-axis": .b}', {'a': 1, 'b': 2});
+      expect(result, {'x-axis': 1, 'y-axis': 2});
+    });
+  });
 }

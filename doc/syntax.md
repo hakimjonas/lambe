@@ -197,6 +197,23 @@ Build new maps from the current context. `{name}` expands to `{name: .name}`.
    ]
 ```
 
+Keys that are valid identifiers use the bare form (`name:`); keys that
+are not (hyphenated, spaces, leading digits) use a JSON-string literal
+in key position. Both spellings produce identical maps.
+
+```
+{"x-axis": .a, "y-axis": .b}
+-> {"x-axis": 1, "y-axis": 2}
+
+{name, "Content-Type": "application/json"}
+-> {"name": "Alice", "Content-Type": "application/json"}
+```
+
+Interpolation (`"\(expr)"`) is not allowed in key position — build
+dynamic keys via `from_entries` on a list of `{key, value}` maps. The
+shorthand form `{name}` only applies to bare identifiers; `{"name"}`
+on its own is not supported.
+
 ## Conditionals
 
 `if condition then value else value`. The condition must evaluate to a boolean.

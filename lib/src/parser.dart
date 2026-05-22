@@ -155,14 +155,52 @@ final Parser<ParseError, LamExpr> _parenExpr = _sym(
   '(',
 ).skipThen(defer(() => _expr)).thenSkip(_closeParen);
 
-/// A single entry: either `name: expr` or shorthand `name` (= `name: .name`).
-final Parser<ParseError, (String, LamExpr)> _objEntry = _lex(
-  _identNoWs,
-).flatMap(
-  (key) =>
-      _sym(':').skipThen(defer(() => _expr)).map((val) => (key, val)) |
-      succeed<ParseError, (String, LamExpr)>((key, Field(key))),
+/// A single character of a JSON-string key. Must match `_stringLit`'s
+/// escape vocabulary so the two spellings can never disagree on what
+/// characters a key may carry. Interpolation (`\(...)`) is rejected
+/// with a clear message — the construction grammar accepts any string
+/// literal as a key, but key position is not an expression position.
+final Parser<ParseError, String> _stringKeyChar =
+    string(r'\(').flatMap(
+      (_) => failure<ParseError, String>(
+        CustomError(
+          'string interpolation \\(...) is not allowed in object key '
+          'position; build interpolated keys via from_entries on a list '
+          'of {key, value} maps',
+          Location.zero,
+        ),
+      ),
+    ) |
+    string(r'\\').as<String>(r'\') |
+    string(r'\"').as<String>('"') |
+    string(r'\n').as<String>('\n') |
+    string(r'\t').as<String>('\t') |
+    satisfy((c) => c != '"' && c != r'\' && c != '\n', 'string char');
+
+/// JSON-string key for object construction: `"name"`, `"x-axis"`,
+/// `"with spaces"`. Lexed (consumes trailing whitespace). Returns the
+/// raw key string. Mirrors `_stringLit` minus interpolation; key
+/// position is structurally not an expression position so a static
+/// string is the only sensible thing.
+final Parser<ParseError, String> _stringKey = _lex(
+  char(
+    '"',
+  ).skipThen(_stringKeyChar.many).thenSkip(_closeQuote).map((cs) => cs.join()),
 );
+
+/// A single entry: either `key: expr`, or shorthand `name`
+/// (= `name: .name`). Shorthand only applies to bare identifiers —
+/// `{"name"}` is intentionally not supported because it would conflict
+/// with treating the JSON-string as a value-with-defaulted-key.
+final Parser<ParseError, (String, LamExpr)> _objEntry =
+    _lex(_identNoWs).flatMap(
+      (key) =>
+          _sym(':').skipThen(defer(() => _expr)).map((val) => (key, val)) |
+          succeed<ParseError, (String, LamExpr)>((key, Field(key))),
+    ) |
+    _stringKey.flatMap(
+      (key) => _sym(':').skipThen(defer(() => _expr)).map((val) => (key, val)),
+    );
 
 final Parser<ParseError, LamExpr> _objConstruct = _sym('{')
     .skipThen(_objEntry.sepBy(_sym(',')))
