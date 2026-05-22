@@ -33,7 +33,7 @@ If no file is given, reads from standard input.
 :   Disable pretty-printing.
 
 **-r**, **--raw**
-:   Output strings without quotes.
+:   Output top-level string scalars without quotes. No effect on structured output (objects, arrays, numbers, booleans, null) — those still serialize through the active output format.
 
 **-f**, **--format** *FMT*
 :   Input format. One of: json, yaml, toml, hcl, csv, tsv, markdown. Auto-detected from file extension if omitted.

@@ -25,7 +25,7 @@ Pretty-print output. On by default.
 Disable pretty-printing.
 .TP
 \fB-r\fR, \fB--raw\fR
-Output strings without quotes.
+Output top-level string scalars without quotes. No effect on structured output (objects, arrays, numbers, booleans, null) — those still serialize through the active output format.
 .TP
 \fB-f\fR, \fB--format\fR \fIFMT\fR
 Input format. One of: json, yaml, toml, hcl, csv, tsv, markdown. Auto-detected from file extension if omitted.
