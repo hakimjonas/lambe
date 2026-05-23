@@ -59,6 +59,22 @@ consolidation, and a `rumil_tokens`-based REPL highlighter.
   `map(text)` a useful and discoverable pattern; this change ensures
   the completer can help users find it.
 
+### REPL Tab completion: heterogeneous lists via data sampling
+
+- `.children | map(.<TAB>` on a heterogeneous list (e.g. a real
+  markdown document where `children` mixes headings / paragraphs /
+  code blocks) now offers the actual fields of the first list
+  element, instead of an empty candidate list. The static shape
+  system correctly widens such lists to `SList<SAny>`, which gives
+  completion no hints; the completer falls back to navigating the
+  actual data values and shape-of-ing the first element to recover
+  a useful shape. Sampling threads through pipe ops that preserve
+  the element family (`filter`, `sort`, `sort_by`, `unique`,
+  `unique_by`, `reverse`) so
+  `.children | filter(.type == "heading") | map(.<TAB>` works too.
+  Completion never runs the user's query — only structural
+  navigation — so cost stays bounded.
+
 ### Markdown text extraction
 
 - **`text` pipe op.** Walks a markdown node (or list of nodes) and
@@ -66,8 +82,14 @@ consolidation, and a `rumil_tokens`-based REPL highlighter.
   and `image.alt` — in document order. Container nodes recurse through
   their `children`. `html_block` and `html_inline` are skipped (avoids
   the `Node.textContent` trap of dragging raw HTML, scripts, and styles
-  into "give me the text"); `hard_break` and `soft_break` contribute
-  the empty string. The previous recommendation,
+  into "give me the text"). `soft_break` (a paragraph wrap in source)
+  contributes a single space, preserving word boundaries across line
+  wraps; `hard_break` (`\` at end of line, or two trailing spaces, an
+  explicit author-intended break) contributes a literal `'\n'`. This
+  diverges from `mdast-util-to-string`'s empty-on-break default —
+  trades strict precedent for the typical case of "produce readable
+  prose". Users who want a fully flat string can post-process with a
+  whitespace collapser. The previous recommendation,
   `.children[0].text`, is structurally wrong for non-trivial markdown
   (nested emphasis, inline code, links) and the existing pipe surface
   cannot fix that without recursion.
