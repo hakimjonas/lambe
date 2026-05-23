@@ -136,15 +136,10 @@ Object? evaluateAst(LamExpr ast, Object? data) {
 Object? queryString(String expression, String input, {Format? format}) {
   final data = input_.parseInput(input, format ?? input_.sniffFormat(input));
   // parseInput produces canonical Map<String, Object?> / List<Object?> trees;
-  // skip normalization.
-  final result = parser_.parseQuery(expression);
-  final ast = switch (result) {
-    Success<ParseError, LamExpr>(:final value) => value,
-    Partial<ParseError, LamExpr>() =>
-      throw QueryError(_formatParseErrors(expression, result.errors)),
-    Failure<ParseError, LamExpr>() =>
-      throw QueryError(_formatParseErrors(expression, result.errors)),
-  };
+  // skip normalization. Delegates to parseAst + evaluate so the parse
+  // error rendering and the EvalException → QueryError shape are
+  // shared, not duplicated.
+  final ast = parseAst(expression);
   try {
     return eval_.evaluate(ast, data);
   } on EvalException catch (e) {
