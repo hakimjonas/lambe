@@ -926,4 +926,49 @@ void main() {
       expect(r.candidates, ['filter']);
     });
   });
+
+  group('Bare pipe-op completion inside parameterised ops', () {
+    // Bare pipe-op names like `text`, `length`, `to_entries` are legal
+    // expressions in lambé (sugar for `. | op`), so `map(text)` and
+    // `filter(length > 0)` parse and run. These tests pin the
+    // completer's behaviour for partial bare ops inside `map(...)` /
+    // `filter(...)`. The shape filter uses the element shape of the
+    // surrounding pipe input, mirroring the post-pipe case.
+
+    test('map(t partial offers t-prefix pipe ops accepted on element', () {
+      // .users element is map; `to_entries` (map-only) and `type`
+      // (universal) accept it; `text` accepts list-or-map per its
+      // `_acceptsListOrMap` predicate, so it appears too.
+      final r = complete('.users | map(t', 14, sampleData);
+      expect(r.candidates, contains('to_entries'));
+      expect(r.candidates, contains('type'));
+    });
+
+    test('filter(le offers length on a list element', () {
+      final r = complete('.users | filter(le', 18, sampleData);
+      // `length` accepts list/map/string; users element is map → kept.
+      expect(r.candidates, contains('length'));
+    });
+
+    test('map(.t prefers field completion (dot present)', () {
+      // The dot disambiguates: this is field-tail context, not bare
+      // pipe-op context. Should not offer pipe ops.
+      final r = complete('.users | map(.n', 15, sampleData);
+      expect(r.candidates, ['.name']);
+    });
+
+    test('map( with no partial offers field completion (dot context)', () {
+      // Empty bare partial does NOT trigger pipe-op completion — the
+      // existing AST-tail field completion handles this.
+      final r = complete('.users | map(', 13, sampleData);
+      expect(r.candidates, containsAll(['.active', '.age', '.name']));
+    });
+
+    test('top-level partial does NOT trigger pipe-op completion', () {
+      // Bare `t` at the top level is a parse failure, not an inside-
+      // a-pipe-op context. Should not offer pipe ops.
+      final r = complete('t', 1, sampleData);
+      expect(r.candidates, isEmpty);
+    });
+  });
 }

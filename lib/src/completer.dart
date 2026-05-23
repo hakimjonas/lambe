@@ -97,6 +97,20 @@ final Parser<ParseError, (int, String)> _fieldTailCtx = position<ParseError>()
     .thenSkip(eof())
     .map((pair) => (pair.$1, pair.$2 ?? ''));
 
+/// Bare-identifier context: a partial identifier with no leading `.`
+/// or `|`, optional trailing whitespace, then end-of-input.
+///
+/// Used inside parameterised pipe ops (`map(...)`, `filter(...)`)
+/// where bare op names like `text`, `to_entries`, `length` are legal
+/// expressions (sugar for `. | op`). Yields the partial's offset
+/// within the remainder and the partial text. The empty partial
+/// matches too — `map(` with cursor right after the open paren.
+final Parser<ParseError, (int, String)> _bareIdentCtx = position<ParseError>()
+    .zip(_ident.optional)
+    .thenSkip(_wsRaw)
+    .thenSkip(eof())
+    .map((pair) => (pair.$1, pair.$2 ?? ''));
+
 /// Compute tab completions for [text] at [cursor] position against [data].
 ///
 /// Uses [parsePartial] to parse the valid expression prefix (with
@@ -182,6 +196,33 @@ Completions _completeRaw(String text, int cursor, Object? data) {
   ) when dotOff == 0) {
     final dotPos = consumed + dotOff;
     return _fieldsOf(_resolveTarget(ast, rootShape), partial, dotPos);
+  }
+
+  // Bare-identifier remainder inside a parameterised pipe op:
+  // `map(t`, `filter(le`, `map(text`. Offer pipe-op candidates
+  // accepted on the element shape. Shorter than wiring the partial
+  // through `_completionContext` because the position math is local
+  // to the remainder.
+  if (ast is Pipe && _innerExpr(ast.op) != null) {
+    final bareRes = _bareIdentCtx.run(remainder);
+    if (bareRes case Success<ParseError, (int, String)>(
+      value: (final partialStart, final partial),
+    ) when partial.isNotEmpty) {
+      final collection = inferShape(ast.input, rootShape);
+      final unwrapped = collection is SOptional ? collection.inner : collection;
+      final elementShape =
+          unwrapped is SList ? unwrapped.element : const SAny();
+      final tokenStart = consumed + partialStart;
+      return (
+        start: tokenStart,
+        end: tokenStart + partial.length,
+        candidates: <String>[
+          for (final op in pipelineOps)
+            if (op.startsWith(partial) && acceptsInputShape(op, elementShape))
+              op,
+        ],
+      );
+    }
   }
 
   if (ast != null) {
