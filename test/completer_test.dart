@@ -971,4 +971,66 @@ void main() {
       expect(r.candidates, isEmpty);
     });
   });
+
+  group('Heterogeneous-list completion via data sampling', () {
+    // When a list's element shape is statically `SAny` (heterogeneous
+    // children, e.g. markdown nodes that mix heading / paragraph /
+    // code_block), shape inference can't help completion. The
+    // completer falls back to peeking at the first list element's
+    // actual data and using its concrete shape. This makes
+    // `.children | map(.<TAB>` useful on real markdown.
+
+    final hetero = <String, Object?>{
+      'items': <Object?>[
+        <String, Object?>{'type': 'heading', 'level': 2, 'text': 'A'},
+        <String, Object?>{'type': 'paragraph', 'children': []},
+        <String, Object?>{'type': 'code_block', 'code': 'x'},
+      ],
+    };
+
+    test('map(.<TAB> on heterogeneous list samples first element', () {
+      // First element has type / level / text fields.
+      final r = complete('.items | map(.', 14, hetero);
+      expect(r.candidates, containsAll(['.type', '.level', '.text']));
+    });
+
+    test('map(.t<TAB> narrows by prefix on sampled element', () {
+      final r = complete('.items | map(.t', 15, hetero);
+      expect(r.candidates, containsAll(['.text', '.type']));
+    });
+
+    test('filter then map preserves sampling through shape-preserving op', () {
+      // `filter(...)` keeps the list's element family, so the sample
+      // recovery walks past it to the underlying list's first element.
+      final r = complete(
+        '.items | filter(.type == "heading") | map(.t',
+        44,
+        hetero,
+      );
+      expect(r.candidates, containsAll(['.text', '.type']));
+    });
+
+    test('sort_by preserves sampling through shape-preserving op', () {
+      final r = complete('.items | sort_by(.level) | map(.t', 33, hetero);
+      expect(r.candidates, containsAll(['.text', '.type']));
+    });
+
+    test('reverse preserves sampling through shape-preserving op', () {
+      final r = complete('.items | reverse | map(.t', 25, hetero);
+      expect(r.candidates, containsAll(['.text', '.type']));
+    });
+
+    test('empty heterogeneous list: no sample, no candidates', () {
+      // Without an element to sample, fallback can't help. Returns
+      // empty rather than guessing or throwing.
+      final emptyData = <String, Object?>{'items': <Object?>[]};
+      final r = complete('.items | map(.', 14, emptyData);
+      expect(r.candidates, isEmpty);
+    });
+
+    test('null data: no sample, no candidates', () {
+      final r = complete('.items | map(.', 14, null);
+      expect(r.candidates, isEmpty);
+    });
+  });
 }
