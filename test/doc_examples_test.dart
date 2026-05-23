@@ -84,10 +84,7 @@ void main() {
     }
     final exprs = _extractLamExpressions(file.readAsStringSync());
     if (exprs.isEmpty) {
-      test(
-        'AGENTS.md has lambe examples',
-        () => fail('no examples extracted'),
-      );
+      test('AGENTS.md has lambe examples', () => fail('no examples extracted'));
       return;
     }
     for (final (expr, location) in exprs) {
