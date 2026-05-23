@@ -2,8 +2,25 @@ HANDOVER_*.md
 bench-results-*.json
 tool/bench/
 doc/api/
-# Stale local AOT build; per-platform binaries are published via CI
+
+# Stale local AOT builds; per-platform binaries are published via CI
 # to the GitHub release and consumed by the MCP registry. Pub clients
-# rebuild from source on `dart pub global activate`, so shipping this
-# is dead weight.
+# rebuild from source on `dart pub global activate`, so shipping these
+# is dead weight (and locks pub.dev consumers to a Linux x86_64 binary
+# that's useless on other platforms).
+lam
 lam-mcp
+
+# Local scratch notes (release planning, status snapshots, etc.).
+# Same intent as the matching `.gitignore` rule, repeated here because
+# `.pubignore` does not inherit from `.gitignore`.
+*.scratch.md
+
+# Claude Code session state. Local to this checkout.
+.claude/
+
+# Local pubspec overrides.
+pubspec_overrides.yaml
+
+# MCP registry tokens.
+.mcpregistry_*
