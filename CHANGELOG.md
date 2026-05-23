@@ -416,6 +416,17 @@ mode:
   checking; downstream package managers (a future Homebrew tap,
   apt/rpm) can reuse it.
 
+### Tooling
+
+- **CHANGELOG self-validation.** `tool/lint_changelog.sh` uses lambé
+  itself (via `--assert`) to validate this file's structural
+  invariants on every CI run: at least one H2 release entry, no
+  duplicate H2s, the first heading is H2, and the latest H2 matches
+  `pubspec.yaml`'s version. The toolchain checks itself: rumil's
+  Markdown parser handles the input, lambé's query model expresses
+  the invariants. See `doc/recipes.md#querying-a-changelog` for the
+  underlying queries.
+
 ## 0.8.0
 
 Adds element-level shape checking for CSV/TSV output, union headers
