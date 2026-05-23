@@ -63,11 +63,33 @@ void main() {
       },
     );
 
-    test('hard break contributes empty string', () {
+    test('hard break contributes a newline', () {
+      // Markdown hard break = `\` at end of line, or two trailing
+      // spaces. Author intent is "force a line break here", so
+      // `text` preserves it as `'\n'`. The CommonMark parser emits
+      // both a `hard_break` AND a `soft_break` for the source
+      // `"hello  \nworld"` (the explicit break followed by the
+      // line continuation), so the result has both separators in
+      // sequence. Users who want a fully flat string can
+      // post-process with a whitespace collapser.
       final doc = _md('hello  \nworld\n');
-      final result = query('.children[0] | text', doc);
+      final result = query('.children[0] | text', doc) as String;
       expect(result, contains('hello'));
       expect(result, contains('world'));
+      expect(result.contains('\n'), isTrue);
+    });
+
+    test('soft break contributes a single space', () {
+      // Markdown soft break = a single newline in the source where
+      // the author intended paragraph continuation, not a forced
+      // break. Without a separator, words on consecutive source
+      // lines would concatenate ("queriesagainst" instead of
+      // "queries against"). A space preserves word boundaries
+      // without imposing line structure. This deliberately diverges
+      // from `mdast-util-to-string`'s empty-on-soft-break default.
+      final doc = _md('hello\nworld\n');
+      final result = query('.children[0] | text', doc) as String;
+      expect(result, 'hello world');
     });
 
     test('list of nodes (children) returns concatenated text', () {

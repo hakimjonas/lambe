@@ -782,10 +782,17 @@ final PipeOpInfo _typeSpec = (
 /// `code_block`, and `image.alt` — in document order. Container nodes
 /// recurse element-wise through their `children`. `html_block` and
 /// `html_inline` are skipped (the `Node.textContent` trap of dragging
-/// raw HTML, scripts, and styles into "give me the text"). `hard_break`
-/// and `soft_break` contribute the empty string. Maps that are not
-/// markdown nodes (no recognised `type`) yield the empty string;
-/// non-map non-list values throw.
+/// raw HTML, scripts, and styles into "give me the text").
+/// `soft_break` contributes a single space (preserves word
+/// separation across source line wraps); `hard_break` contributes
+/// `'\n'` (preserves the authorial intent — `\` at end of line or two
+/// trailing spaces is an explicit break in the source). Users wanting
+/// a fully flat string can post-process with a newline replacer. This
+/// is a deliberate divergence from `mdast-util-to-string`'s
+/// empty-on-break default; the divergence trades strict precedent for
+/// the more typical use case of "produce readable prose".
+/// Maps that are not markdown nodes (no recognised `type`) yield the
+/// empty string; non-map non-list values throw.
 ///
 /// PRECEDENT: this is the only op whose `eval` switches on a value's
 /// `type` field. The behaviour is bounded to markdown's node-type
@@ -833,10 +840,14 @@ void _appendMarkdownText(StringBuffer buf, Object? node) {
     case 'image':
       final alt = node['alt'];
       if (alt is String) buf.write(alt);
+    case 'soft_break':
+      buf.write(' ');
+      return;
+    case 'hard_break':
+      buf.write('\n');
+      return;
     case 'html_block':
     case 'html_inline':
-    case 'hard_break':
-    case 'soft_break':
     case 'thematic_break':
       return;
     default:
