@@ -78,16 +78,17 @@ consolidation, and a `rumil_tokens`-based REPL highlighter.
   parse-bound workloads. Measured on a 50k-element JSON document
   (1.5 MB), AOT, on a Linux x86_64 workstation with the bench
   harness in `tool/bench/cli_bench.sh`:
-  - `lam --print-shape big.json`: 2.4 s → 744 ms (3.23×).
+  - `lam --print-shape big.json`: 2.4 s → 732 ms (3.28×).
   - `lam '.items | filter(.value > 50000) | length' big.json`:
-    2.5 s → 747 ms (3.35×).
+    2.5 s → 742 ms (3.37×).
   Most of the win is inherited: rumil 0.7's FIRST-set Or dispatch,
   the `firstCharChoice` combinator, and the Pratt migration carried
-  the bulk; rumil_parsers 0.8.0's JSON AST split and capture-based
-  number/string parsing carried roughly 11% on these cases.
-  Non-parse-bound paths benefit too — `group_by` on 1k records
-  is ~13% faster (39 ms → 34 ms) because the JSON AST split
-  removes a per-number `truncateToDouble` check in `jsonToNative`.
+  the bulk; rumil_parsers 0.8.0's JSON AST split, capture-based
+  number/string parsing, HCL AST split, and `common.dart` capture
+  rewrites carried the rest. Non-parse-bound paths benefit too —
+  `group_by` on 1k records is ~15% faster (39 ms → 33 ms) because
+  the JSON AST split removes a per-number `truncateToDouble` check
+  in `jsonToNative`.
   See `tool/bench/cli_bench.sh` for the harness and reproduction.
 
 ### Documentation precision
