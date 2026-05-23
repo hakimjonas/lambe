@@ -62,19 +62,24 @@ base class LambeServer extends MCPServer with ToolsSupport {
             '(children), link (href, title, children), image (src, alt, title), '
             'emphasis (children), strong (children), text (text), code (code), '
             'thematic_break, hard_break, soft_break, html_block (html), '
-            'html_inline (html). Links and images are inline nodes and appear '
-            'nested inside heading/paragraph children (no recursive descent op '
-            'currently; drill in via explicit .children paths).\n'
+            'html_inline (html). Links and images are inline nodes nested '
+            'inside heading/paragraph children. Use the `text` pipe op to '
+            'extract prose from any node tree (it walks children recursively '
+            'and concatenates text/code/code_block/image.alt leaves) — '
+            '`.children[0].text` only sees the first immediate child and '
+            'misses nested emphasis, links, and inline code.\n'
             '\n'
             'Markdown query patterns:\n'
-            '  .children | filter(.type == "heading") | map(.children[0].text)\n'
-            '    — extract all heading texts\n'
-            '  .children | filter(.type == "heading") | map({level, text: .children[0].text})\n'
+            '  .children | filter(.type == "heading") | map(text)\n'
+            '    — extract all heading texts (handles nested formatting)\n'
+            '  .children | filter(.type == "heading") | map({level, title: text})\n'
             '    — headings with levels\n'
             '  .children | filter(.type == "code_block") | map(.language)\n'
             '    — list code block languages\n'
             '  .children | filter(.type == "code_block" && .language == "python") | map(.code)\n'
-            '    — code blocks for one language\n',
+            '    — code blocks for one language\n'
+            '  . | text\n'
+            '    — entire document as plain prose\n',
       ) {
     registerTool(_queryTool, _handleQuery);
     registerTool(_printShapeTool, _handlePrintShape);
@@ -82,6 +87,12 @@ base class LambeServer extends MCPServer with ToolsSupport {
     registerTool(_explainTool, _handleExplain);
     registerTool(_assertTool, _handleAssert);
   }
+
+  /// Build an error-shaped [CallToolResult] (`isError: true`) wrapping
+  /// [message]. Centralises the boilerplate at every handler's catch
+  /// site.
+  CallToolResult _errorResult(String message) =>
+      CallToolResult(content: [TextContent(text: message)], isError: true);
 
   final _queryTool = Tool(
     name: 'lambe_query',
@@ -233,20 +244,11 @@ base class LambeServer extends MCPServer with ToolsSupport {
               : formatOutput(result, outputFormat, flattenCells: flattenCells);
       return CallToolResult(content: [TextContent(text: rendered)]);
     } on OutputShapeError catch (e) {
-      return CallToolResult(
-        content: [TextContent(text: renderMcpShapeErrorPayload(e, expression))],
-        isError: true,
-      );
+      return _errorResult(renderMcpShapeErrorPayload(e, expression));
     } on QueryError catch (e) {
-      return CallToolResult(
-        content: [TextContent(text: 'Error: ${e.message}')],
-        isError: true,
-      );
+      return _errorResult('Error: ${e.message}');
     } on FormatException catch (e) {
-      return CallToolResult(
-        content: [TextContent(text: 'Parse error: ${e.message}')],
-        isError: true,
-      );
+      return _errorResult('Parse error: ${e.message}');
     }
   }
 
@@ -292,10 +294,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
         content: [TextContent(text: renderJsonSchema(shapeOf(parsed)))],
       );
     } on QueryError catch (e) {
-      return CallToolResult(
-        content: [TextContent(text: 'Error: ${e.message}')],
-        isError: true,
-      );
+      return _errorResult('Error: ${e.message}');
     }
   }
 
@@ -457,15 +456,9 @@ base class LambeServer extends MCPServer with ToolsSupport {
         content: [TextContent(text: renderExplainJson(report))],
       );
     } on QueryError catch (e) {
-      return CallToolResult(
-        content: [TextContent(text: 'Error: ${e.message}')],
-        isError: true,
-      );
+      return _errorResult('Error: ${e.message}');
     } on FormatException catch (e) {
-      return CallToolResult(
-        content: [TextContent(text: 'Parse error: ${e.message}')],
-        isError: true,
-      );
+      return _errorResult('Parse error: ${e.message}');
     }
   }
 
@@ -509,21 +502,13 @@ base class LambeServer extends MCPServer with ToolsSupport {
       } else if (result == false) {
         return CallToolResult(content: [TextContent(text: 'FAIL')]);
       } else {
-        return CallToolResult(
-          content: [
-            TextContent(
-              text:
-                  'Error: assertion expression must return boolean, got ${result.runtimeType}: $result',
-            ),
-          ],
-          isError: true,
+        return _errorResult(
+          'Error: assertion expression must return boolean, '
+          'got ${result.runtimeType}: $result',
         );
       }
     } on QueryError catch (e) {
-      return CallToolResult(
-        content: [TextContent(text: 'Error: ${e.message}')],
-        isError: true,
-      );
+      return _errorResult('Error: ${e.message}');
     }
   }
 }
