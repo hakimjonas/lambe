@@ -8,18 +8,25 @@ library;
 
 import 'package:rumil_tokens/rumil_tokens.dart';
 
+import 'shape/pipe_ops.dart' as shape_ops;
+
 /// Lambé query grammar for the REPL highlighter.
 ///
 /// Keywords cover the conditional (`if/then/else`), the literals
-/// (`true/false/null`), and the `and`/`or` aliases. Operator tables
+/// (`true/false/null`), and the `and`/`or` aliases. Pipe op names
+/// (`filter`, `map`, `text`, etc.) are wired through `types` so the
+/// highlighter can render them distinctly from plain identifiers; the
+/// list is derived from `pipe_ops.dart`'s spec table so adding an op
+/// to the table picks up colouring automatically. Operator tables
 /// match Lambé's actual operator set, including the right-associative
 /// `//` alternative and the `&&`/`||` symbolic forms. No comments —
 /// Lambé queries are one-liners typed at the REPL prompt.
-const LangGrammar lambeGrammar = LangGrammar(
+final LangGrammar lambeGrammar = LangGrammar(
   name: 'lambe',
-  keywords: ['if', 'then', 'else', 'true', 'false', 'null', 'and', 'or'],
-  stringDelimiters: ['"'],
+  keywords: const ['if', 'then', 'else', 'true', 'false', 'null', 'and', 'or'],
+  types: shape_ops.pipeOpNames,
+  stringDelimiters: const ['"'],
   punctuationChars: '(){}[],;:.',
   operatorChars: '+-*/%=!<>&|',
-  multiCharOperators: ['==', '!=', '<=', '>=', '&&', '||', '//'],
+  multiCharOperators: const ['==', '!=', '<=', '>=', '&&', '||', '//'],
 );

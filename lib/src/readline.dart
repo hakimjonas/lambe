@@ -137,11 +137,12 @@ class ReadLine {
             if (byte >= 0x20 && byte < 0x7f) {
               buf.insert(cursor, byte);
               cursor++;
-              if (cursor == buf.length) {
-                stdout.writeCharCode(byte);
-              } else {
-                _redraw(prompt, buf, cursor);
-              }
+              // Always redraw rather than echoing the byte alone:
+              // re-tokenising via rumil_tokens lets keywords and pipe
+              // op names colour as soon as the trigger character is
+              // typed (e.g. `filter` becomes magenta on the final
+              // `r`, not only after a later edit triggers a redraw).
+              _redraw(prompt, buf, cursor);
             }
         }
       }
@@ -427,11 +428,15 @@ String _highlight(List<int> buf) {
 /// Choices preserve the previous hand-rolled highlighter's vibe:
 /// strings green, numbers yellow, keywords magenta, `null` red,
 /// punctuation/operators dim, `.` cyan (the field-access mark).
+/// Pipe op names (registered as `types` in [lambeGrammar]) also
+/// render magenta — same colour as keywords, since they're
+/// language-defined identifiers from the user's point of view.
 String _colorFor(Token token) => switch (token) {
   StringLit() => _hGreen,
   NumberLit() => _hYellow,
   Keyword(text: 'null') => _hRed,
   Keyword() => _hMagenta,
+  TypeName() => _hMagenta,
   Punctuation(text: '.') => _hCyan,
   Operator() || Punctuation() => _hDim,
   Comment() => _hDim,
