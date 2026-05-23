@@ -7,7 +7,16 @@ doc/api/
 .idea/
 *.iml
 .vscode/
-.claude/
+
+# Claude Code local state (settings, session caches). The
+# .claude/skills/ subdirectory is the exception — it ships an Agent
+# Skills package to GitHub for AI coding agents working on lambé and
+# is tracked deliberately. .pubignore separately excludes the whole
+# .claude/ tree from the pub.dev publish payload.
+# `.claude/*` (not `.claude/`) so the negation can re-include
+# subdirectories — git won't descend into a directory ignored by name.
+.claude/*
+!.claude/skills/
 
 .DS_Store
 Thumbs.db
