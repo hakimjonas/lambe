@@ -1,3 +1,478 @@
+## 0.9.0
+
+Closes the shape feedback loop. Declare a JSON Schema, check queries
+against it, round-trip schemas with the ecosystem. Plus: richer
+static analysis in `--explain`, line-delimited JSON input, an opt-in
+CSV escape hatch for nested cells, an architectural pipe-op
+consolidation, and a `rumil_tokens`-based REPL highlighter.
+
+### Pipe-op AST consolidation
+
+- The 27 per-op AST classes (`FilterOp`, `MapOp`, `SortOp`, …)
+  collapse into a single `BuiltinPipeOp(name, args)`. The spec table
+  in `pipe_ops.dart` is now the only place per-op behaviour lives:
+  acceptance, shape inference, runtime evaluation, and parse arity
+  all live on the same record. Adding or renaming a pipe op is a
+  one-file change.
+- `As(target)` keeps a dedicated AST class for its typed
+  `OutputFormat` argument — it's the only custom-arity op.
+- `pipeOpInfoFor(LamExpr)` recognises both `BuiltinPipeOp` and `As`.
+- Source-breaking for external code that constructed pipe-op AST
+  nodes directly. The pre-1.0 contract here was that AST classes
+  were internals; we're taking that out properly. Tests that
+  assembled `MapOp(.x)` etc. now write `BuiltinPipeOp('map', [.x])`.
+
+### REPL syntax highlighter on `rumil_tokens`
+
+- `lib/src/readline.dart`'s 100-line hand-rolled tokenizer is gone.
+  The highlighter now consumes a `Token` stream from the
+  `rumil_tokens` `LangGrammar` defined in
+  `lib/src/highlight_grammar.dart`. The grammar lives in lambé (not
+  in `rumil_tokens`' built-in five) because it's lambé-specific.
+- New runtime dependency: `rumil_tokens ^0.1.0`.
+- Pipe op names (`filter`, `map`, `text`, etc.) now colour as
+  keywords (magenta) — they're routed through `LangGrammar.types`
+  and sourced from `pipe_ops.dart`'s spec table, so adding a new op
+  picks up colouring automatically.
+- Highlighting is re-rendered on every keystroke. Earlier sessions
+  used a fast-path that wrote each typed character verbatim without
+  re-tokenising, so keywords stayed plain until a later edit
+  triggered a full redraw. With `rumil_tokens` actually being fast,
+  the fast-path was a UX bug; now `filter` colours on the final `r`,
+  not after the next backspace.
+- Visible behavioural change in the REPL: `.field` colours as two
+  tokens (`.` punctuation + `field` identifier) rather than one
+  cyan run; negative literals colour as `-` operator + number
+  rather than one yellow run. The audit determined the new
+  behaviour is more principled; the visual effect is subtle.
+
+### REPL Tab completion: bare pipe ops inside parameterised ops
+
+- `map(t<TAB>` now offers `text`, `to_entries`, `type`, etc. instead
+  of nothing useful. Bare pipe-op names like `text`, `length`,
+  `to_entries` are legal expressions in lambé (sugar for `. | op`),
+  so the completer should offer them inside `map(...)` /
+  `filter(...)` when the user is typing a partial name without a
+  leading `.`. Candidates are filtered by the element shape of the
+  surrounding pipe input — same shape-gated rule that already
+  governed post-pipe completion. The new `text` op makes
+  `map(text)` a useful and discoverable pattern; this change ensures
+  the completer can help users find it.
+
+### REPL Tab completion: heterogeneous lists via data sampling
+
+- `.children | map(.<TAB>` on a heterogeneous list (e.g. a real
+  markdown document where `children` mixes headings / paragraphs /
+  code blocks) now offers the actual fields of the first list
+  element, instead of an empty candidate list. The static shape
+  system correctly widens such lists to `SList<SAny>`, which gives
+  completion no hints; the completer falls back to navigating the
+  actual data values and shape-of-ing the first element to recover
+  a useful shape. Sampling threads through pipe ops that preserve
+  the element family (`filter`, `sort`, `sort_by`, `unique`,
+  `unique_by`, `reverse`) so
+  `.children | filter(.type == "heading") | map(.<TAB>` works too.
+  Completion never runs the user's query — only structural
+  navigation — so cost stays bounded.
+
+### Markdown text extraction
+
+- **`text` pipe op.** Walks a markdown node (or list of nodes) and
+  concatenates every prose-bearing leaf — `text`, `code`, `code_block`,
+  and `image.alt` — in document order. Container nodes recurse through
+  their `children`. `html_block` and `html_inline` are skipped (avoids
+  the `Node.textContent` trap of dragging raw HTML, scripts, and styles
+  into "give me the text"). `soft_break` (a paragraph wrap in source)
+  contributes a single space, preserving word boundaries across line
+  wraps; `hard_break` (`\` at end of line, or two trailing spaces, an
+  explicit author-intended break) contributes a literal `'\n'`. This
+  diverges from `mdast-util-to-string`'s empty-on-break default —
+  trades strict precedent for the typical case of "produce readable
+  prose". Users who want a fully flat string can post-process with a
+  whitespace collapser. The previous recommendation,
+  `.children[0].text`, is structurally wrong for non-trivial markdown
+  (nested emphasis, inline code, links) and the existing pipe surface
+  cannot fix that without recursion.
+- **First op tuned to a specific input format's vocabulary.** This is
+  the only pipe op whose `eval` switches on a value's `type` field.
+  The behaviour is bounded to markdown's node-type vocabulary as
+  defined in `lib/src/input.dart`'s `_nodeToNative`. It does NOT
+  authorise content-level dispatch in any other op — the spec entry
+  carries a load-bearing comment to that effect. Prior art (XPath
+  `string(node)`, mdast-util-to-string) converges on the same shape:
+  format-aware leaf primitive with hardcoded knowledge of which fields
+  carry prose vs metadata. jq's `..` approach drags in `link.href`,
+  `image.src`, and `code_block.language` — exactly the trap this op
+  avoids.
+
+### `queryNdjsonString` convenience
+
+- New `queryNdjsonString(Iterable<String> lines, String expression)`
+  parses the expression once and delegates to `queryNdjson`. Resolves
+  the asymmetry where the existing `queryNdjson` took a pre-parsed
+  AST while every other `query*` took a string.
+
+### Performance
+
+- `_normalize` short-circuits canonical inputs.
+  `Map<String, Object?>` / `List<Object?>` / scalars round-trip
+  through the public API without allocating a copy. Non-canonical
+  inputs (e.g. `Map<dynamic, dynamic>` from some YAML decoders)
+  still rebuild as before.
+- End-to-end CLI is roughly **3.3× faster** than 0.8.0 on
+  parse-bound workloads. Measured on a 50k-element JSON document
+  (1.5 MB), AOT, on a Linux x86_64 workstation with the bench
+  harness in `tool/bench/cli_bench.sh`:
+  - `lam --print-shape big.json`: 2.4 s → 732 ms (3.28×).
+  - `lam '.items | filter(.value > 50000) | length' big.json`:
+    2.5 s → 742 ms (3.37×).
+  Most of the win is inherited: rumil 0.7's FIRST-set Or dispatch,
+  the `firstCharChoice` combinator, and the Pratt migration carried
+  the bulk; rumil_parsers 0.8.0's JSON AST split, capture-based
+  number/string parsing, HCL AST split, and `common.dart` capture
+  rewrites carried the rest. Non-parse-bound paths benefit too —
+  `group_by` on 1k records is ~15% faster (39 ms → 33 ms) because
+  the JSON AST split removes a per-number `truncateToDouble` check
+  in `jsonToNative`.
+  See `tool/bench/cli_bench.sh` for the harness and reproduction.
+
+### Documentation precision
+
+- Six per-op behavioural details now have load-bearing docstrings:
+  `//` is a null-fallback (not an error-handler), the empty-list
+  policy (`first`/`last` return null; `min`/`max`/`avg` throw; `sum`
+  returns 0), `unique` distinguishes int from double by canonical
+  encoding, duplicate keys in `{a: x, a: y}` follow Dart map literal
+  semantics (last wins), `from_entries` rejects non-map / non-string-
+  key entries explicitly (was silent skip), `type` rejects non-JSON
+  runtime values with a hint pointing at `parseInput` / `jsonDecode`.
+- The `from_entries` change is the only behavioural one — non-map
+  entries used to be dropped silently, now they throw `QueryError`.
+  Hides a class of bugs where upstream pipelines emit the wrong
+  shape.
+- **`as(fmt)` bridges reference** in `doc/recipes.md`. Documents the
+  four canonical bridges with runnable examples: `list<scalar> |
+  as(toml/hcl)` wraps as `{items: ...}`; `scalar | as(toml/hcl)`
+  wraps as `{value: ...}`; `map | as(csv/tsv)` derives via
+  `to_entries`; `scalar | as(csv/tsv)` composes both.
+- **`As` class doc** softened to be honest about which error paths
+  users will and won't hit. The "ambiguous bridge" runtime branch is
+  defensive against future curation errors but unreachable with the
+  current curated table — the doc no longer claims otherwise. A new
+  invariant test in `shape_synthesize_test` pins `≤ 1 bridge per
+  (shape, format)` so the path becomes reachable only by a
+  deliberate change.
+- **`syntax.md` examples** revert from `echo … | lam '. | op'` to
+  the cleaner `lam -n '… | op'` form now that `-n` exists. Several
+  pre-A6 examples were also silently broken: lambé object
+  construction uses bare identifiers (`{a: 1}`), not JSON-string
+  keys (`{"a": 1}`), so `[{"key": "a"}] | from_entries` was never
+  runnable. Fixed.
+- **`-r` / `--raw` semantics** — man page entry now states the option
+  only affects top-level string scalars and is a silent no-op on
+  structured output (objects, arrays, numbers, booleans, null). The
+  previous wording ("Output strings without quotes") read as a
+  pretty-print toggle and surprised users on non-string values.
+- **`doc/non-goals.md`** — new page enumerating the features lambé
+  deliberately omits, with the lambé idiom that replaces each one.
+  Cross-linked from `README.md` ("What lambé is not"),
+  `jq-to-lambe.md`, and `AGENTS.md`. Covers Turing-completeness,
+  recursive descent (`..`), `try`/`catch`, `select` outside `filter`,
+  `paths`/`leaf_paths`/`getpath`/`setpath`, regex, `range`/`limit`/
+  `nth`, `.[]` iteration, `def`/lambdas, `@base64`/`@uri`,
+  streaming, `env`/`$__loc__`, HCL evaluation, and XML. Staying
+  bounded is a feature; the page makes that legible.
+- **`text` op precedent** — the new `text` pipe op (see Markdown text
+  extraction) is the only op tuned to a specific input format's
+  vocabulary. The spec entry carries a load-bearing dartdoc comment
+  declaring this is bounded to markdown's node-type vocabulary as
+  defined in `_nodeToNative`, and does NOT authorise content-level
+  dispatch in any other op.
+
+### Bug fixes
+
+- **TSV input now honors header rows the same way CSV does.** Pre-0.9.0
+  every TSV file returned `List<List<String>>` because the parser
+  passed a static `defaultTsvConfig` and skipped dialect detection.
+  Now `parseInput` runs `detectDialect` for TSV with the tab
+  delimiter forced, so files where the first row looks like headers
+  return `List<Map<String, Object?>>`. `--print-shape data.tsv` and
+  `--print-shape data.csv` agree on logical content.
+- **String single-char indexing.** `.name[0]` now returns a
+  one-character substring instead of erroring with `Cannot index
+  string`. Slicing (`.name[0:3]`) already worked; the asymmetry is
+  gone. Out-of-range returns `null` (mirrors list indexing);
+  non-int still throws.
+- **`--explain` writability section is suppressed when a
+  runtime-rejection warning fires.** When a pipe op's input shape is
+  provably incompatible the post-stage shape widens to `SAny`, which
+  used to make every output format pass `canWriteAs` — so the
+  explain report listed every format for a pipeline that would throw
+  before any writer ran. Both `Writable as:` and `Not writable as:`
+  are now suppressed; the text renderer prints a one-line note in
+  their place, and the JSON renderer sets both keys to `null`.
+- **Heterogeneous list rendering hint.** `shapeOf([1, "two", true])`
+  collapses the element type to `SAny`. The rendered JSON Schema now
+  carries a `description: "sampled, may be heterogeneous"` so
+  `--print-shape` users see that the schema reflects sampling, not
+  a guarantee. The hint round-trips through `parseJsonSchema`
+  (unknown keywords are ignored per JSON Schema's extensibility
+  convention).
+- **Empty piped stdin.** Empty stdin in evaluation mode now surfaces
+  the standard "no input" error rather than a confusing JSON parse
+  error on the empty string.
+- **HCL block access is now uniform across N=1 and N≥2 cases.**
+  Previously, querying `.variable` returned a single map for one
+  `variable` block but a list for two or more — forcing defensive
+  shape checks in queries. Now `.variable` is always a list, regardless
+  of count. Common Terraform patterns (one `terraform`, one `provider`,
+  single `variable`) no longer require N=1-vs-N≥2 branching. Fixed
+  upstream in `rumil_parsers 0.8.0` (decoder uses the `HclBlock`
+  discriminator already present in the AST instead of inferring shape
+  from key collisions); lambé adopts it via a constraint bump from
+  `^0.7.0` to `^0.8.0`.
+
+### Dependencies
+
+- **`rumil_parsers ^0.8.0`.** The JSON parser AST splits `JsonNumber`
+  into a sealed `JsonInt | JsonDouble` sum. Lambé propagates the
+  change through one schema-parser switch case — `JsonInt() ||
+  JsonDouble() => 'number'` in `lib/src/schema/parser.dart`. No
+  user-visible behavior change at the lambé surface; downstream
+  consumers of lambé's library API see no shape difference because
+  `parseInput`-flavored Map/List types remain canonical Dart types
+  (the AST split is only visible when you reach into the JSON AST
+  directly via the lambé schema layer). The HCL fix described above
+  also rides this dependency bump (originally scoped as
+  `rumil_parsers 0.7.1`; rolled into 0.8.0 alongside the AST split).
+  See `rumil_parsers/BENCHMARKS.md` for the JSON parser perf wins on
+  the 0.8.0 release; lambé queries operating on JSON inputs benefit
+  transparently.
+- **Object construction accepts JSON-string keys.** `{name: .x}` was
+  the only spelling; `{"name": .x}` errored with a confusing
+  "unexpected" message. Now both spellings produce the same map. Keys
+  that are valid identifiers should still use the bare form (`name:`);
+  keys that aren't (hyphenated, spaces, leading digits) use a
+  JSON-string literal in key position — `{"x-axis": .a}`,
+  `{"Content-Type": "application/json"}`, `{"my key": 1}`. Lambé's
+  data model accepts any string as a key; the construction grammar
+  now matches. Interpolation (`{"\(expr)": .y}`) is rejected with a
+  clear message — key position is structurally not an expression
+  position; build dynamic keys via `from_entries` on a list of
+  `{key, value}` maps. Shorthand `{name}` continues to require a bare
+  identifier (`{"name"}` alone is intentionally not supported).
+
+### jq compatibility
+
+- **`add` is now recognized as an alias for `sum`.** A jq idiom that
+  matches Lambé's `sum` exactly. `_jqAliases` in `parser.dart` is the
+  table; entries belong there only when the jq semantics are an
+  exact match.
+- **Idiom hints for column-1 jq keywords.** `_jqIdiomHint` and
+  `_jqPipeOpHint` now recognise `try` / `try ... catch`, `recurse`,
+  `walk`, `paths`, `leaf_paths`, `range`, `limit`, `nth`, `@csv`,
+  `@tsv`, and `@base64`. Each produces a one-liner pointing at the
+  lambé equivalent (or, for `@base64`, the explicit "not supported"
+  signal) instead of the giant op-vocabulary dump. Folds into the
+  pre-existing hints for `[]`, `?`, `..`, `select`, `empty`, and
+  stranded `end`.
+
+### Schemas as a first-class contract
+
+- **`--schema <path>`** on the CLI. Threads a JSON Schema subset
+  through both `--explain` inference and normal evaluation. With
+  data, the schema validates at load time (structural disagreement
+  exits 1 with a JSON path). Without data, the schema alone seeds
+  shape inference for design-time planning.
+- **Sibling auto-detect.** Data at `path/to/data.json` picks up
+  `path/to/data.schema.json` implicitly. Same convention as ndjson
+  auto-detect.
+- **`--print-shape`** on the CLI. Emits `shapeOf(data)` as a JSON
+  Schema subset document, round-trippable with `--schema` input. The
+  same shape-to-JSON-Schema rendering powers
+  `renderJsonSchema(shape)` on the library and the MCP
+  `lambe_print_shape` tool.
+- **`--print-shape EXPR` composes with the query.** When given an
+  expression, `lam --print-shape '.users' data.json` now returns the
+  schema of the result of evaluating `.users` rather than the schema
+  of the whole document. Pre-0.9.0 the expression was silently
+  ignored. Without data, falls back to inferring from `SAny` —
+  matches the `--explain`-without-data flow.
+- **REPL: `:schema [path]` and `:print-shape`.** `:schema <path>`
+  loads a schema for the session and reports agreement/disagreement
+  vs current data. `:schema` (no arg) prints the active schema.
+  `:load` re-validates against an active schema and warns on
+  disagreement.
+- **MCP: `lambe_print_shape`, `lambe_check`, `lambe_explain`, plus
+  a `schema` parameter on `lambe_query`.** Agents can print a
+  shape, validate fixtures against a schema, trace a query
+  structurally before running, or gate a query on schema
+  conformance. `lambe_check` returns `{"ok": true}` /
+  `{"ok": false, "error": "..."}`.
+- **Library surface.** `parseJsonSchema`, `renderJsonSchema`,
+  `loadSchemaFromFile`, `loadSchemaForData`, `mergeSchemaWithData`
+  are all exported from `package:lambe/lambe.dart`.
+
+### `SOptional` in the shape ADT
+
+- New sealed variant `SOptional(Shape)`. Represents
+  statically-known optionality — populated by JSON Schema's
+  `required` semantics, propagated through field access and op
+  inference, and surfaced by the explain trace. Nested optionality
+  collapses at construction: `SOptional(SOptional(x))` is always
+  `SOptional(x)`.
+- Acceptance predicates unwrap `SOptional` for op inputs — `filter`
+  on `SOptional<SList<T>>` is accepted, with the potential absence
+  surfaced by a runtime-rejection warning rather than a silent
+  accept or a false reject.
+- Root-level requirements (TOML/HCL `MustBeMap`) do NOT unwrap: an
+  absent root can't be serialized, so users must materialize a
+  default first. This asymmetry is deliberate.
+- `shapeToJson` emits `{"kind": "optional", "inner": ...}`.
+  `renderJsonSchema` flattens `SOptional` inside `SMap` fields into
+  missing `required` entries (standard JSON Schema idiom);
+  non-field-position `SOptional` has no standard spelling in our
+  subset and is flattened with a docstring caveat.
+
+### Richer `--explain` output
+
+Three new categories of static analysis, plus a structured output
+mode:
+- **Runtime-rejection warnings** (always on). Flags pipe ops whose
+  input shape is provably incompatible. `.config | filter(.x)` on a
+  known map produces `"filter rejects map<...>; this will throw at
+  runtime"`. Uses the existing pipe-op acceptance predicates.
+- **Trivial-result warnings** (opt-in via `--explain-trivial`).
+  Flags `sort_by`, `group_by`, `map`, and `unique_by` whose
+  argument references a field provably absent on the element shape.
+  Opt-in because legitimate uses exist (stable no-op sort, explicit
+  null projection).
+- **Structured JSON output** (`--explain-json`). Emits the full
+  explain report as JSON with snake_case keys (`stages`,
+  `warnings`, `writable_as`, `not_writable_as`, `flatten_cells`).
+  Warning kinds serialize as `empty_filter`, `runtime_rejection`,
+  `trivial_result`. Shapes serialize as nested `{kind, ...}` trees
+  (via `shapeToJson`) so agents can pattern-match shape structure
+  without re-parsing. Also surfaces in the new `lambe_explain` MCP
+  tool.
+- Both `--explain-trivial` and `--explain-json` imply `--explain`.
+- New `shapeToJson(Shape)`, `renderExplainJson(ExplainReport)`,
+  `WarningKind` enum, and `ExplainWarning.kind` field on the
+  library.
+
+### `--ndjson` mode for line-delimited JSON input
+
+- Each line is parsed as an independent JSON document; the query is
+  evaluated per line with no shared state; one compact JSON result
+  per line. Auto-enabled when the file extension is `.ndjson` or
+  `.jsonl`. Stdin support streams: `tail -f app.log | lam --ndjson
+  '.level'` emits each result as the line arrives.
+- Fail-fast on the first malformed or unevaluable line; error
+  carries the line number.
+- New `queryNdjson(Iterable<String>, LamExpr)` library function
+  (`Iterable<Object?>`, lazy).
+- Cannot combine with `--interactive`, `--schema`, `--assert`, or
+  `--explain`; output is restricted to JSON (`--to` other than
+  `json` is refused).
+
+### Null input
+
+- **`-n` / `--null-input` flag.** Run a query against `null` context
+  with no input file. Useful for value computations:
+  `lam -n '[1,2,3] | unique'`. Without `-n`, the missing-input guard
+  fires (typo'd filename or missing redirect is a common footgun);
+  the flag puts the "I have no input" intent on the command line
+  where it's visible in scripts and code review. The `--null-input`
+  spelling matches jq exactly.
+- Cannot combine with `--interactive`, `--ndjson`, `--schema`, or
+  `--assert`. The TTY stdin guard is unchanged.
+
+### `--flatten-cells` for CSV/TSV
+
+- Opt-in escape hatch: non-scalar cells encoded as JSON strings
+  inline. Accepts `refuse` (default, 0.8.0 behavior) or `json`.
+  Under `json`, the shape check widens `MustBeFlatList` to
+  `MustBeList` for csv/tsv. Round-tripping the resulting CSV back
+  into Lambe does NOT recover structure; this is an output-side
+  escape hatch, not a faithful encoding.
+- Surfaced at the CLI (`--flatten-cells`), REPL
+  (`:flatten-cells`), MCP (`flatten_cells` parameter), and as
+  `CellPolicy flattenCells` on `formatOutput`, `canWriteAs`,
+  `canWriteShapeAs`, `requirementFor`, and `explain`.
+
+### Cross-surface hints
+
+- **`NotWritable.hints`.** When a shape mismatch has an
+  environmental resolution (a flag, a setting, a tool parameter),
+  the report carries a structured `Hint` type with `label`,
+  `cliFlag`, `replCommand`, `mcpParameter`, and `explanation`. CLI,
+  REPL, and MCP each render the form that applies to them.
+  Agent-facing JSON carries `parameter`/`value` pairs, not CLI
+  syntax.
+- The first shipping hint covers `--flatten-cells json`: when a
+  CSV/TSV request rejects under `refuse` but a list root is
+  already present.
+
+### Breaking changes
+
+- **`--schema` flag renamed to `--print-shape`.** 0.8.0's `--schema`
+  printed a type-name JSON summary of the data. That function moved
+  to `--print-shape`. The new `--schema` takes a JSON Schema file
+  path. Users scripting `lam --schema data.json` must change to
+  `lam --print-shape data.json`. ArgParser rejects the old form
+  because `--schema` now requires a value.
+- **`--print-shape` output format changed.** Emits a JSON Schema
+  subset document (`{"type": "object", "properties": ..., "required":
+  ...}`) instead of the type-name-string JSON format 0.8.0 emitted
+  (`{"age": "number"}`). The new output round-trips with
+  `--schema` input; the old format had no round-trip path.
+- **MCP tool `lambe_schema` renamed to `lambe_print_shape`.** Output
+  format also changed to JSON Schema, matching the CLI. Agents that
+  hardcoded the old tool name get "tool not found" and a message
+  pointing at `lambe_print_shape`.
+- **`Shape` ADT gained `SOptional` variant.** Source-breaking for
+  external code that pattern-matches `Shape` without a default case
+  (probably just Lambe itself). Exhaustive switches now need a
+  fifth branch.
+- **`ExplainWarning` constructor gained required `kind` parameter.**
+  External code constructing warnings directly must add a
+  `WarningKind`. Uncommon; the existing pattern is consuming
+  warnings, not producing them.
+
+### Deprecated
+
+- **`inferSchema(Object? value)`** library function. Emits
+  type-name-string JSON (no round-trip). Use
+  `renderJsonSchema(shapeOf(value))` for JSON Schema output, or
+  `shapeOf(value)` for the `Shape` ADT. Scheduled for removal in
+  1.0.
+
+### Install ergonomics
+
+- **`install.sh`** — one-line installer at the repo root.
+  `curl -fsSL https://raw.githubusercontent.com/hakimjonas/lambe/main/install.sh | sh`
+  downloads the latest `lam` and `lam-mcp` binaries for the current
+  platform (Linux x64/arm64, macOS x64/arm64), verifies SHA256
+  against a published `checksums.txt`, and installs to
+  `~/.local/bin/`. No sudo, no shell rc edits. Respects
+  `LAMBE_VERSION` and `LAMBE_PREFIX` env vars.
+- **Release workflow generates `checksums.txt`.** `.github/workflows/release.yml`
+  now publishes a combined SHA256 manifest for every release
+  artifact as an asset. `install.sh` relies on this for integrity
+  checking; downstream package managers (a future Homebrew tap,
+  apt/rpm) can reuse it.
+
+### Tooling
+
+- **CHANGELOG self-validation.** `tool/lint_changelog.sh` uses lambé
+  itself (via `--assert`) to validate this file's structural
+  invariants on every CI run: at least one H2 release entry, no
+  duplicate H2s, the first heading is H2, and the latest H2 matches
+  `pubspec.yaml`'s version. The toolchain checks itself: rumil's
+  Markdown parser handles the input, lambé's query model expresses
+  the invariants. See `doc/recipes.md#querying-a-changelog` for the
+  underlying queries.
+
 ## 0.8.0
 
 Adds element-level shape checking for CSV/TSV output, union headers

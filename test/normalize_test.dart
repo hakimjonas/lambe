@@ -141,4 +141,28 @@ void main() {
       expect(eval(ast, data), 'Bob');
     });
   });
+
+  group('canonical inputs short-circuit', () {
+    // Already-canonical inputs (Map<String, Object?>, List<Object?>,
+    // scalars) must pass through query() without any per-element rebuild
+    // — so `.identity` returns the same object, not a fresh copy.
+    test('canonical map is returned identical', () {
+      final data = <String, Object?>{'a': 1, 'b': 'two'};
+      expect(identical(query('.', data), data), isTrue);
+    });
+
+    test('canonical list is returned identical', () {
+      final data = <Object?>[1, 2, 3];
+      expect(identical(query('.', data), data), isTrue);
+    });
+
+    test('nested canonical map of list is returned identical', () {
+      final data = <String, Object?>{
+        'users': <Object?>[
+          <String, Object?>{'name': 'Alice'},
+        ],
+      };
+      expect(identical(query('.', data), data), isTrue);
+    });
+  });
 }

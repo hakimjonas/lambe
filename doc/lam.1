@@ -1,4 +1,4 @@
-.TH "LAM" "1" "May 2026" "Lambë 0.8.0" ""
+.TH "LAM" "1" "May 2026" "Lambë 0.9.0" ""
 .SH AUTHOR
 Hakim Jonas Ghoula
 .SH NAME
@@ -25,7 +25,7 @@ Pretty-print output. On by default.
 Disable pretty-printing.
 .TP
 \fB-r\fR, \fB--raw\fR
-Output strings without quotes.
+Output top-level string scalars without quotes. No effect on structured output (objects, arrays, numbers, booleans, null) — those still serialize through the active output format.
 .TP
 \fB-f\fR, \fB--format\fR \fIFMT\fR
 Input format. One of: json, yaml, toml, hcl, csv, tsv, markdown. Auto-detected from file extension if omitted.
@@ -33,17 +33,35 @@ Input format. One of: json, yaml, toml, hcl, csv, tsv, markdown. Auto-detected f
 \fB-t\fR, \fB--to\fR \fIFMT\fR
 Output format. One of: json, yaml, toml, csv, tsv, hcl. Default is json.
 .TP
-\fB--schema\fR
-Show the data structure with type names instead of values.
+\fB--flatten-cells\fR \fIPOLICY\fR
+CSV/TSV policy for non-scalar cells. \fBrefuse\fR (default) rejects list- or map-valued cells with a shape error. \fBjson\fR encodes them as JSON strings inline; the shape check correspondingly widens to accept any list at the root. Ignored for other output formats.
+.TP
+\fB--schema\fR \fIPATH\fR
+Path to a JSON Schema subset file. Threads the declared shape through inference and \fB--explain\fR, validates data against the schema at load time (errors on concrete-type disagreement), and fills in shape details the sampled data doesn't cover (empty-list elements, optional fields). Auto-detected as a sibling \fB.schema.json\fR if omitted. Accepts \fBtype\fR, \fBproperties\fR, \fBitems\fR, and \fBrequired\fR; rejects structural combinators (allOf/oneOf/$ref) and value-level constraints (minimum/pattern/enum/etc) with a per-keyword error.
+.TP
+\fB--print-shape\fR
+Print the inferred shape of the data as a JSON Schema subset document. Replaces the 0.8.0 \fB--schema\fR flag with the same meaning, renamed because \fB--schema\fR now takes a path value.
 .TP
 \fB--explain\fR
-Trace the shape of values flowing through each pipeline stage. Static analysis only; does not execute the query. Reports which output formats the final shape can be serialized as.
+Trace the shape of values flowing through each pipeline stage. Static analysis only; does not execute the query. Reports which output formats the final shape can be serialized as. Flags provably-empty filters and runtime-rejection mismatches.
+.TP
+\fB--explain-trivial\fR
+Include trivial-result warnings in the explain report. Flags parameterised ops (\fBsort_by\fR, \fBgroup_by\fR, \fBmap\fR, \fBunique_by\fR) whose argument references a field provably absent on the element shape. Implies \fB--explain\fR.
+.TP
+\fB--explain-json\fR
+Emit the explain report as a JSON document instead of the text table. Useful for agent tooling or build-pipeline integration. Implies \fB--explain\fR.
 .TP
 \fB--assert\fR
 Evaluate the expression and exit with code 0 if the result is true, 1 if false.
 .TP
 \fB-i\fR, \fB--interactive\fR
 Start the interactive REPL. Requires a file argument.
+.TP
+\fB--ndjson\fR
+Treat input as ndjson or jsonl: one JSON document per line, evaluated independently with no state shared between lines. Emits one compact JSON result per line on stdout. Auto-enabled when the file extension is \fB.ndjson\fR or \fB.jsonl\fR. Cannot combine with \fB--interactive\fR, \fB--schema\fR, \fB--print-shape\fR, \fB--assert\fR, or \fB--explain\fR. Output must be JSON (\fB--to json\fR or default); other \fB--to\fR values are refused.
+.TP
+\fB-n\fR, \fB--null-input\fR
+Run the query against \fBnull\fR context with no input. Useful for value computations like \fClam -n '[1,2,3] | unique'\fR. Without \fB-n\fR, the missing-input guard fires (a typo'd filename or missing redirect is a common footgun); the flag makes the "I have no input" intent explicit. Cannot combine with \fB--interactive\fR, \fB--ndjson\fR, \fB--schema\fR, or \fB--assert\fR.
 .TP
 \fB-h\fR, \fB--help\fR
 Show usage information.
@@ -171,6 +189,9 @@ Toggle unquoted string output.
 \fB:pretty\fR
 Toggle pretty-printing.
 .TP
+\fB:flatten-cells\fR \fIPOLICY\fR
+Set CSV/TSV cell policy for this session. One of: refuse, json.
+.TP
 \fB:load\fR \fIfile\fR
 Load a different data file.
 .TP
@@ -221,10 +242,22 @@ Format conversion:
 lam --to yaml '.config' data.json
 .fi
 .PP
-Schema inspection:
+Shape inspection:
 .PP
 .nf
-lam --schema deployment.yaml
+lam --print-shape deployment.yaml
+.fi
+.PP
+Schema-checked query (validates data against the schema before running):
+.PP
+.nf
+lam --schema api.schema.json '.users | map(.email)' response.json
+.fi
+.PP
+Shape trace, schema-seeded (no data needed):
+.PP
+.nf
+lam --schema api.schema.json --explain '.users | map(.email)'
 .fi
 .PP
 Shape trace for a pipeline:
@@ -255,6 +288,13 @@ Interactive exploration:
 .PP
 .nf
 lam -i data.json
+.fi
+.PP
+Line-delimited JSON (logs, event streams):
+.PP
+.nf
+lam --ndjson '.level' events.ndjson
+tail -f app.log | lam --ndjson '.user.id'
 .fi
 .SH SEE ALSO
 .PP

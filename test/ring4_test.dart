@@ -37,7 +37,8 @@ void main() {
     test('parse structure', () {
       final expr = _parse('. | sort_by(.name)');
       expect(expr, isA<Pipe>());
-      expect((expr as Pipe).op, isA<SortByOp>());
+      expect((expr as Pipe).op, isA<BuiltinPipeOp>());
+      expect(((expr).op as BuiltinPipeOp).name, 'sort_by');
     });
   });
 
@@ -75,7 +76,8 @@ void main() {
     test('parse structure', () {
       final expr = _parse('. | group_by(.type)');
       expect(expr, isA<Pipe>());
-      expect((expr as Pipe).op, isA<GroupByOp>());
+      expect((expr as Pipe).op, isA<BuiltinPipeOp>());
+      expect(((expr).op as BuiltinPipeOp).name, 'group_by');
     });
   });
 

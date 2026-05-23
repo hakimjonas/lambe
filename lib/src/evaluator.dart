@@ -1,15 +1,14 @@
 /// Query evaluator. Walks the AST over `Object?` JSON values.
 library;
 
-import 'dart:convert';
-
 import 'package:rumil_expressions/rumil_expressions.dart'
-    show applyBinaryOp, applyUnaryOp, asBool, compareValues, typeName;
+    show applyBinaryOp, applyUnaryOp, asBool, typeName;
 
 import 'ast.dart';
 import 'errors.dart';
 import 'output_format.dart';
 import 'shape/check.dart';
+import 'shape/pipe_ops.dart';
 import 'shape/shape.dart';
 
 /// Evaluate a [LamExpr] AST against a JSON [ctx] value.
@@ -38,11 +37,14 @@ Object? evaluate(LamExpr expr, Object? ctx) => switch (expr) {
     op,
     evaluate(operand, ctx),
   ),
-  BinaryOp(:final op, :final left, :final right) => applyBinaryOp(
+  BinaryOp(:final op, :final left, :final right) => _binaryOp(
     op,
     evaluate(left, ctx),
     evaluate(right, ctx),
   ),
+  // Duplicate keys: later entries silently override earlier ones (Dart
+  // map literal semantics). The parser does not reject duplicates; users
+  // wanting strictness can validate the AST.
   ObjConstruct(:final entries) => {
     for (final (key, valExpr) in entries) key: evaluate(valExpr, ctx),
   },
@@ -50,6 +52,8 @@ Object? evaluate(LamExpr expr, Object? ctx) => switch (expr) {
     asBool(evaluate(condition, ctx), 'if')
         ? evaluate(then_, ctx)
         : evaluate(else_, ctx),
+  Alternative(:final left, :final right) => _alternative(left, right, ctx),
+  ListConstruct(:final parts) => [for (final p in parts) evaluate(p, ctx)],
   StringInterp(:final parts) => _interpolate(parts, ctx),
   Slice(:final target, :final start, :final end) => _slice(
     evaluate(target, ctx),
@@ -57,32 +61,7 @@ Object? evaluate(LamExpr expr, Object? ctx) => switch (expr) {
     end,
     ctx,
   ),
-  FilterOp(:final predicate) => _filter(ctx, predicate),
-  MapOp(:final transform) => _mapOp(ctx, transform),
-  SortOp() => _sort(ctx),
-  ReverseOp() => _reverse(ctx),
-  KeysOp() => _keys(ctx),
-  ValuesOp() => _values(ctx),
-  LengthOp() => _length(ctx),
-  FirstOp() => _first(ctx),
-  LastOp() => _last(ctx),
-  SumOp() => _sum(ctx),
-  AvgOp() => _avg(ctx),
-  MinOp() => _min(ctx),
-  MaxOp() => _max(ctx),
-  SortByOp(:final key) => _sortBy(ctx, key),
-  GroupByOp(:final key) => _groupBy(ctx, key),
-  UniqueOp() => _unique(ctx),
-  UniqueByOp(:final key) => _uniqueBy(ctx, key),
-  FlattenOp() => _flatten(ctx),
-  FilterValuesOp(:final predicate) => _filterValues(ctx, predicate),
-  MapValuesOp(:final transform) => _mapValues(ctx, transform),
-  FilterKeysOp(:final predicate) => _filterKeys(ctx, predicate),
-  HasOp(:final key) => _has(ctx, key),
-  ToEntriesOp() => _toEntries(ctx),
-  FromEntriesOp() => _fromEntries(ctx),
-  ToNumberOp() => _toNumber(ctx),
-  TypeOp() => _typeOf(ctx),
+  BuiltinPipeOp() => evalBuiltinPipeOp(expr, ctx, evaluate),
   As(:final target) => _as(ctx, target),
 };
 
@@ -119,219 +98,69 @@ Object? _field(Object? target, String name) {
   throw QueryError('Cannot access .$name on ${typeName(target)}');
 }
 
-Object? _index(Object? target, Object? idx) {
-  if (target == null) return null;
-  if (target is List<Object?>) {
-    if (idx is num) {
-      final i = idx.toInt();
-      final resolved = i < 0 ? target.length + i : i;
-      if (resolved < 0 || resolved >= target.length) return null;
-      return target[resolved];
-    }
-    throw QueryError('Cannot index list with ${typeName(idx)}');
-  }
-  if (target is Map<String, Object?>) {
-    if (idx is String) return target[idx];
-    throw QueryError('Cannot index map with ${typeName(idx)}');
-  }
-  throw QueryError('Cannot index ${typeName(target)}');
-}
+Object? _index(Object? target, Object? idx) => switch (target) {
+  null => null,
+  List<Object?>() when idx is num => () {
+    final i = idx.toInt();
+    final resolved = i < 0 ? target.length + i : i;
+    if (resolved < 0 || resolved >= target.length) return null;
+    return target[resolved];
+  }(),
+  List<Object?>() =>
+    throw QueryError('Cannot index list with ${typeName(idx)}'),
+  Map<String, Object?>() when idx is String => target[idx],
+  Map<String, Object?>() =>
+    throw QueryError('Cannot index map with ${typeName(idx)}'),
+  // String single-char indexing mirrors slice semantics: `.name[0]`
+  // returns a one-character substring, matching how `.name[0:1]` already
+  // worked. Out-of-range returns null (same convention as list
+  // indexing).
+  String() when idx is num => () {
+    final i = idx.toInt();
+    final resolved = i < 0 ? target.length + i : i;
+    if (resolved < 0 || resolved >= target.length) return null;
+    return target.substring(resolved, resolved + 1);
+  }(),
+  String() => throw QueryError('Cannot index string with ${typeName(idx)}'),
+  _ => throw QueryError('Cannot index ${typeName(target)}'),
+};
 
 Object? _pipe(Object? input, LamExpr op) {
   if (input == null) return null;
   return evaluate(op, input);
 }
 
-List<Object?> _filter(Object? input, LamExpr predicate) {
-  final list = _asList(input, 'filter');
-  return [
-    for (final item in list)
-      if (evaluate(predicate, item) == true) item,
-  ];
-}
-
-List<Object?> _mapOp(Object? input, LamExpr transform) {
-  final list = _asList(input, 'map');
-  return [for (final item in list) evaluate(transform, item)];
-}
-
-List<Object?> _sort(Object? input) {
-  final list = List<Object?>.of(_asList(input, 'sort'));
-  list.sort(compareValues);
-  return list;
-}
-
-List<Object?> _reverse(Object? input) =>
-    List<Object?>.of(_asList(input, 'reverse').reversed);
-
-List<Object?> _keys(Object? input) {
-  if (input is Map<String, Object?>) return input.keys.toList();
-  if (input is List<Object?>) {
-    return [for (var i = 0; i < input.length; i++) i];
-  }
-  throw QueryError('keys: expected map or list, got ${typeName(input)}');
-}
-
-List<Object?> _values(Object? input) {
-  if (input is Map<String, Object?>) return input.values.toList();
-  if (input is List<Object?>) return input;
-  throw QueryError('values: expected map or list, got ${typeName(input)}');
-}
-
-int _length(Object? input) {
-  if (input is List<Object?>) return input.length;
-  if (input is Map<String, Object?>) return input.length;
-  if (input is String) return input.length;
-  throw QueryError(
-    'length: expected list, map, or string, got ${typeName(input)}',
-  );
-}
-
-Object? _first(Object? input) {
-  final list = _asList(input, 'first');
-  return list.isEmpty ? null : list.first;
-}
-
-Object? _last(Object? input) {
-  final list = _asList(input, 'last');
-  return list.isEmpty ? null : list.last;
-}
-
-num _sum(Object? input) {
-  final list = _asList(input, 'sum');
-  num total = 0;
-  for (final item in list) {
-    if (item is! num) {
-      throw QueryError('sum: expected number, got ${typeName(item)}');
-    }
-    total += item;
-  }
-  return total;
-}
-
-double _avg(Object? input) {
-  final list = _asList(input, 'avg');
-  if (list.isEmpty) throw const QueryError('avg: empty list');
-  return _sum(list).toDouble() / list.length;
-}
-
-Object? _min(Object? input) {
-  final list = _asList(input, 'min');
-  if (list.isEmpty) throw const QueryError('min: empty list');
-  var best = list.first;
-  for (var i = 1; i < list.length; i++) {
-    if (compareValues(list[i], best) < 0) best = list[i];
-  }
-  return best;
-}
-
-Object? _max(Object? input) {
-  final list = _asList(input, 'max');
-  if (list.isEmpty) throw const QueryError('max: empty list');
-  var best = list.first;
-  for (var i = 1; i < list.length; i++) {
-    if (compareValues(list[i], best) > 0) best = list[i];
-  }
-  return best;
-}
-
-List<Object?> _sortBy(Object? input, LamExpr key) {
-  final list = List<Object?>.of(_asList(input, 'sort_by'));
-  list.sort((a, b) => compareValues(evaluate(key, a), evaluate(key, b)));
-  return list;
-}
-
-List<Map<String, Object?>> _groupBy(Object? input, LamExpr key) {
-  final list = _asList(input, 'group_by');
-  // Group on a canonical string representation so structurally-equal
-  // Maps and Lists compare as equal. A side map preserves the original
-  // key value for the output record.
-  final groups = <String, List<Object?>>{};
-  final originalKeys = <String, Object?>{};
-  for (final item in list) {
-    final k = evaluate(key, item);
-    final canonical = _canonicalKey(k);
-    originalKeys[canonical] = k;
-    (groups[canonical] ??= []).add(item);
-  }
-  return [
-    for (final entry in groups.entries)
-      {'key': originalKeys[entry.key], 'values': entry.value},
-  ];
-}
-
-List<Object?> _unique(Object? input) {
-  final list = _asList(input, 'unique');
-  final seen = <String>{};
-  return [
-    for (final item in list)
-      if (seen.add(_canonicalKey(item))) item,
-  ];
-}
-
-List<Object?> _uniqueBy(Object? input, LamExpr key) {
-  final list = _asList(input, 'unique_by');
-  final seen = <String>{};
-  return [
-    for (final item in list)
-      if (seen.add(_canonicalKey(evaluate(key, item)))) item,
-  ];
-}
-
-/// Canonical string representation of [value] for use as a hash key.
+/// Evaluate `left // right`: returns `left`'s value if non-null,
+/// otherwise `right`'s value.
 ///
-/// Dart's native equality on `List` and `Map` is reference-based, so
-/// structurally-equal collections compare as unequal. `unique`, `unique_by`,
-/// and `group_by` need structural equality to behave sensibly. Encoding the
-/// value as JSON with sorted map keys gives a stable, equality-friendly key.
-String _canonicalKey(Object? value) => jsonEncode(_sortKeys(value));
+/// `//` is a null-fallback, not an error-handler. If `left` throws
+/// (e.g. a type error during evaluation), the throw propagates without
+/// trying `right`. To rescue from errors, use shape-checking facilities
+/// (e.g. `filter(has("foo")) | .foo` instead of `.foo // ...`).
+///
+/// `right` is only evaluated on null fallback, so
+/// `.a // someExpensiveFallback` pays nothing when `.a` hits.
+Object? _alternative(LamExpr left, LamExpr right, Object? ctx) {
+  final primary = evaluate(left, ctx);
+  if (primary != null) return primary;
+  return evaluate(right, ctx);
+}
 
-/// Recursively sort map keys so `jsonEncode` produces a stable output.
-Object? _sortKeys(Object? value) {
-  if (value is Map<String, Object?>) {
-    final sorted = <String, Object?>{};
-    final keys = value.keys.toList()..sort();
-    for (final k in keys) {
-      sorted[k] = _sortKeys(value[k]);
-    }
-    return sorted;
+/// Lambé's binary-op wrapper. Intercepts `+` on two lists for
+/// concatenation; delegates everything else to rumil_expressions'
+/// scalar dispatcher. A mixed list/scalar `+` is a type error —
+/// Lambé's strictness stance over silent lifting.
+Object _binaryOp(String op, Object? l, Object? r) {
+  if (op == '+' && l is List<Object?> && r is List<Object?>) {
+    return [...l, ...r];
   }
-  if (value is List<Object?>) {
-    return [for (final e in value) _sortKeys(e)];
+  if (op == '+' && (l is List<Object?>) != (r is List<Object?>)) {
+    throw QueryError(
+      '+: cannot mix list with ${typeName(r is List ? l : r)}; '
+      'coerce one side explicitly.',
+    );
   }
-  return value;
-}
-
-List<Object?> _flatten(Object? input) {
-  final list = _asList(input, 'flatten');
-  return [
-    for (final item in list)
-      if (item is List<Object?>) ...item else item,
-  ];
-}
-
-Map<String, Object?> _filterValues(Object? input, LamExpr predicate) {
-  final map = _asMap(input, 'filter_values');
-  return {
-    for (final MapEntry(:key, :value) in map.entries)
-      if (evaluate(predicate, value) == true) key: value,
-  };
-}
-
-Map<String, Object?> _mapValues(Object? input, LamExpr transform) {
-  final map = _asMap(input, 'map_values');
-  return {
-    for (final MapEntry(:key, :value) in map.entries)
-      key: evaluate(transform, value),
-  };
-}
-
-Map<String, Object?> _filterKeys(Object? input, LamExpr predicate) {
-  final map = _asMap(input, 'filter_keys');
-  return {
-    for (final MapEntry(:key, :value) in map.entries)
-      if (evaluate(predicate, key) == true) key: value,
-  };
+  return applyBinaryOp(op, l, r);
 }
 
 String _interpolate(List<LamExpr> parts, Object? ctx) {
@@ -348,24 +177,24 @@ Object? _slice(
   LamExpr? startExpr,
   LamExpr? endExpr,
   Object? ctx,
-) {
-  if (target == null) return null;
-  if (target is List<Object?>) {
+) => switch (target) {
+  null => null,
+  List<Object?>() => () {
     final len = target.length;
     final start = _resolveSliceIndex(startExpr, ctx, len, 0);
     final end = _resolveSliceIndex(endExpr, ctx, len, len);
     if (start >= end || start >= len) return <Object?>[];
     return target.sublist(start.clamp(0, len), end.clamp(0, len));
-  }
-  if (target is String) {
+  }(),
+  String() => () {
     final len = target.length;
     final start = _resolveSliceIndex(startExpr, ctx, len, 0);
     final end = _resolveSliceIndex(endExpr, ctx, len, len);
     if (start >= end || start >= len) return '';
     return target.substring(start.clamp(0, len), end.clamp(0, len));
-  }
-  throw QueryError('Cannot slice ${typeName(target)}');
-}
+  }(),
+  _ => throw QueryError('Cannot slice ${typeName(target)}'),
+};
 
 int _resolveSliceIndex(
   LamExpr? expr,
@@ -380,71 +209,4 @@ int _resolveSliceIndex(
     return i < 0 ? length + i : i;
   }
   throw QueryError('Slice index must be a number, got ${typeName(value)}');
-}
-
-bool _has(Object? input, LamExpr key) {
-  if (input is Map<String, Object?>) {
-    final k = evaluate(key, input);
-    if (k is String) return input.containsKey(k);
-    throw QueryError('has: key must be a string, got ${typeName(k)}');
-  }
-  if (input is List<Object?>) {
-    final k = evaluate(key, input);
-    if (k is num) return k.toInt() >= 0 && k.toInt() < input.length;
-    throw QueryError('has: index must be a number, got ${typeName(k)}');
-  }
-  throw QueryError('has: expected map or list, got ${typeName(input)}');
-}
-
-List<Map<String, Object?>> _toEntries(Object? input) {
-  final map = _asMap(input, 'to_entries');
-  return [
-    for (final MapEntry(:key, :value) in map.entries)
-      {'key': key, 'value': value},
-  ];
-}
-
-Map<String, Object?> _fromEntries(Object? input) {
-  final list = _asList(input, 'from_entries');
-  return {
-    for (final item in list)
-      if (item is Map<String, Object?>)
-        (item['key'] as String? ??
-                (throw const QueryError(
-                  'from_entries: entry missing "key" field',
-                ))):
-            item['value'],
-  };
-}
-
-num _toNumber(Object? input) {
-  if (input is num) return input;
-  if (input is String) {
-    final parsed = num.tryParse(input);
-    if (parsed != null) return parsed;
-    throw QueryError('to_number: cannot parse "$input" as a number');
-  }
-  throw QueryError(
-    'to_number: expected string or number, got ${typeName(input)}',
-  );
-}
-
-String _typeOf(Object? input) => switch (input) {
-  null => 'null',
-  bool() => 'boolean',
-  num() => 'number',
-  String() => 'string',
-  List<Object?>() => 'array',
-  Map<String, Object?>() => 'object',
-  _ => throw QueryError('type: unexpected runtime type ${input.runtimeType}'),
-};
-
-List<Object?> _asList(Object? v, String ctx) {
-  if (v is List<Object?>) return v;
-  throw QueryError('$ctx: expected list, got ${typeName(v)}');
-}
-
-Map<String, Object?> _asMap(Object? v, String ctx) {
-  if (v is Map<String, Object?>) return v;
-  throw QueryError('$ctx: expected map, got ${typeName(v)}');
 }

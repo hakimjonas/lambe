@@ -123,198 +123,26 @@ final class BinaryOp extends LamExpr {
   const BinaryOp(this.op, this.left, this.right);
 }
 
-/// Filter elements by predicate: `filter(.age > 30)`.
-final class FilterOp extends LamExpr {
-  /// The predicate expression, evaluated per element.
-  final LamExpr predicate;
-
-  /// Creates a filter operation with [predicate].
-  const FilterOp(this.predicate);
-}
-
-/// Transform each element: `map(.name)`.
-final class MapOp extends LamExpr {
-  /// The transform expression, evaluated per element.
-  final LamExpr transform;
-
-  /// Creates a map operation with [transform].
-  const MapOp(this.transform);
-}
-
-/// Sort elements naturally: `sort`.
-final class SortOp extends LamExpr {
-  /// Creates a sort operation.
-  const SortOp();
-}
-
-/// Reverse element order: `reverse`.
-final class ReverseOp extends LamExpr {
-  /// Creates a reverse operation.
-  const ReverseOp();
-}
-
-/// Get keys of a map or indices of a list: `keys`.
-final class KeysOp extends LamExpr {
-  /// Creates a keys operation.
-  const KeysOp();
-}
-
-/// Get values of a map (or identity for a list): `values`.
-final class ValuesOp extends LamExpr {
-  /// Creates a values operation.
-  const ValuesOp();
-}
-
-/// Get length of a list, map, or string: `length`.
-final class LengthOp extends LamExpr {
-  /// Creates a length operation.
-  const LengthOp();
-}
-
-/// Get first element of a list: `first`.
-final class FirstOp extends LamExpr {
-  /// Creates a first operation.
-  const FirstOp();
-}
-
-/// Get last element of a list: `last`.
-final class LastOp extends LamExpr {
-  /// Creates a last operation.
-  const LastOp();
-}
-
-/// Sum all numeric elements: `sum`.
-final class SumOp extends LamExpr {
-  /// Creates a sum operation.
-  const SumOp();
-}
-
-/// Average of all numeric elements: `avg`.
-final class AvgOp extends LamExpr {
-  /// Creates an avg operation.
-  const AvgOp();
-}
-
-/// Minimum element: `min`.
-final class MinOp extends LamExpr {
-  /// Creates a min operation.
-  const MinOp();
-}
-
-/// Maximum element: `max`.
-final class MaxOp extends LamExpr {
-  /// Creates a max operation.
-  const MaxOp();
-}
-
-/// Sort by a key expression: `sort_by(.age)`.
-final class SortByOp extends LamExpr {
-  /// The key expression, evaluated per element.
-  final LamExpr key;
-
-  /// Creates a sort_by operation with [key].
-  const SortByOp(this.key);
-}
-
-/// Group elements by a key expression: `group_by(.type)`.
+/// A built-in pipe operation: `filter(...)`, `map(...)`, `sort`, `length`, ...
 ///
-/// Returns `[{key: k, values: [items]}, ...]`.
-final class GroupByOp extends LamExpr {
-  /// The key expression, evaluated per element.
-  final LamExpr key;
-
-  /// Creates a group_by operation with [key].
-  const GroupByOp(this.key);
-}
-
-/// Remove duplicate elements: `unique`.
-final class UniqueOp extends LamExpr {
-  /// Creates a unique operation.
-  const UniqueOp();
-}
-
-/// Remove duplicates by key: `unique_by(.name)`.
-final class UniqueByOp extends LamExpr {
-  /// The key expression, evaluated per element.
-  final LamExpr key;
-
-  /// Creates a unique_by operation with [key].
-  const UniqueByOp(this.key);
-}
-
-/// Flatten one level of nesting: `flatten`.
-final class FlattenOp extends LamExpr {
-  /// Creates a flatten operation.
-  const FlattenOp();
-}
-
-/// Filter map values by predicate: `filter_values(. > 5)`.
-final class FilterValuesOp extends LamExpr {
-  /// The predicate expression, evaluated per value.
-  final LamExpr predicate;
-
-  /// Creates a filter_values operation with [predicate].
-  const FilterValuesOp(this.predicate);
-}
-
-/// Transform map values: `map_values(. * 2)`.
-final class MapValuesOp extends LamExpr {
-  /// The transform expression, evaluated per value.
-  final LamExpr transform;
-
-  /// Creates a map_values operation with [transform].
-  const MapValuesOp(this.transform);
-}
-
-/// Check if a key exists: `has("name")` or `has(.key_field)`.
+/// The [name] corresponds to a spec in `shape/pipe_ops.dart`, which is the
+/// single source of truth for the op's input acceptance, shape inference,
+/// runtime evaluation, and parser arity. Adding a new op is a one-file
+/// change to that table.
 ///
-/// The key expression is evaluated and must produce a `String`.
-/// Returns `true` if the input map contains the key.
-final class HasOp extends LamExpr {
-  /// The key expression (must evaluate to a string).
-  final LamExpr key;
+/// [args] holds parsed sub-expressions: empty for zero-arg ops like
+/// `length`, single-element for one-arg ops like `filter(predicate)` or
+/// `map(transform)`. Custom-arity ops (currently just `as(fmt)` with its
+/// typed [OutputFormat] argument) keep dedicated AST classes; see [As].
+final class BuiltinPipeOp extends LamExpr {
+  /// The canonical op name (matches a [PipeOpInfo.name] in the spec table).
+  final String name;
 
-  /// Creates a has operation with [key].
-  const HasOp(this.key);
-}
+  /// Parsed argument expressions, in source order. Empty for zero-arg ops.
+  final List<LamExpr> args;
 
-/// Convert a map to a list of `{key, value}` entries: `to_entries`.
-final class ToEntriesOp extends LamExpr {
-  /// Creates a to_entries operation.
-  const ToEntriesOp();
-}
-
-/// Convert a list of `{key, value}` entries back to a map: `from_entries`.
-final class FromEntriesOp extends LamExpr {
-  /// Creates a from_entries operation.
-  const FromEntriesOp();
-}
-
-/// Parse a string as a number: `to_number`.
-///
-/// Matches CSV and TSV cells, which are strings by default. Pass-through
-/// for existing numbers. Throws on strings that do not parse.
-final class ToNumberOp extends LamExpr {
-  /// Creates a to_number operation.
-  const ToNumberOp();
-}
-
-/// Runtime type of the input as a string: `type`.
-///
-/// Returns one of `"null"`, `"boolean"`, `"number"`, `"string"`,
-/// `"array"`, `"object"`.
-final class TypeOp extends LamExpr {
-  /// Creates a type operation.
-  const TypeOp();
-}
-
-/// Filter map keys by predicate: `filter_keys(. != "internal")`.
-final class FilterKeysOp extends LamExpr {
-  /// The predicate expression, evaluated per key.
-  final LamExpr predicate;
-
-  /// Creates a filter_keys operation with [predicate].
-  const FilterKeysOp(this.predicate);
+  /// Creates a built-in pipe op.
+  const BuiltinPipeOp(this.name, this.args);
 }
 
 /// Object construction: `{name, total: .price * .qty}`.
@@ -360,17 +188,61 @@ final class Slice extends LamExpr {
 ///
 /// At runtime the evaluator infers the shape of the current context and
 /// checks it against the target format's requirement. If the shape is
-/// already compatible, [As] returns the context unchanged. If exactly
-/// one curated remediation exists for the mismatch, it is applied. If
-/// the combination has no curated remediation, or more than one,
-/// evaluation throws a [QueryError] listing the available candidates
-/// so the caller can pick one explicitly.
+/// already compatible, [As] returns the context unchanged. If a curated
+/// remediation exists for the mismatch, it is applied. Otherwise
+/// evaluation throws a [QueryError].
+///
+/// The curated remediation table in `shape/check.dart:_suggestionsFor`
+/// returns at most one bridge per `(input shape, format)` pair, so in
+/// practice "no curated bridge" is the only failure mode users hit.
+/// A defensive multi-bridge branch in the evaluator (`_as` in
+/// `evaluator.dart`) guards against future curation errors that might
+/// add competing bridges; if that path ever fires the user will get a
+/// listing and a request to pick one explicitly.
 final class As extends LamExpr {
   /// The target output format the pipeline should fit.
   final OutputFormat target;
 
   /// Creates an `as(target)` combinator.
   const As(this.target);
+}
+
+/// Alternative: `a // b` — evaluate [left]; if it is `null`, evaluate
+/// [right] instead. Otherwise return [left]'s result unchanged.
+///
+/// Lambé's semantics differ deliberately from jq's: jq's `//` fires on
+/// "null or false". Lambé's fires only on `null`. A genuine `false`
+/// passes through — matching Lambé's broader strictness stance.
+///
+/// Because field access on a missing key already yields `null` via
+/// null-propagation, `//` doubles as a missing-key fallback:
+/// `.user.email // .user.contact.email // "unknown"`.
+final class Alternative extends LamExpr {
+  /// The primary expression, tried first.
+  final LamExpr left;
+
+  /// The fallback, evaluated only when [left] yields `null`.
+  final LamExpr right;
+
+  /// Creates an alternative expression.
+  const Alternative(this.left, this.right);
+}
+
+/// List construction: `[expr, expr, ...]`.
+///
+/// Each [parts] expression is evaluated against the current context
+/// and the results are collected into a list. Empty list literals
+/// `[]` produce the empty list.
+///
+/// Distinct from [Index] (postfix `expr[i]`): list construction has
+/// no target on the left, so it can never parse in a context where
+/// indexing would apply.
+final class ListConstruct extends LamExpr {
+  /// The member expressions, evaluated per-call against the context.
+  final List<LamExpr> parts;
+
+  /// Creates a list construction.
+  const ListConstruct(this.parts);
 }
 
 /// Conditional expression: `if cond then a else b`.

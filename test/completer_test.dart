@@ -270,9 +270,11 @@ void main() {
 
     test('all commands on bare colon', () {
       final (:start, :end, :candidates) = complete(':', 1, null);
-      expect(candidates.length, 9);
+      expect(candidates.length, 11);
       expect(candidates, contains('help'));
       expect(candidates, contains('schema'));
+      expect(candidates, contains('print-shape'));
+      expect(candidates, contains('flatten-cells'));
     });
   });
 
@@ -922,6 +924,113 @@ void main() {
       // filter_values are map-only and must be filtered.
       final r = complete('.users | map(.name) | fil', 25, sampleData);
       expect(r.candidates, ['filter']);
+    });
+  });
+
+  group('Bare pipe-op completion inside parameterised ops', () {
+    // Bare pipe-op names like `text`, `length`, `to_entries` are legal
+    // expressions in lambé (sugar for `. | op`), so `map(text)` and
+    // `filter(length > 0)` parse and run. These tests pin the
+    // completer's behaviour for partial bare ops inside `map(...)` /
+    // `filter(...)`. The shape filter uses the element shape of the
+    // surrounding pipe input, mirroring the post-pipe case.
+
+    test('map(t partial offers t-prefix pipe ops accepted on element', () {
+      // .users element is map; `to_entries` (map-only) and `type`
+      // (universal) accept it; `text` accepts list-or-map per its
+      // `_acceptsListOrMap` predicate, so it appears too.
+      final r = complete('.users | map(t', 14, sampleData);
+      expect(r.candidates, contains('to_entries'));
+      expect(r.candidates, contains('type'));
+    });
+
+    test('filter(le offers length on a list element', () {
+      final r = complete('.users | filter(le', 18, sampleData);
+      // `length` accepts list/map/string; users element is map → kept.
+      expect(r.candidates, contains('length'));
+    });
+
+    test('map(.t prefers field completion (dot present)', () {
+      // The dot disambiguates: this is field-tail context, not bare
+      // pipe-op context. Should not offer pipe ops.
+      final r = complete('.users | map(.n', 15, sampleData);
+      expect(r.candidates, ['.name']);
+    });
+
+    test('map( with no partial offers field completion (dot context)', () {
+      // Empty bare partial does NOT trigger pipe-op completion — the
+      // existing AST-tail field completion handles this.
+      final r = complete('.users | map(', 13, sampleData);
+      expect(r.candidates, containsAll(['.active', '.age', '.name']));
+    });
+
+    test('top-level partial does NOT trigger pipe-op completion', () {
+      // Bare `t` at the top level is a parse failure, not an inside-
+      // a-pipe-op context. Should not offer pipe ops.
+      final r = complete('t', 1, sampleData);
+      expect(r.candidates, isEmpty);
+    });
+  });
+
+  group('Heterogeneous-list completion via data sampling', () {
+    // When a list's element shape is statically `SAny` (heterogeneous
+    // children, e.g. markdown nodes that mix heading / paragraph /
+    // code_block), shape inference can't help completion. The
+    // completer falls back to peeking at the first list element's
+    // actual data and using its concrete shape. This makes
+    // `.children | map(.<TAB>` useful on real markdown.
+
+    final hetero = <String, Object?>{
+      'items': <Object?>[
+        <String, Object?>{'type': 'heading', 'level': 2, 'text': 'A'},
+        <String, Object?>{'type': 'paragraph', 'children': []},
+        <String, Object?>{'type': 'code_block', 'code': 'x'},
+      ],
+    };
+
+    test('map(.<TAB> on heterogeneous list samples first element', () {
+      // First element has type / level / text fields.
+      final r = complete('.items | map(.', 14, hetero);
+      expect(r.candidates, containsAll(['.type', '.level', '.text']));
+    });
+
+    test('map(.t<TAB> narrows by prefix on sampled element', () {
+      final r = complete('.items | map(.t', 15, hetero);
+      expect(r.candidates, containsAll(['.text', '.type']));
+    });
+
+    test('filter then map preserves sampling through shape-preserving op', () {
+      // `filter(...)` keeps the list's element family, so the sample
+      // recovery walks past it to the underlying list's first element.
+      final r = complete(
+        '.items | filter(.type == "heading") | map(.t',
+        44,
+        hetero,
+      );
+      expect(r.candidates, containsAll(['.text', '.type']));
+    });
+
+    test('sort_by preserves sampling through shape-preserving op', () {
+      final r = complete('.items | sort_by(.level) | map(.t', 33, hetero);
+      expect(r.candidates, containsAll(['.text', '.type']));
+    });
+
+    test('reverse preserves sampling through shape-preserving op', () {
+      final r = complete('.items | reverse | map(.t', 25, hetero);
+      expect(r.candidates, containsAll(['.text', '.type']));
+    });
+
+    test('empty heterogeneous list: no sample, no candidates', () {
+      // Without an element to sample, fallback can't help. Returns
+      // empty rather than guessing or throwing.
+      final emptyData = <String, Object?>{'items': <Object?>[]};
+      final r = complete('.items | map(.', 14, emptyData);
+      expect(r.candidates, isEmpty);
+    });
+
+    test('null data: no sample, no candidates', () {
+      final r = complete('.items | map(.', 14, null);
+      expect(r.candidates, isEmpty);
     });
   });
 }

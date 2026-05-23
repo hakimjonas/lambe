@@ -5,6 +5,8 @@
 /// `list<any>`, and nested structures recurse predictably.
 library;
 
+import 'dart:convert';
+
 import 'package:lambe/src/shape/shape.dart';
 import 'package:test/test.dart';
 
@@ -140,6 +142,109 @@ void main() {
       );
       expect(renderShape(const SMap(<String, Shape>{})), 'map<>');
       expect(renderShape(const SList(SAny())), 'list<any>');
+    });
+  });
+
+  group('shapeToJson: structured serialization', () {
+    test('scalars encode as {kind: ...}', () {
+      expect(shapeToJson(const SAny()), {'kind': 'any'});
+      expect(shapeToJson(const SNull()), {'kind': 'null'});
+      expect(shapeToJson(const SBool()), {'kind': 'bool'});
+      expect(shapeToJson(const SNum()), {'kind': 'number'});
+      expect(shapeToJson(const SString()), {'kind': 'string'});
+    });
+
+    test('list encodes with nested element shape', () {
+      expect(shapeToJson(const SList(SNum())), {
+        'kind': 'list',
+        'element': {'kind': 'number'},
+      });
+    });
+
+    test('map encodes with nested fields', () {
+      expect(shapeToJson(const SMap({'a': SNum(), 'b': SString()})), {
+        'kind': 'map',
+        'fields': {
+          'a': {'kind': 'number'},
+          'b': {'kind': 'string'},
+        },
+      });
+    });
+
+    test('nested list-of-maps round-trips the shape tree', () {
+      const shape = SList(SMap({'name': SString(), 'tags': SList(SString())}));
+      expect(shapeToJson(shape), {
+        'kind': 'list',
+        'element': {
+          'kind': 'map',
+          'fields': {
+            'name': {'kind': 'string'},
+            'tags': {
+              'kind': 'list',
+              'element': {'kind': 'string'},
+            },
+          },
+        },
+      });
+    });
+
+    test('empty map has empty fields', () {
+      expect(shapeToJson(const SMap(<String, Shape>{})), {
+        'kind': 'map',
+        'fields': <String, Object?>{},
+      });
+    });
+
+    test('empty list has SAny element', () {
+      expect(shapeToJson(const SList(SAny())), {
+        'kind': 'list',
+        'element': {'kind': 'any'},
+      });
+    });
+
+    test('result serializes to JSON without error', () {
+      const shape = SMap({'a': SList(SNum())});
+      final json = jsonEncode(shapeToJson(shape));
+      expect(json, contains('"kind":"map"'));
+      expect(json, contains('"kind":"list"'));
+      expect(json, contains('"kind":"number"'));
+    });
+  });
+
+  group('SOptional: the optionality wrapper', () {
+    test('renders as optional<inner>', () {
+      expect(renderShape(SOptional(const SNum())), 'optional<number>');
+      expect(
+        renderShape(SOptional(const SList(SString()))),
+        'optional<list<string>>',
+      );
+    });
+
+    test('serializes to {kind: optional, inner: ...}', () {
+      expect(shapeToJson(SOptional(const SNum())), {
+        'kind': 'optional',
+        'inner': {'kind': 'number'},
+      });
+    });
+
+    test('equality compares inner shapes', () {
+      expect(SOptional(const SNum()) == SOptional(const SNum()), isTrue);
+      expect(SOptional(const SNum()) == SOptional(const SString()), isFalse);
+      expect(SOptional(const SNum()) == const SNum(), isFalse);
+    });
+
+    test('nested optional collapses (factory unwraps)', () {
+      // SOptional(SOptional(x)) is semantically identical to
+      // SOptional(x); the factory enforces this.
+      final nested = SOptional(SOptional(const SNum()));
+      expect(nested, equals(SOptional(const SNum())));
+      expect(renderShape(nested), 'optional<number>');
+    });
+
+    test('lives inside other shapes too', () {
+      final shape = SMap({'age': SOptional(const SNum())});
+      expect(renderShape(shape), 'map<age: optional<number>>');
+      expect(shape.fields['age'], isA<SOptional>());
     });
   });
 }

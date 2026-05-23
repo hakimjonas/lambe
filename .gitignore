@@ -8,10 +8,21 @@ doc/api/
 *.iml
 .vscode/
 
+# Claude Code local state (settings, session caches). The
+# .claude/skills/ subdirectory is the exception — it ships an Agent
+# Skills package to GitHub for AI coding agents working on lambé and
+# is tracked deliberately. .pubignore separately excludes the whole
+# .claude/ tree from the pub.dev publish payload.
+# `.claude/*` (not `.claude/`) so the negation can re-include
+# subdirectories — git won't descend into a directory ignored by name.
+.claude/*
+!.claude/skills/
+
 .DS_Store
 Thumbs.db
 
 # Compiled binaries
+lam
 lam-mcp
 
 # Local dependency overrides
@@ -26,3 +37,6 @@ bench-results-*.json
 
 # Session handover notes (internal workflow, not code)
 HANDOVER_*.md
+
+# Local scratch notes (release planning, status snapshots, etc.)
+*.scratch.md

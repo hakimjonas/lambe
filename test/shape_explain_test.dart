@@ -9,6 +9,8 @@
 ///      final shape.
 library;
 
+import 'dart:convert';
+
 import 'package:lambe/lambe.dart';
 import 'package:lambe/src/parser.dart' show parseQuery;
 import 'package:rumil/rumil.dart' show Success, ParseError;
@@ -143,6 +145,78 @@ void main() {
       final text = renderExplain(report);
       expect(text, contains('Not writable as:'));
       expect(text, contains('toml'));
+    });
+
+    test('suppresses writability when a runtime-rejection warning fires', () {
+      // `.config | flatten` on a map shape: flatten rejects map at
+      // runtime, so the post-stage shape is SAny — which would
+      // otherwise pass canWriteAs for every format. Listing every
+      // format would mislead because the pipeline will throw before
+      // any writer runs.
+      final report = explain(
+        _parse('.config | flatten'),
+        const SMap({
+          'config': SMap({'host': SString()}),
+        }),
+      );
+      // Sanity: the rejection warning is in fact present.
+      expect(
+        report.warnings.any((w) => w.kind == WarningKind.runtimeRejection),
+        isTrue,
+      );
+      final text = renderExplain(report);
+      expect(text, contains('runtime-rejection warning above'));
+      expect(text, isNot(contains('Writable as: json')));
+      expect(text, isNot(contains('Not writable as:')));
+    });
+
+    test('empty-filter warning alone does NOT suppress writability', () {
+      // emptyFilter is not runtimeRejection — the pipeline runs to
+      // completion, just produces an empty result. Writability still
+      // applies.
+      final report = explain(
+        _parse('.users | filter(.missing)'),
+        const SMap({
+          'users': SList(SMap({'name': SString()})),
+        }),
+      );
+      expect(
+        report.warnings.any((w) => w.kind == WarningKind.emptyFilter),
+        isTrue,
+      );
+      expect(
+        report.warnings.any((w) => w.kind == WarningKind.runtimeRejection),
+        isFalse,
+      );
+      final text = renderExplain(report);
+      expect(text, contains('Writable as:'));
+      expect(text, isNot(contains('runtime-rejection warning above')));
+    });
+  });
+
+  group('renderExplainJson: writability suppression', () {
+    test('writable_as / not_writable_as become null on runtime-rejection', () {
+      final report = explain(
+        _parse('.config | flatten'),
+        const SMap({
+          'config': SMap({'host': SString()}),
+        }),
+      );
+      final json =
+          jsonDecode(renderExplainJson(report)) as Map<String, Object?>;
+      expect(json['writable_as'], isNull);
+      expect(json['not_writable_as'], isNull);
+      // warnings still present so consumers can see why.
+      expect(json['warnings'], isA<List<Object?>>());
+      expect((json['warnings'] as List<Object?>), isNotEmpty);
+    });
+
+    test('clean pipeline keeps both writability lists', () {
+      final report = explain(_parse('.'), const SMap({'a': SNum()}));
+      final json =
+          jsonDecode(renderExplainJson(report)) as Map<String, Object?>;
+      expect(json['writable_as'], isA<List<Object?>>());
+      expect(json['not_writable_as'], isA<List<Object?>>());
     });
   });
 
@@ -280,6 +354,378 @@ void main() {
       final report = explain(_parse('.users | filter(.active)'), userListShape);
       final text = renderExplain(report);
       expect(text, isNot(contains('Warning:')));
+    });
+  });
+
+  group('explain: CellPolicy threads through to writability', () {
+    // A list of maps whose cells hold a list. Under refuse (default),
+    // csv/tsv are NOT writable; under json, they ARE.
+    const nonFlatShape = SList(
+      SMap({'name': SString(), 'tags': SList(SString())}),
+    );
+
+    test('default (refuse) rejects csv/tsv for non-flat list-of-maps', () {
+      final report = explain(_parse('.'), nonFlatShape);
+      expect(report.writableAs, isNot(contains(OutputFormat.csv)));
+      expect(report.writableAs, isNot(contains(OutputFormat.tsv)));
+      expect(report.notWritableAs, contains(OutputFormat.csv));
+      expect(report.notWritableAs, contains(OutputFormat.tsv));
+    });
+
+    test('json policy accepts csv/tsv for the same shape', () {
+      final report = explain(
+        _parse('.'),
+        nonFlatShape,
+        flattenCells: CellPolicy.json,
+      );
+      expect(report.writableAs, contains(OutputFormat.csv));
+      expect(report.writableAs, contains(OutputFormat.tsv));
+      expect(report.notWritableAs, isNot(contains(OutputFormat.csv)));
+      expect(report.notWritableAs, isNot(contains(OutputFormat.tsv)));
+    });
+
+    test('report.flattenCells round-trips the requested policy', () {
+      final refuse = explain(_parse('.'), nonFlatShape);
+      expect(refuse.flattenCells, CellPolicy.refuse);
+
+      final json = explain(
+        _parse('.'),
+        nonFlatShape,
+        flattenCells: CellPolicy.json,
+      );
+      expect(json.flattenCells, CellPolicy.json);
+    });
+
+    test('renderExplain emits Cell policy footer only when non-default', () {
+      final refuse = explain(_parse('.'), nonFlatShape);
+      expect(renderExplain(refuse), isNot(contains('Cell policy:')));
+
+      final json = explain(
+        _parse('.'),
+        nonFlatShape,
+        flattenCells: CellPolicy.json,
+      );
+      expect(renderExplain(json), contains('Cell policy: json'));
+    });
+  });
+
+  group('explain: runtime-rejection warnings', () {
+    test('filter on a map shape is flagged', () {
+      const shape = SMap({'a': SNum()});
+      final report = explain(_parse('. | filter(.x)'), shape);
+      final rejection =
+          report.warnings
+              .where((w) => w.kind == WarningKind.runtimeRejection)
+              .toList();
+      expect(rejection, hasLength(1));
+      expect(rejection.first.message, contains('filter rejects'));
+      expect(rejection.first.message, contains('throw at runtime'));
+    });
+
+    test('sum on a map shape is flagged', () {
+      const shape = SMap({'a': SNum()});
+      final report = explain(_parse('. | sum'), shape);
+      final rejection =
+          report.warnings
+              .where((w) => w.kind == WarningKind.runtimeRejection)
+              .toList();
+      expect(rejection, hasLength(1));
+      expect(rejection.first.message, contains('sum rejects'));
+    });
+
+    test('SAny input does not trigger rejection (cannot prove)', () {
+      final report = explain(_parse('. | filter(.x)'), const SAny());
+      final rejection = report.warnings.where(
+        (w) => w.kind == WarningKind.runtimeRejection,
+      );
+      expect(rejection, isEmpty);
+    });
+
+    test('compatible input (list for filter) does not trigger', () {
+      const shape = SList(SMap({'active': SBool()}));
+      final report = explain(_parse('. | filter(.active)'), shape);
+      final rejection = report.warnings.where(
+        (w) => w.kind == WarningKind.runtimeRejection,
+      );
+      expect(rejection, isEmpty);
+    });
+
+    test(
+      'after a rejection, downstream stages see SAny and do not double-warn',
+      () {
+        // `. | filter(.a) | sort` starting from a map: filter rejects
+        // (warning emitted), inferShape widens ctx to SAny, sort then
+        // accepts any shape and should NOT emit its own rejection.
+        const shape = SMap({'a': SNum()});
+        final report = explain(_parse('. | filter(.a) | sort'), shape);
+        final rejections =
+            report.warnings
+                .where((w) => w.kind == WarningKind.runtimeRejection)
+                .toList();
+        expect(rejections, hasLength(1));
+        expect(rejections.first.stageIndex, 1);
+        expect(rejections.first.message, contains('filter rejects'));
+      },
+    );
+  });
+
+  group('explain: trivial-result warnings (opt-in)', () {
+    const userListShape = SList(SMap({'name': SString(), 'age': SNum()}));
+
+    test('sort_by(.missing) flagged when includeTrivial: true', () {
+      final report = explain(
+        _parse('. | sort_by(.missing)'),
+        userListShape,
+        includeTrivial: true,
+      );
+      final trivial =
+          report.warnings
+              .where((w) => w.kind == WarningKind.trivialResult)
+              .toList();
+      expect(trivial, hasLength(1));
+      expect(trivial.first.message, contains('sort_by'));
+      expect(trivial.first.message, contains('.missing'));
+    });
+
+    test('group_by(.missing) flagged when includeTrivial: true', () {
+      final report = explain(
+        _parse('. | group_by(.missing)'),
+        userListShape,
+        includeTrivial: true,
+      );
+      final trivial =
+          report.warnings
+              .where((w) => w.kind == WarningKind.trivialResult)
+              .toList();
+      expect(trivial, hasLength(1));
+      expect(trivial.first.message, contains('group_by'));
+    });
+
+    test('map(.missing) flagged when includeTrivial: true', () {
+      final report = explain(
+        _parse('. | map(.missing)'),
+        userListShape,
+        includeTrivial: true,
+      );
+      final trivial =
+          report.warnings
+              .where((w) => w.kind == WarningKind.trivialResult)
+              .toList();
+      expect(trivial, hasLength(1));
+      expect(trivial.first.message, contains('map'));
+    });
+
+    test('NOT flagged by default (includeTrivial: false)', () {
+      final report = explain(_parse('. | sort_by(.missing)'), userListShape);
+      final trivial = report.warnings.where(
+        (w) => w.kind == WarningKind.trivialResult,
+      );
+      expect(trivial, isEmpty);
+    });
+
+    test('existing field does not produce a trivial warning', () {
+      final report = explain(
+        _parse('. | sort_by(.age)'),
+        userListShape,
+        includeTrivial: true,
+      );
+      final trivial = report.warnings.where(
+        (w) => w.kind == WarningKind.trivialResult,
+      );
+      expect(trivial, isEmpty);
+    });
+
+    test('SAny element shape cannot prove missing; no trivial warning', () {
+      final report = explain(
+        _parse('. | sort_by(.missing)'),
+        const SList(SAny()),
+        includeTrivial: true,
+      );
+      final trivial = report.warnings.where(
+        (w) => w.kind == WarningKind.trivialResult,
+      );
+      expect(trivial, isEmpty);
+    });
+  });
+
+  group('renderExplainJson: machine-readable output', () {
+    test('valid JSON with documented top-level keys', () {
+      final report = explain(
+        _parse('.users | map(.name)'),
+        const SMap({
+          'users': SList(SMap({'name': SString()})),
+        }),
+      );
+      final json = renderExplainJson(report);
+      final parsed = jsonDecode(json) as Map<String, Object?>;
+      expect(
+        parsed.keys,
+        containsAll([
+          'stages',
+          'warnings',
+          'writable_as',
+          'not_writable_as',
+          'flatten_cells',
+        ]),
+      );
+    });
+
+    test('stages carry source and shape strings', () {
+      final report = explain(
+        _parse('.users | length'),
+        const SMap({'users': SList(SString())}),
+      );
+      final parsed =
+          jsonDecode(renderExplainJson(report)) as Map<String, Object?>;
+      final stages = parsed['stages'] as List;
+      expect(stages, hasLength(2));
+      final first = stages.first as Map<String, Object?>;
+      expect(first['source'], '.users');
+      // Structured shape: {kind: list, element: {kind: string}}.
+      expect(first['shape'], isA<Map<String, Object?>>());
+      final shape = first['shape'] as Map<String, Object?>;
+      expect(shape['kind'], 'list');
+      final element = shape['element'] as Map<String, Object?>;
+      expect(element['kind'], 'string');
+    });
+
+    test('warnings carry stage_index, kind (snake_case), and message', () {
+      const shape = SMap({'a': SNum()});
+      final report = explain(_parse('. | filter(.x)'), shape);
+      final parsed =
+          jsonDecode(renderExplainJson(report)) as Map<String, Object?>;
+      final warnings = parsed['warnings'] as List;
+      expect(warnings, isNotEmpty);
+      final w = warnings.first as Map<String, Object?>;
+      expect(w.keys, containsAll(['stage_index', 'kind', 'message']));
+      expect(w['kind'], 'runtime_rejection');
+    });
+
+    test('kind uses snake_case for all three categories', () {
+      // empty_filter
+      const listShape = SList(SMap({'a': SNum()}));
+      final emptyReport = explain(_parse('. | filter(.b)'), listShape);
+      final emptyKinds = [
+        for (final w
+            in (jsonDecode(renderExplainJson(emptyReport))
+                    as Map<String, Object?>)['warnings']
+                as List)
+          (w as Map<String, Object?>)['kind'],
+      ];
+      expect(emptyKinds, contains('empty_filter'));
+
+      // trivial_result
+      final trivialReport = explain(
+        _parse('. | sort_by(.missing)'),
+        listShape,
+        includeTrivial: true,
+      );
+      final trivialKinds = [
+        for (final w
+            in (jsonDecode(renderExplainJson(trivialReport))
+                    as Map<String, Object?>)['warnings']
+                as List)
+          (w as Map<String, Object?>)['kind'],
+      ];
+      expect(trivialKinds, contains('trivial_result'));
+    });
+
+    test('writable_as / not_writable_as are name lists', () {
+      final report = explain(_parse('.'), const SList(SString()));
+      final parsed =
+          jsonDecode(renderExplainJson(report)) as Map<String, Object?>;
+      expect(parsed['writable_as'], contains('json'));
+      expect(parsed['not_writable_as'], contains('toml'));
+    });
+
+    test('flatten_cells is the policy name string', () {
+      final report = explain(
+        _parse('.'),
+        const SList(SMap({'a': SList(SNum())})),
+        flattenCells: CellPolicy.json,
+      );
+      final parsed =
+          jsonDecode(renderExplainJson(report)) as Map<String, Object?>;
+      expect(parsed['flatten_cells'], 'json');
+    });
+  });
+
+  group('SOptional: propagates through inference and analyzers', () {
+    test('field access on map with optional field returns optional', () {
+      final mapShape = SMap({'age': SOptional(const SNum())});
+      final report = explain(_parse('.age'), mapShape);
+      expect(report.stages.last.shape, SOptional(const SNum()));
+    });
+
+    test('field access on optional map wraps result in optional', () {
+      final mapShape = SOptional(const SMap({'name': SString()}));
+      final report = explain(_parse('.name'), mapShape);
+      expect(report.stages.last.shape, SOptional(const SString()));
+    });
+
+    test('filter accepts optional list (acceptance unwraps)', () {
+      final listShape = SOptional(const SList(SNum()));
+      final report = explain(_parse('. | filter(. > 0)'), listShape);
+      // Rejection analyzer should NOT fire: optional unwraps for
+      // acceptance, and the inner SList is accepted.
+      final rejection = report.warnings.where(
+        (w) => w.kind == WarningKind.runtimeRejection,
+      );
+      expect(rejection, isEmpty);
+    });
+
+    test('missing-field check walks through optional wrappers', () {
+      final shape = SOptional(
+        const SMap({
+          'users': SList(SMap({'name': SString()})),
+        }),
+      );
+      // `.users | filter(.missing)` on an optional-outer map: the
+      // walk should see users is a list of maps with only `name`.
+      final report = explain(_parse('.users | filter(.missing)'), shape);
+      final emptyFilter =
+          report.warnings
+              .where((w) => w.kind == WarningKind.emptyFilter)
+              .toList();
+      expect(emptyFilter, hasLength(1));
+      expect(emptyFilter.first.message, contains('.missing'));
+    });
+
+    test('optional bool predicate is not provably-empty', () {
+      // An optional bool is "bool or absent" — not provably non-boolean.
+      // The empty-filter check should NOT fire.
+      final listShape = SList(SMap({'active': SOptional(const SBool())}));
+      final report = explain(_parse('. | filter(.active)'), listShape);
+      final emptyFilter = report.warnings.where(
+        (w) => w.kind == WarningKind.emptyFilter,
+      );
+      expect(emptyFilter, isEmpty);
+    });
+
+    test('root optional map rejects TOML (MustBeMap does NOT unwrap)', () {
+      // Root optional means "might be absent entirely" — TOML cannot
+      // serialize that without a materialization step.
+      final shape = SOptional(const SMap({'a': SNum()}));
+      final report = explain(_parse('.'), shape);
+      expect(report.notWritableAs, contains(OutputFormat.toml));
+    });
+
+    test('nested optionality collapses through factory', () {
+      // Verified via the factory, but also check that inference never
+      // produces stacked optionals via field-through-optional.
+      final shape = SOptional(SMap({'nested': SOptional(const SNum())}));
+      final report = explain(_parse('.nested'), shape);
+      // Two optional steps (outer map, inner field) should collapse
+      // to a single SOptional<SNum>.
+      expect(report.stages.last.shape, SOptional(const SNum()));
+    });
+
+    test('shapeToJson round-trips optional', () {
+      final shape = SOptional(const SNum());
+      expect(shapeToJson(shape), {
+        'kind': 'optional',
+        'inner': {'kind': 'number'},
+      });
     });
   });
 }

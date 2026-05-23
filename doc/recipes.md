@@ -127,6 +127,81 @@ $ lam '. | map(.count | to_number) | max' inventory.csv
 942
 ```
 
+## Markdown
+
+Extract heading text (`text` walks the node tree, so it handles
+emphasis, inline code, links, and nested formatting):
+
+```bash
+$ lam '.children | filter(.type == "heading") | map(text)' README.md
+```
+
+Headings paired with their level:
+
+```bash
+$ lam '.children | filter(.type == "heading") | map({level, text: text})' README.md
+```
+
+Plain text from each paragraph:
+
+```bash
+$ lam '.children | filter(.type == "paragraph") | map(text)' doc.md
+```
+
+Code-block contents by language:
+
+```bash
+$ lam '.children | filter(.type == "code_block" && .language == "python") | map(.code)' tutorial.md
+```
+
+Full document prose, no markup:
+
+```bash
+$ lam '. | text' README.md
+```
+
+### Querying a CHANGELOG
+
+A release notes file follows a recurring shape: H2 per release, H3 per
+subsection. The same `text` op recovers the release names regardless of
+inline formatting.
+
+Every release version:
+
+```bash
+$ lam '.children | filter(.type == "heading" and .level == 2) | map(text)' CHANGELOG.md
+[
+  "0.9.0",
+  "0.8.0",
+  "0.7.1"
+]
+```
+
+Latest release name:
+
+```bash
+$ lam '.children | filter(.type == "heading" and .level == 2) | map(text) | first' CHANGELOG.md
+"0.9.0"
+```
+
+Every subsection title (informational; structure under each release):
+
+```bash
+$ lam '.children | filter(.type == "heading" and .level == 3) | map(text)' CHANGELOG.md
+```
+
+Check for duplicate release entries (returns `true` when none):
+
+```bash
+$ lam '.children | filter(.type == "heading" and .level == 2) | map(text) | length == (.children | filter(.type == "heading" and .level == 2) | map(text) | unique | length)' CHANGELOG.md
+true
+```
+
+These same queries are gated by `--assert` in `tool/lint_changelog.sh`,
+which CI runs on every push: lambé itself validates lambé's release
+notes, parsed by lambé's own Markdown parser. Real-world example of the
+pattern.
+
 ## TOML (Rust, Python config)
 
 Get a dependency version from Cargo.toml:
@@ -335,6 +410,72 @@ $ lam --schema deployment.yaml
 $ lam '.spec.template.spec' deployment.yaml
 $ lam -i deployment.yaml
 ```
+
+## Bridging shapes to output formats with `as(fmt)`
+
+Some output formats restrict the root shape: TOML and HCL want a map
+at the top level; CSV and TSV want a list of records. When the
+pipeline produces something else, `as(fmt)` applies a curated bridge
+so the value fits.
+
+There are four canonical bridges. All four are reachable via `as(...)`
+or via the CLI's `--to` flag with `--flatten-cells refuse` (the
+default).
+
+### `list<scalar> | as(toml)` and `as(hcl)`
+
+Wrap a list under a single `items` key.
+
+```
+$ lam -n --to toml '["a", "b", "c"] | as(toml)'
+items = ["a", "b", "c"]
+
+
+$ lam -n --to hcl '["a", "b"] | as(hcl)'
+items = ["a", "b"]
+```
+
+### `scalar | as(toml)` and `as(hcl)`
+
+Wrap a scalar under a single `value` key.
+
+```
+$ lam -n --to toml '"hello" | as(toml)'
+value = "hello"
+
+
+$ lam -n --to hcl '"hello" | as(hcl)'
+value = "hello"
+```
+
+### `map | as(csv)` and `as(tsv)`
+
+Convert a map to a two-column key/value list of records via
+`to_entries`.
+
+```
+$ lam -n --to csv '{a: 1, b: 2} | as(csv)'
+key,value
+a,1
+b,2
+```
+
+### `scalar | as(csv)` and `as(tsv)`
+
+Compose: wrap the scalar under `value`, then `to_entries`. The
+result is a one-row CSV with a `key`/`value` header.
+
+```
+$ lam -n --to csv '42 | as(csv)'
+key,value
+value,42
+```
+
+### When `as(fmt)` does nothing
+
+A shape that already satisfies the format's requirement passes
+through unchanged: `map | as(toml)` is identity, as is `list<map> |
+as(csv)`. The bridge fires only when there's a real mismatch.
 
 ## Next steps
 

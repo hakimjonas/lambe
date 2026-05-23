@@ -4,11 +4,14 @@ A side-by-side mapping of common jq patterns to their Lambe equivalents.
 
 Lambe and jq have overlapping but distinct scopes. jq is the established
 standard for JSON processing on the command line, with a long history and
-features Lambe does not have (e.g. streaming, `//` alternative operator,
-recursive descent, regex filters). Lambe covers more input formats by default
+features Lambe does not have (e.g. streaming, recursive descent, regex
+filters, user-defined functions). Lambe covers more input formats by default
 (YAML, TOML, HCL, CSV, TSV, Markdown) and leans on explicit SQL-like verbs
 (`filter`, `map`, `sort_by`) rather than jq's terser generic filter model.
 If you already know jq, most of it translates directly.
+
+See [non-goals.md](non-goals.md) for the full list of deliberate
+omissions and the lambé idiom that replaces each one.
 
 All examples use this data:
 

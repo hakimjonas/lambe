@@ -1,6 +1,6 @@
-/// Extracts Lambé query expressions from human-facing docs (AI.md and the
-/// MCP server's tool descriptions and instructions), then asserts each one
-/// parses against a representative fixture.
+/// Extracts Lambé query expressions from human-facing docs (AGENTS.md
+/// and the MCP server's tool descriptions and instructions), then asserts
+/// each one parses against a representative fixture.
 ///
 /// Guards against doc drift where examples reference features the parser
 /// does not implement. LLM-drafted examples are especially prone to this
@@ -75,16 +75,16 @@ void main() {
     'tags': <Object?>['a', 'b'],
   };
 
-  group('AI.md code blocks', () {
-    const path = 'AI.md';
+  group('AGENTS.md code blocks', () {
+    const path = 'AGENTS.md';
     final file = File(path);
     if (!file.existsSync()) {
-      test('AI.md exists', () => fail('$path not found'));
+      test('AGENTS.md exists', () => fail('$path not found'));
       return;
     }
     final exprs = _extractLamExpressions(file.readAsStringSync());
     if (exprs.isEmpty) {
-      test('AI.md has lambe examples', () => fail('no examples extracted'));
+      test('AGENTS.md has lambe examples', () => fail('no examples extracted'));
       return;
     }
     for (final (expr, location) in exprs) {

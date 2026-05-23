@@ -11,6 +11,11 @@ LamExpr _parse(String input) {
   };
 }
 
+void _expectOp(LamExpr op, String name) {
+  expect(op, isA<BuiltinPipeOp>());
+  expect((op as BuiltinPipeOp).name, name);
+}
+
 void main() {
   group('Atoms', () {
     test('identity (.)', () {
@@ -186,14 +191,162 @@ void main() {
     });
   });
 
+  group('jq-ism aliases', () {
+    test('`and` parses as `&&`', () {
+      final expr = _parse('.a and .b');
+      expect(expr, isA<BinaryOp>());
+      expect((expr as BinaryOp).op, '&&');
+    });
+
+    test('`or` parses as `||`', () {
+      final expr = _parse('.a or .b');
+      expect(expr, isA<BinaryOp>());
+      expect((expr as BinaryOp).op, '||');
+    });
+
+    test('`and` keeps word boundary: .andy is still a field', () {
+      final expr = _parse('.andy');
+      expect(expr, isA<Field>());
+      expect((expr as Field).name, 'andy');
+    });
+
+    test('`or` keeps word boundary: .orbit is still a field', () {
+      final expr = _parse('.orbit');
+      expect(expr, isA<Field>());
+      expect((expr as Field).name, 'orbit');
+    });
+
+    test('`tonumber` parses as to_number', () {
+      final expr = _parse('.x | tonumber');
+      expect(expr, isA<Pipe>());
+      final pipe = expr as Pipe;
+      expect(pipe.op, isA<BuiltinPipeOp>());
+      expect((pipe.op as BuiltinPipeOp).name, 'to_number');
+    });
+
+    test('`add` parses as sum (jq alias)', () {
+      // jq's `add` reduces a list of numbers to their sum, matching
+      // Lambé's `sum` exactly. Aliased so jq-trained agents land the
+      // right idiom; the AST and `--explain` output use the canonical
+      // name.
+      final viaAlias = _parse('.x | add') as Pipe;
+      final viaCanonical = _parse('.x | sum') as Pipe;
+      _expectOp(viaAlias.op, 'sum');
+      _expectOp(viaCanonical.op, 'sum');
+      // Args identical (both empty) on both sides — same canonical AST.
+      expect((viaAlias.op as BuiltinPipeOp).args, isEmpty);
+      expect((viaCanonical.op as BuiltinPipeOp).args, isEmpty);
+    });
+
+    test('`and` precedence: .a or .b and .c == .a or (.b and .c)', () {
+      final expr = _parse('.a or .b and .c');
+      expect(expr, isA<BinaryOp>());
+      final top = expr as BinaryOp;
+      expect(top.op, '||');
+      expect(top.right, isA<BinaryOp>());
+      expect((top.right as BinaryOp).op, '&&');
+    });
+  });
+
+  group('`//` alternative', () {
+    test('.a // .b is Alternative', () {
+      final expr = _parse('.a // .b');
+      expect(expr, isA<Alternative>());
+      final alt = expr as Alternative;
+      expect(alt.left, isA<Field>());
+      expect(alt.right, isA<Field>());
+    });
+
+    test('chained .a // .b // .c is right-associative', () {
+      final expr = _parse('.a // .b // .c');
+      expect(expr, isA<Alternative>());
+      final outer = expr as Alternative;
+      expect((outer.left as Field).name, 'a');
+      expect(outer.right, isA<Alternative>());
+      final inner = outer.right as Alternative;
+      expect((inner.left as Field).name, 'b');
+      expect((inner.right as Field).name, 'c');
+    });
+
+    test('// does not swallow / (division)', () {
+      final expr = _parse('.x / .y');
+      expect(expr, isA<BinaryOp>());
+      expect((expr as BinaryOp).op, '/');
+    });
+
+    test('// binds looser than ||', () {
+      // `.a || .b // .c` should parse as `(.a || .b) // .c`
+      final expr = _parse('.a || .b // .c');
+      expect(expr, isA<Alternative>());
+      final alt = expr as Alternative;
+      expect(alt.left, isA<BinaryOp>());
+      expect((alt.left as BinaryOp).op, '||');
+    });
+
+    test('// is lower precedence than pipe | (jq-compatible)', () {
+      // `.a // .b | length` parses as `.a // (.b | length)` — same as jq.
+      // Right side of // is a full pipeline expression.
+      final expr = _parse('.a // .b | length');
+      expect(expr, isA<Alternative>());
+      expect((expr as Alternative).right, isA<Pipe>());
+    });
+
+    test('parens override: (.a // .b) | length forces the alt first', () {
+      final expr = _parse('(.a // .b) | length');
+      expect(expr, isA<Pipe>());
+      expect((expr as Pipe).input, isA<Alternative>());
+    });
+  });
+
+  group('List literals', () {
+    test('[] is empty ListConstruct', () {
+      final expr = _parse('[]');
+      expect(expr, isA<ListConstruct>());
+      expect((expr as ListConstruct).parts, isEmpty);
+    });
+
+    test('[1, 2, 3] is a three-part ListConstruct', () {
+      final expr = _parse('[1, 2, 3]');
+      expect(expr, isA<ListConstruct>());
+      final list = expr as ListConstruct;
+      expect(list.parts.length, 3);
+      expect(list.parts.every((p) => p is NumLit), true);
+    });
+
+    test('[.a, .b] collects fields', () {
+      final expr = _parse('[.a, .b]');
+      expect(expr, isA<ListConstruct>());
+      final list = expr as ListConstruct;
+      expect(list.parts.length, 2);
+      expect(list.parts.every((p) => p is Field), true);
+    });
+
+    test('list literal at atom level does not conflict with indexing', () {
+      // `.users[0]` must still parse as Index, not ListConstruct.
+      final expr = _parse('.users[0]');
+      expect(expr, isA<Index>());
+    });
+
+    test('pipeline can feed into a list literal', () {
+      // `.users | map([.name, .age])` — list literal inside map's
+      // transform expression.
+      final expr = _parse('.users | map([.name, .age])');
+      expect(expr, isA<Pipe>());
+      final pipe = expr as Pipe;
+      expect(pipe.op, isA<BuiltinPipeOp>());
+      expect((pipe.op as BuiltinPipeOp).name, 'map');
+      expect((pipe.op as BuiltinPipeOp).args[0], isA<ListConstruct>());
+    });
+  });
+
   group('Pipeline operations', () {
     test('.users | filter(.age > 30)', () {
       final expr = _parse('.users | filter(.age > 30)');
       expect(expr, isA<Pipe>());
       final pipe = expr as Pipe;
       expect(pipe.input, isA<Field>());
-      expect(pipe.op, isA<FilterOp>());
-      final pred = (pipe.op as FilterOp).predicate;
+      _expectOp(pipe.op, 'filter');
+      final pred = (pipe.op as BuiltinPipeOp).args[0];
       expect(pred, isA<BinaryOp>());
       expect((pred as BinaryOp).op, '>');
     });
@@ -202,21 +355,21 @@ void main() {
       final expr = _parse('.users | map(.name)');
       expect(expr, isA<Pipe>());
       final pipe = expr as Pipe;
-      expect(pipe.op, isA<MapOp>());
-      expect((pipe.op as MapOp).transform, isA<Field>());
+      _expectOp(pipe.op, 'map');
+      expect((pipe.op as BuiltinPipeOp).args[0], isA<Field>());
     });
 
     test('chained: .users | filter(.active) | map(.name) | sort', () {
       final expr = _parse('.users | filter(.active) | map(.name) | sort');
       expect(expr, isA<Pipe>());
       final sort = expr as Pipe;
-      expect(sort.op, isA<SortOp>());
+      _expectOp(sort.op, 'sort');
       expect(sort.input, isA<Pipe>());
       final map = sort.input as Pipe;
-      expect(map.op, isA<MapOp>());
+      _expectOp(map.op, 'map');
       expect(map.input, isA<Pipe>());
       final filter = map.input as Pipe;
-      expect(filter.op, isA<FilterOp>());
+      _expectOp(filter.op, 'filter');
       expect(filter.input, isA<Field>());
     });
 
@@ -225,43 +378,43 @@ void main() {
       expect(expr, isA<Pipe>());
       final pipe = expr as Pipe;
       expect(pipe.input, isA<Identity>());
-      expect(pipe.op, isA<KeysOp>());
+      _expectOp(pipe.op, 'keys');
     });
 
     test('. | values', () {
       final expr = _parse('. | values');
       expect(expr, isA<Pipe>());
-      expect((expr as Pipe).op, isA<ValuesOp>());
+      _expectOp((expr as Pipe).op, 'values');
     });
 
     test('. | length', () {
       final expr = _parse('. | length');
       expect(expr, isA<Pipe>());
-      expect((expr as Pipe).op, isA<LengthOp>());
+      _expectOp((expr as Pipe).op, 'length');
     });
 
     test('. | sort', () {
       final expr = _parse('. | sort');
       expect(expr, isA<Pipe>());
-      expect((expr as Pipe).op, isA<SortOp>());
+      _expectOp((expr as Pipe).op, 'sort');
     });
 
     test('. | reverse', () {
       final expr = _parse('. | reverse');
       expect(expr, isA<Pipe>());
-      expect((expr as Pipe).op, isA<ReverseOp>());
+      _expectOp((expr as Pipe).op, 'reverse');
     });
 
     test('. | first', () {
       final expr = _parse('. | first');
       expect(expr, isA<Pipe>());
-      expect((expr as Pipe).op, isA<FirstOp>());
+      _expectOp((expr as Pipe).op, 'first');
     });
 
     test('. | last', () {
       final expr = _parse('. | last');
       expect(expr, isA<Pipe>());
-      expect((expr as Pipe).op, isA<LastOp>());
+      _expectOp((expr as Pipe).op, 'last');
     });
   });
 
@@ -291,7 +444,7 @@ void main() {
     test('named ops still parse as before', () {
       final expr = _parse('. | filter(.age > 30)');
       expect(expr, isA<Pipe>());
-      expect((expr as Pipe).op, isA<FilterOp>());
+      _expectOp((expr as Pipe).op, 'filter');
     });
   });
 
@@ -344,14 +497,14 @@ void main() {
       final expr = _parse('.users | filter(.tags | length > 0)');
       expect(expr, isA<Pipe>());
       final pipe = expr as Pipe;
-      expect(pipe.op, isA<FilterOp>());
-      final pred = (pipe.op as FilterOp).predicate;
+      _expectOp(pipe.op, 'filter');
+      final pred = (pipe.op as BuiltinPipeOp).args[0];
       expect(pred, isA<BinaryOp>());
       final gt = pred as BinaryOp;
       expect(gt.op, '>');
       expect(gt.left, isA<Pipe>());
       final inner = gt.left as Pipe;
-      expect(inner.op, isA<LengthOp>());
+      _expectOp(inner.op, 'length');
       expect(inner.input, isA<Field>());
     });
 
@@ -522,6 +675,76 @@ void main() {
       test('empty input', () {
         expect(parse(''), isA<Failure<ParseError, LamExpr>>());
       });
+    });
+  });
+
+  group('Object construction key forms', () {
+    test('shorthand mixed with explicit key + list value', () {
+      // Discovery 4.1 regression: this case was reported as broken on
+      // 0.8.0 but evaluates correctly post-Pratt migration. The test
+      // pins the case so it can't silently break in the future.
+      final expr = _parse('{name, tags: ["x", "y"]}');
+      expect(expr, isA<ObjConstruct>());
+      final entries = (expr as ObjConstruct).entries;
+      expect(entries.length, 2);
+      expect(entries[0].$1, 'name');
+      expect(entries[0].$2, isA<Field>());
+      expect(entries[1].$1, 'tags');
+      expect(entries[1].$2, isA<ListConstruct>());
+    });
+
+    test('JSON-string key parses to same AST as bare identifier', () {
+      final bare = _parse('{name: .x}');
+      final quoted = _parse('{"name": .x}');
+      expect(bare, isA<ObjConstruct>());
+      expect(quoted, isA<ObjConstruct>());
+      final bareEntries = (bare as ObjConstruct).entries;
+      final quotedEntries = (quoted as ObjConstruct).entries;
+      expect(quotedEntries.length, bareEntries.length);
+      expect(quotedEntries[0].$1, bareEntries[0].$1);
+      expect(quotedEntries[0].$2, isA<Field>());
+    });
+
+    test('hyphenated keys via JSON-string spelling', () {
+      final expr = _parse('{"x-axis": .a, "y-axis": .b}');
+      expect(expr, isA<ObjConstruct>());
+      final entries = (expr as ObjConstruct).entries;
+      expect(entries.map((e) => e.$1).toList(), ['x-axis', 'y-axis']);
+    });
+
+    test('keys with spaces', () {
+      final expr = _parse('{"my key": 1}');
+      expect(expr, isA<ObjConstruct>());
+      final entries = (expr as ObjConstruct).entries;
+      expect(entries[0].$1, 'my key');
+    });
+
+    test('mixed forms: shorthand, JSON-string, bare', () {
+      final expr = _parse('{name, "x-axis": .a, age: .b}');
+      expect(expr, isA<ObjConstruct>());
+      final entries = (expr as ObjConstruct).entries;
+      expect(entries.length, 3);
+      expect(entries[0].$1, 'name');
+      expect(entries[0].$2, isA<Field>());
+      expect(entries[1].$1, 'x-axis');
+      expect(entries[2].$1, 'age');
+    });
+
+    test('escapes inside JSON-string key', () {
+      final expr = _parse(r'{"a\nb": 1}');
+      expect(expr, isA<ObjConstruct>());
+      final entries = (expr as ObjConstruct).entries;
+      expect(entries[0].$1, 'a\nb');
+    });
+
+    test('interpolation in key position is rejected', () {
+      final result = parse(r'{"\(x)": .y}');
+      expect(result, isA<Failure<ParseError, LamExpr>>());
+    });
+
+    test('JSON-string key roundtrips through query()', () {
+      final result = query('{"x-axis": .a, "y-axis": .b}', {'a': 1, 'b': 2});
+      expect(result, {'x-axis': 1, 'y-axis': 2});
     });
   });
 }

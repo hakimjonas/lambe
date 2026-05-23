@@ -1,22 +1,33 @@
 /// Query parser. Left-recursive grammar via `rule()`, operator precedence
-/// via layered `chainl1` calls.
+/// via the `pratt` combinator.
 ///
-/// Grammar structure (lowest to highest precedence):
-///   _expr      = _logicOr             (top-level, lowest precedence)
-///   _logicOr   = _logicAnd  chainl1 '||'
-///   _logicAnd  = _equality  chainl1 '&&'
-///   _equality  = _comparison chainl1 '==' | '!='
-///   _comparison = _additive  chainl1 '<' | '>' | '<=' | '>='
-///   _additive  = _multiplicative chainl1 '+' | '-'
-///   _multiplicative = _unary chainl1 '*' | '/' | '%'
-///   _unary     = ('-' | '!') _unary | _postfix
+/// Grammar structure:
+///   _expr      = _operators           (top-level)
+///   _operators = pratt(_postfix, [
+///                  // prefix unary at bp 70
+///                  Prefix('-', 70), Prefix('!', 70),
+///                  // multiplicative (left-assoc) bp 60
+///                  *, /, %
+///                  // additive (left-assoc) bp 50
+///                  +, -
+///                  // comparison (left-assoc) bp 40
+///                  <=, >=, <, >
+///                  // equality (left-assoc) bp 30
+///                  ==, !=
+///                  // logic and (left-assoc) bp 20
+///                  &&, and
+///                  // logic or (left-assoc) bp 10
+///                  ||, or
+///                  // alternative (right-assoc) bp 5
+///                  //
+///                ])
 ///   _postfix   = rule(                (left-recursive via Warth)
 ///                  _postfix '|' pipe_op
 ///                | _postfix '.' ident
 ///                | _postfix '[' _expr ']'
 ///                | _atom )
 ///   _atom      = number | string | bool | null | '(' _expr ')' | dotField
-///                | objConstruct | conditional | pipe_op
+///                | objConstruct | listConstruct | conditional | pipe_op
 library;
 
 import 'package:rumil/rumil.dart';
@@ -144,19 +155,66 @@ final Parser<ParseError, LamExpr> _parenExpr = _sym(
   '(',
 ).skipThen(defer(() => _expr)).thenSkip(_closeParen);
 
-/// A single entry: either `name: expr` or shorthand `name` (= `name: .name`).
-final Parser<ParseError, (String, LamExpr)> _objEntry = _lex(
-  _identNoWs,
-).flatMap(
-  (key) =>
-      _sym(':').skipThen(defer(() => _expr)).map((val) => (key, val)) |
-      succeed<ParseError, (String, LamExpr)>((key, Field(key))),
+/// A single character of a JSON-string key. Must match `_stringLit`'s
+/// escape vocabulary so the two spellings can never disagree on what
+/// characters a key may carry. Interpolation (`\(...)`) is rejected
+/// with a clear message — the construction grammar accepts any string
+/// literal as a key, but key position is not an expression position.
+final Parser<ParseError, String> _stringKeyChar =
+    string(r'\(').flatMap(
+      (_) => failure<ParseError, String>(
+        CustomError(
+          'string interpolation \\(...) is not allowed in object key '
+          'position; build interpolated keys via from_entries on a list '
+          'of {key, value} maps',
+          Location.zero,
+        ),
+      ),
+    ) |
+    string(r'\\').as<String>(r'\') |
+    string(r'\"').as<String>('"') |
+    string(r'\n').as<String>('\n') |
+    string(r'\t').as<String>('\t') |
+    satisfy((c) => c != '"' && c != r'\' && c != '\n', 'string char');
+
+/// JSON-string key for object construction: `"name"`, `"x-axis"`,
+/// `"with spaces"`. Lexed (consumes trailing whitespace). Returns the
+/// raw key string. Mirrors `_stringLit` minus interpolation; key
+/// position is structurally not an expression position so a static
+/// string is the only sensible thing.
+final Parser<ParseError, String> _stringKey = _lex(
+  char(
+    '"',
+  ).skipThen(_stringKeyChar.many).thenSkip(_closeQuote).map((cs) => cs.join()),
 );
+
+/// A single entry: either `key: expr`, or shorthand `name`
+/// (= `name: .name`). Shorthand only applies to bare identifiers —
+/// `{"name"}` is intentionally not supported because it would conflict
+/// with treating the JSON-string as a value-with-defaulted-key.
+final Parser<ParseError, (String, LamExpr)> _objEntry =
+    _lex(_identNoWs).flatMap(
+      (key) =>
+          _sym(':').skipThen(defer(() => _expr)).map((val) => (key, val)) |
+          succeed<ParseError, (String, LamExpr)>((key, Field(key))),
+    ) |
+    _stringKey.flatMap(
+      (key) => _sym(':').skipThen(defer(() => _expr)).map((val) => (key, val)),
+    );
 
 final Parser<ParseError, LamExpr> _objConstruct = _sym('{')
     .skipThen(_objEntry.sepBy(_sym(',')))
     .thenSkip(_closeBrace)
     .map((entries) => ObjConstruct(entries) as LamExpr);
+
+/// List literal: `[expr, expr, ...]` or `[]`.
+///
+/// Parsed at atom level so it never shadows postfix indexing
+/// (`expr[i]`), which requires a prior atom to the left of `[`.
+final Parser<ParseError, LamExpr> _listConstruct = _sym('[')
+    .skipThen(defer(() => _expr).sepBy(_sym(',')))
+    .thenSkip(_closeBracket)
+    .map((parts) => ListConstruct(parts) as LamExpr);
 
 final Parser<ParseError, LamExpr> _conditional = _sym('if')
     .skipThen(_innerExpr)
@@ -186,6 +244,7 @@ final Parser<ParseError, LamExpr> _atom =
     _nullLit |
     _conditional |
     _objConstruct |
+    _listConstruct |
     _parenExpr |
     _dotField |
     _pipeOp;
@@ -210,12 +269,17 @@ final Parser<ParseError, String> _closeBracket = _sym(']').recover(succeed(''));
 final Parser<ParseError, String> _closeBrace = _sym('}').recover(succeed(''));
 
 /// Parameterized pipe op: `name(expr)` with tolerant inner and close.
-Parser<ParseError, LamExpr> _paramOp(
-  String name,
-  LamExpr Function(LamExpr) ctor,
-) => _sym(
-  name,
-).skipThen(_sym('(')).skipThen(_innerExpr).thenSkip(_closeParen).map(ctor);
+///
+/// [astName] is the canonical op name written into [BuiltinPipeOp];
+/// [synName] is the keyword the parser matches in the source. They
+/// differ for jq-idiom aliases (e.g. parser sees `tonumber`, AST says
+/// `to_number`). For canonical ops the two are equal.
+Parser<ParseError, LamExpr> _paramOp(String synName, String astName) =>
+    _sym(synName)
+        .skipThen(_sym('('))
+        .skipThen(_innerExpr)
+        .thenSkip(_closeParen)
+        .map((inner) => BuiltinPipeOp(astName, [inner]));
 
 /// `as(format)` parser: shape-directed bridge to an output format.
 ///
@@ -239,8 +303,8 @@ final Parser<ParseError, LamExpr> _asOp = _sym('as')
 /// so `sort_by` is tried before `sort`). Each spec contributes one
 /// alternative whose shape depends on [shape_ops.PipeOpParseKind]:
 ///
-/// - `zeroArg` → `_kw(name).as(zeroArgCtor())`
-/// - `oneArg`  → `_paramOp(name, oneArgCtor)`
+/// - `zeroArg` → `_kw(name).as(BuiltinPipeOp(name, const []))`
+/// - `oneArg`  → `_paramOp(name, name)` (builds `BuiltinPipeOp(name, [arg])`)
 /// - `custom`  → hand-written rule (currently only `as(fmt)`, which
 ///   takes a closed keyword set rather than an arbitrary expression).
 ///
@@ -249,14 +313,28 @@ final Parser<ParseError, LamExpr> _asOp = _sym('as')
 /// still need an explicit rule here.
 final Parser<ParseError, LamExpr> _pipeOp = _buildPipeOp();
 
+/// jq-ism aliases: names agents reach for that map cleanly to an
+/// existing Lambé op. Registered at the parser layer so shape/eval
+/// stay unaware. Canonical name is what `--print-shape` / `--explain`
+/// emit; these just let jq-trained agents land the query.
+///
+/// Only entries whose jq semantics match an existing Lambé op exactly
+/// belong here. `select` deliberately stays out — `select(p)` is only
+/// valid inside `filter(...)` in Lambé and an alias would mislead;
+/// `_jqIdiomHint` already steers users to `filter`. `paths`,
+/// `recurse`, etc. need pattern hints, not aliases.
+const Map<String, String> _jqAliases = {'tonumber': 'to_number', 'add': 'sum'};
+
 Parser<ParseError, LamExpr> _buildPipeOp() {
   final alternatives = <Parser<ParseError, LamExpr>>[];
   for (final spec in shape_ops.pipeOpSpecs) {
     switch (spec.parseKind) {
       case shape_ops.PipeOpParseKind.zeroArg:
-        alternatives.add(_kw(spec.name).as<LamExpr>(spec.zeroArgCtor!()));
+        alternatives.add(
+          _kw(spec.name).as<LamExpr>(BuiltinPipeOp(spec.name, const [])),
+        );
       case shape_ops.PipeOpParseKind.oneArg:
-        alternatives.add(_paramOp(spec.name, spec.oneArgCtor!));
+        alternatives.add(_paramOp(spec.name, spec.name));
       case shape_ops.PipeOpParseKind.custom:
         // Handled below.
         break;
@@ -265,6 +343,22 @@ Parser<ParseError, LamExpr> _buildPipeOp() {
   // Custom ops: hand-written rules, in the order the grammar wants
   // to try them. Currently just `as(fmt)`.
   alternatives.add(_asOp);
+  // jq-idiom aliases. Registered last so a canonical spec always wins
+  // the parse; the alias only fires when nothing else matches.
+  for (final entry in _jqAliases.entries) {
+    final canonical = shape_ops.pipeOpInfoForName(entry.value);
+    if (canonical == null) continue;
+    switch (canonical.parseKind) {
+      case shape_ops.PipeOpParseKind.zeroArg:
+        alternatives.add(
+          _kw(entry.key).as<LamExpr>(BuiltinPipeOp(canonical.name, const [])),
+        );
+      case shape_ops.PipeOpParseKind.oneArg:
+        alternatives.add(_paramOp(entry.key, canonical.name));
+      case shape_ops.PipeOpParseKind.custom:
+        break;
+    }
+  }
   return alternatives.reduce((a, b) => a | b);
 }
 
@@ -310,47 +404,37 @@ final Parser<ParseError, LamExpr> _postfix = rule(
       _atom,
 );
 
-final Parser<ParseError, LamExpr> _unary =
-    (_sym('-').as('-') | _sym('!').as('!')).flatMap(
-      (op) =>
-          defer(() => _unary).map((operand) => UnaryOp(op, operand) as LamExpr),
-    ) |
-    _postfix;
-
-Parser<ParseError, LamExpr Function(LamExpr, LamExpr)> _binOp(String op) =>
-    _sym(
-      op,
-    ).as<LamExpr Function(LamExpr, LamExpr)>((l, r) => BinaryOp(op, l, r));
-
-Parser<ParseError, LamExpr Function(LamExpr, LamExpr)> _binOps(
-  List<String> ops,
-) {
-  var p = _binOp(ops.first);
-  for (var i = 1; i < ops.length; i++) {
-    p = p | _binOp(ops[i]);
-  }
-  return p;
-}
-
-final Parser<ParseError, LamExpr> _multiplicative = _unary.chainl1(
-  _binOps(['*', '/', '%']),
+/// `/` must not match the first `/` of `//` (alternative operator). Other
+/// single-char ops don't have a longer variant that would be ambiguous at
+/// the binary-operator level, so only `/` needs a notFollowedBy guard.
+final Parser<ParseError, String> _divSym = _lex(
+  string('/').thenSkip(char('/').notFollowedBy),
 );
 
-final Parser<ParseError, LamExpr> _additive = _multiplicative.chainl1(
-  _binOps(['+', '-']),
-);
+/// Lambé's symbol parser routing: `/` requires a not-followed-by guard
+/// so it doesn't shadow the `//` alternative; everything else is a
+/// whitespace-tolerant `_sym(...)`.
+Parser<ParseError, String> _opSym(String s) => s == '/' ? _divSym : _sym(s);
 
-final Parser<ParseError, LamExpr> _comparison = () {
-  final ops = _binOp('<=') | _binOp('>=') | _binOp('<') | _binOp('>');
-  return _additive.chainl1(ops);
-}();
+/// Single Pratt parse covering prefix unary, the six binary precedence
+/// levels supplied by [cFamilyPrecedence], plus Lambé extensions: the
+/// right-associative `//` alternative at the bottom, and the keyword
+/// aliases `and` / `or`. The conditional (`if/then/else`) is parsed
+/// inside `_atom` rather than as a Pratt operator because its
+/// three-branch shape doesn't fit infix dispatch.
+final Parser<ParseError, LamExpr> _operators = pratt<LamExpr>(_postfix, [
+  // Alternative (right-associative, below `||`).
+  InfixRight(_sym('//'), 5, Alternative.new),
+  // Standard C-family operators.
+  ...cFamilyPrecedence<LamExpr>(
+    sym: _opSym,
+    binary: BinaryOp.new,
+    unary: UnaryOp.new,
+  ),
+  // Lambé-specific keyword aliases for && / ||. _kw enforces a word
+  // boundary so `.andy` / `.orbit` keep tokenizing as identifiers.
+  InfixLeft(_kw('and'), 20, (LamExpr a, LamExpr b) => BinaryOp('&&', a, b)),
+  InfixLeft(_kw('or'), 10, (LamExpr a, LamExpr b) => BinaryOp('||', a, b)),
+]);
 
-final Parser<ParseError, LamExpr> _equality = _comparison.chainl1(
-  _binOps(['==', '!=']),
-);
-
-final Parser<ParseError, LamExpr> _logicAnd = _equality.chainl1(_binOp('&&'));
-
-final Parser<ParseError, LamExpr> _logicOr = _logicAnd.chainl1(_binOp('||'));
-
-final Parser<ParseError, LamExpr> _expr = _logicOr;
+final Parser<ParseError, LamExpr> _expr = _operators;

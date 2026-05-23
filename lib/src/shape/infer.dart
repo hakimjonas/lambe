@@ -100,6 +100,20 @@ Shape inferShape(LamExpr expr, Shape input) {
       inferShape(else_, input),
     ),
 
+    // `a // b` is either a's shape (when non-null) or b's. Equal
+    // shapes pass through; otherwise widen.
+    Alternative(:final left, :final right) => _joinBranches(
+      inferShape(left, input),
+      inferShape(right, input),
+    ),
+
+    // `[e1, e2, ...]` yields `SList(join(parts))`. Empty list literal
+    // has no element shape, so widen to `SList(SAny)`.
+    ListConstruct(:final parts) =>
+      parts.isEmpty
+          ? const SList(SAny())
+          : SList(parts.map((p) => inferShape(p, input)).reduce(_joinBranches)),
+
     // Pipe ops are handled above via [pipeOpInfoFor]; reaching this
     // case means the spec table is missing an op AST subtype. Falling
     // through to [SAny] is the safe default.
@@ -116,6 +130,14 @@ Shape _asShape(Shape input, OutputFormat target) {
 }
 
 Shape _lookupField(Shape context, String name) {
+  if (context is SOptional) {
+    // Field access through an optional propagates the optional: if
+    // the outer value is absent, null propagation returns null for
+    // the field access too. So `.field` on SOptional<SMap> yields
+    // SOptional<fieldShape>.
+    final inner = _lookupField(context.inner, name);
+    return SOptional(inner);
+  }
   if (context is SMap) {
     return context.fields[name] ?? const SAny();
   }

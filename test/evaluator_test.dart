@@ -589,4 +589,128 @@ void main() {
       expect(result, ['Bob']);
     });
   });
+
+  group('`//` alternative', () {
+    test('null falls through', () {
+      expect(query('.a // .b', {'a': null, 'b': 42}), 42);
+    });
+
+    test('non-null wins', () {
+      expect(query('.a // .b', {'a': 'hi', 'b': 42}), 'hi');
+    });
+
+    test('missing key falls through (via null-propagation)', () {
+      expect(query('.email // "unknown"', {'name': 'alice'}), 'unknown');
+    });
+
+    test('false is NOT a fallback trigger (Lambé is NOT jq)', () {
+      expect(query('.active // true', {'active': false}), false);
+    });
+
+    test('0 is NOT a fallback trigger', () {
+      expect(query('.count // 99', {'count': 0}), 0);
+    });
+
+    test('empty string is NOT a fallback trigger', () {
+      expect(query('.s // "default"', {'s': ''}), '');
+    });
+
+    test('chained fallback', () {
+      expect(
+        query('.a // .b // .c // "none"', {'a': null, 'b': null, 'c': 'hi'}),
+        'hi',
+      );
+    });
+
+    test('last fallback wins when all are null', () {
+      expect(query('.a // .b // "default"', {'a': null, 'b': null}), 'default');
+    });
+
+    test('right expression not evaluated when left is non-null', () {
+      // .b accesses a field on a null-valued 'a' which would error
+      // if evaluated. Since .a is "hi", the right side must not run.
+      expect(query('.a // .b.nested', {'a': 'hi', 'b': null}), 'hi');
+    });
+
+    test('union-schema: email from either shape', () {
+      final result = queryJson(
+        '.contacts | map(.email // .contact.email) | filter(. != null)',
+        '{"contacts":[{"email":"a@x"},{"contact":{"email":"b@y"}},{}]}',
+      );
+      expect(result, ['a@x', 'b@y']);
+    });
+  });
+
+  group('List literals', () {
+    test('[] evaluates to empty list', () {
+      expect(query('[]', {}), <Object?>[]);
+    });
+
+    test('[1, 2, 3] evaluates to a list of numbers', () {
+      expect(query('[1, 2, 3]', {}), [1, 2, 3]);
+    });
+
+    test('[.a, .b] projects fields across context', () {
+      expect(query('[.a, .b]', {'a': 1, 'b': 2}), [1, 2]);
+    });
+
+    test('map([.name, .age]) produces pairs', () {
+      final result = queryJson(
+        '.users | map([.name, .age])',
+        '{"users":[{"name":"Alice","age":30},{"name":"Bob","age":25}]}',
+      );
+      expect(result, [
+        ['Alice', 30],
+        ['Bob', 25],
+      ]);
+    });
+
+    test('list literal preserves null values (no implicit filter)', () {
+      expect(query('[.a, .b, .c]', {'a': 1, 'b': null}), [1, null, null]);
+    });
+  });
+
+  group('`+` list concatenation', () {
+    test('[1, 2] + [3] concatenates', () {
+      expect(query('[1, 2] + [3]', {}), [1, 2, 3]);
+    });
+
+    test('.a + .b where both are lists', () {
+      expect(
+        query('.a + .b', {
+          'a': [1, 2],
+          'b': [3, 4],
+        }),
+        [1, 2, 3, 4],
+      );
+    });
+
+    test('empty + non-empty', () {
+      expect(query('[] + [1]', {}), [1]);
+    });
+
+    test('non-empty + empty', () {
+      expect(query('[1] + []', {}), [1]);
+    });
+
+    test('preserves order (left then right)', () {
+      expect(query('[3, 1] + [2, 4]', {}), [3, 1, 2, 4]);
+    });
+
+    test('mixed list + scalar is a type error (strict)', () {
+      expect(() => query('[1] + 2', {}), throwsA(isA<QueryError>()));
+    });
+
+    test('mixed list + null is a type error (strict)', () {
+      expect(() => query('[1] + null', {}), throwsA(isA<QueryError>()));
+    });
+
+    test('numbers still add (no interference)', () {
+      expect(query('.x + .y', {'x': 1, 'y': 2}), 3);
+    });
+
+    test('strings still concatenate (no interference)', () {
+      expect(query('.x + .y', {'x': 'hi', 'y': 'there'}), 'hithere');
+    });
+  });
 }

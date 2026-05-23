@@ -29,6 +29,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dart-lang/setup-dart@v1.7.2
+        with:
+          sdk: 3.12.0
 
       - run: dart pub get
       - run: dart run tool/gen_version.dart
@@ -55,6 +57,14 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+
+      - name: Generate checksums.txt
+        run: |
+          cd artifacts
+          # One SHA256 per line, matching sha256sum / shasum -a 256 format.
+          # install.sh reads this to verify downloaded binaries.
+          sha256sum lam-* > checksums.txt
+          cat checksums.txt
 
       - uses: softprops/action-gh-release@v3
         with:
@@ -88,7 +98,7 @@ jobs:
             "\$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
             "name": "io.github.hakimjonas/lambe",
             "title": "Lambe",
-            "description": "Query JSON, YAML, TOML, HCL, CSV, TSV, and Markdown with a composable pipeline syntax.",
+            "description": "A query language for structured data that shows you what you're working with. Shape-aware --explain, JSON Schema input, format bridges.",
             "repository": {
               "url": "https://github.com/hakimjonas/lambe.git",
               "source": "github"

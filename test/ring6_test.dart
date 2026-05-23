@@ -171,7 +171,7 @@ void main() {
 
     test('block access', () {
       final result = queryString(
-        '.resource._labels',
+        '.resource[0]._labels',
         'resource "aws_instance" "web" {\n  ami = "abc"\n}\n',
         format: Format.hcl,
       );
@@ -180,11 +180,30 @@ void main() {
 
     test('block body field', () {
       final result = queryString(
-        '.resource.ami',
+        '.resource[0].ami',
         'resource "aws_instance" "web" {\n  ami = "abc"\n}\n',
         format: Format.hcl,
       );
       expect(result, 'abc');
+    });
+
+    test('blocks are list-shaped uniformly across N=1 and N=2', () {
+      final n1 = queryString(
+        '.variable',
+        'variable "region" {\n  default = "us-east-1"\n}\n',
+        format: Format.hcl,
+      );
+      expect(n1, isA<List<Object?>>());
+      expect((n1 as List).length, 1);
+
+      final n2 = queryString(
+        '.variable',
+        'variable "region" {\n  default = "us-east-1"\n}\n'
+            'variable "instance_type" {\n  default = "t3.micro"\n}\n',
+        format: Format.hcl,
+      );
+      expect(n2, isA<List<Object?>>());
+      expect((n2 as List).length, 2);
     });
 
     test('.tf extension auto-detected', () {

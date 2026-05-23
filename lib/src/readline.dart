@@ -2,10 +2,16 @@
 ///
 /// Handles printable characters, cursor movement, history navigation,
 /// tab completion with common-prefix fill, and standard editing shortcuts.
-/// No external dependencies - uses only `dart:io`.
+/// Uses [rumil_tokens] for the syntax highlighter; no other external
+/// runtime dependency.
 library;
 
 import 'dart:io';
+
+import 'package:rumil/rumil.dart';
+import 'package:rumil_tokens/rumil_tokens.dart';
+
+import 'highlight_grammar.dart';
 
 /// Callback for tab completion.
 ///
@@ -131,11 +137,12 @@ class ReadLine {
             if (byte >= 0x20 && byte < 0x7f) {
               buf.insert(cursor, byte);
               cursor++;
-              if (cursor == buf.length) {
-                stdout.writeCharCode(byte);
-              } else {
-                _redraw(prompt, buf, cursor);
-              }
+              // Always redraw rather than echoing the byte alone:
+              // re-tokenising via rumil_tokens lets keywords and pipe
+              // op names colour as soon as the trigger character is
+              // typed (e.g. `filter` becomes magenta on the final
+              // `r`, not only after a later edit triggers a redraw).
+              _redraw(prompt, buf, cursor);
             }
         }
       }
@@ -380,115 +387,62 @@ const _hYellow = '\x1b[33m';
 const _hMagenta = '\x1b[35m';
 const _hRed = '\x1b[31m';
 
-/// Colorize a buffer for display. Lightweight lexer-level scan - not a full
-/// parse, but good enough for interactive highlighting.
+/// rumil_tokens parser for the Lambé grammar. Built once at module
+/// load time so per-keystroke highlighting only pays the run cost.
+final Parser<ParseError, List<Spanned<Token>>> _highlightTokenizer =
+    buildTokenizer(lambeGrammar);
+
+/// Colorize a buffer for display.
+///
+/// Tokenizes through [rumil_tokens] and maps each token kind to an
+/// ANSI color. The tokenizer is lossless: concatenating the colored
+/// segments reproduces the original input verbatim. On the rare
+/// tokenizer failure the raw text is returned uncolored so the user
+/// still sees what they typed.
 String _highlight(List<int> buf) {
   if (buf.isEmpty) return '';
-
-  final out = StringBuffer();
   final text = String.fromCharCodes(buf);
-  var i = 0;
-
-  while (i < text.length) {
-    final c = text[i];
-
-    if (c == '"') {
-      out.write(_hGreen);
-      out.write('"');
-      i++;
-      while (i < text.length && text[i] != '"') {
-        if (text[i] == r'\' && i + 1 < text.length) {
-          out.write(text[i]);
-          out.write(text[i + 1]);
-          i += 2;
-        } else {
-          out.write(text[i]);
-          i++;
-        }
-      }
-      if (i < text.length) {
-        out.write('"');
-        i++;
-      }
+  final result = _highlightTokenizer.run(text);
+  final spans = switch (result) {
+    Success<ParseError, List<Spanned<Token>>>(:final value) => value,
+    Partial<ParseError, List<Spanned<Token>>>(:final value) => value,
+    Failure<ParseError, List<Spanned<Token>>>() => null,
+  };
+  if (spans == null) return text;
+  final out = StringBuffer();
+  for (final span in spans) {
+    final color = _colorFor(span.token);
+    if (color.isEmpty) {
+      out.write(span.token.text);
+    } else {
+      out.write(color);
+      out.write(span.token.text);
       out.write(_hReset);
-      continue;
     }
-
-    if ((c == '-' && i + 1 < text.length && _isDigit(text.codeUnitAt(i + 1))) ||
-        _isDigit(c.codeUnitAt(0))) {
-      out.write(_hYellow);
-      if (c == '-') {
-        out.write(c);
-        i++;
-      }
-      while (i < text.length &&
-          (_isDigit(text.codeUnitAt(i)) || text[i] == '.')) {
-        out.write(text[i]);
-        i++;
-      }
-      out.write(_hReset);
-      continue;
-    }
-
-    if ('|><=!&+-*/%'.contains(c)) {
-      out.write(_hDim);
-      out.write(c);
-      if (i + 1 < text.length && '|&='.contains(text[i + 1])) {
-        out.write(text[i + 1]);
-        i++;
-      }
-      out.write(_hReset);
-      i++;
-      continue;
-    }
-
-    if ('()[]{}:,'.contains(c)) {
-      out.write(_hDim);
-      out.write(c);
-      out.write(_hReset);
-      i++;
-      continue;
-    }
-
-    if (c == '.') {
-      out.write(_hCyan);
-      out.write('.');
-      i++;
-      while (i < text.length && _isWordChar(text.codeUnitAt(i))) {
-        out.write(text[i]);
-        i++;
-      }
-      out.write(_hReset);
-      continue;
-    }
-
-    if (_isWordChar(c.codeUnitAt(0))) {
-      final start = i;
-      while (i < text.length && _isWordChar(text.codeUnitAt(i))) {
-        i++;
-      }
-      final word = text.substring(start, i);
-      switch (word) {
-        case 'true' || 'false':
-          out.write('$_hMagenta$word$_hReset');
-        case 'null':
-          out.write('$_hRed$word$_hReset');
-        case 'if' || 'then' || 'else':
-          out.write('$_hMagenta$word$_hReset');
-        default:
-          out.write(word);
-      }
-      continue;
-    }
-
-    out.write(c);
-    i++;
   }
-
   return out.toString();
 }
 
-bool _isDigit(int c) => c >= 0x30 && c <= 0x39;
+/// ANSI color (or empty string for "no color") for [token].
+///
+/// Choices preserve the previous hand-rolled highlighter's vibe:
+/// strings green, numbers yellow, keywords magenta, `null` red,
+/// punctuation/operators dim, `.` cyan (the field-access mark).
+/// Pipe op names (registered as `types` in [lambeGrammar]) also
+/// render magenta — same colour as keywords, since they're
+/// language-defined identifiers from the user's point of view.
+String _colorFor(Token token) => switch (token) {
+  StringLit() => _hGreen,
+  NumberLit() => _hYellow,
+  Keyword(text: 'null') => _hRed,
+  Keyword() => _hMagenta,
+  TypeName() => _hMagenta,
+  Punctuation(text: '.') => _hCyan,
+  Operator() || Punctuation() => _hDim,
+  Comment() => _hDim,
+  Annotation() => _hCyan,
+  _ => '',
+};
 
 bool _isWordChar(int c) =>
     (c >= 0x30 && c <= 0x39) ||

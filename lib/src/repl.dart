@@ -31,6 +31,8 @@ void runRepl(Object? data, {OutputFormat format = OutputFormat.json}) {
   var outputFormat = format;
   var pretty = true;
   var raw = false;
+  var flattenCells = CellPolicy.refuse;
+  Shape? activeSchema;
 
   final history = _loadHistory();
   final rl = ReadLine(
@@ -51,12 +53,41 @@ void runRepl(Object? data, {OutputFormat format = OutputFormat.json}) {
       final arg = parts.length > 1 ? parts.skip(1).join(' ') : null;
 
       switch (command) {
+        case 'schema' when arg != null:
+          try {
+            final schema = loadSchemaFromFile(arg);
+            activeSchema = schema;
+            // Validate against currently loaded data, if any.
+            if (currentData != null) {
+              try {
+                mergeSchemaWithData(schema, shapeOf(currentData));
+                stdout.writeln('Schema loaded (agrees with current data).');
+              } on QueryError catch (e) {
+                stdout.writeln(
+                  'Schema loaded, but disagrees with current data: '
+                  '${e.message}',
+                );
+              }
+            } else {
+              stdout.writeln('Schema loaded.');
+            }
+          } on QueryError catch (e) {
+            stderr.writeln('Error: ${e.message}');
+          }
+
         case 'schema':
-          stdout.writeln(
-            const JsonEncoder.withIndent(
-              '  ',
-            ).convert(inferSchema(currentData)),
-          );
+          if (activeSchema == null) {
+            stdout.writeln('No schema loaded. Use :schema <path> to load one.');
+          } else {
+            stdout.writeln(renderJsonSchema(activeSchema));
+          }
+
+        case 'print-shape':
+          if (currentData == null) {
+            stderr.writeln('No data loaded. Use :load <file> first.');
+          } else {
+            stdout.writeln(renderJsonSchema(shapeOf(currentData)));
+          }
 
         case 'to' when arg != null:
           final fmt =
@@ -81,11 +112,35 @@ void runRepl(Object? data, {OutputFormat format = OutputFormat.json}) {
           pretty = !pretty;
           stdout.writeln('Pretty-printing: ${pretty ? "on" : "off"}');
 
+        case 'flatten-cells' when arg != null:
+          final policy =
+              CellPolicy.values.where((p) => p.name == arg).firstOrNull;
+          if (policy != null) {
+            flattenCells = policy;
+            stdout.writeln('Flatten cells: ${policy.name}');
+          } else {
+            stderr.writeln('Usage: :flatten-cells <refuse|json>');
+          }
+
+        case 'flatten-cells':
+          stderr.writeln('Usage: :flatten-cells <refuse|json>');
+
         case 'load' when arg != null:
           final loaded = _loadFile(arg);
           if (loaded != null) {
             currentData = loaded;
             stdout.writeln('Data loaded: ${_briefDescription(currentData)}');
+            // Re-validate against the active schema, if any.
+            if (activeSchema != null) {
+              try {
+                mergeSchemaWithData(activeSchema, shapeOf(loaded));
+              } on QueryError catch (e) {
+                stdout.writeln(
+                  'Warning: data disagrees with active schema: '
+                  '${e.message}',
+                );
+              }
+            }
           }
 
         case 'load':
@@ -123,6 +178,7 @@ void runRepl(Object? data, {OutputFormat format = OutputFormat.json}) {
           outputFormat,
           pretty: pretty,
           raw: raw,
+          flattenCells: flattenCells,
         );
         if (elapsed >= 100) {
           stdout.writeln('[${elapsed}ms] $output');
@@ -138,6 +194,7 @@ void runRepl(Object? data, {OutputFormat format = OutputFormat.json}) {
           outputFormat: outputFormat,
           pretty: pretty,
           raw: raw,
+          flattenCells: flattenCells,
         );
       }
     } on QueryError catch (e) {
@@ -161,8 +218,12 @@ void _handleShapeError(
   required OutputFormat outputFormat,
   required bool pretty,
   required bool raw,
+  required CellPolicy flattenCells,
 }) {
   stderr.writeln('Error: ${e.message}');
+  for (final h in e.hints) {
+    stderr.writeln('Or run ${h.replCommand}: ${h.explanation}');
+  }
   if (e.suggestions.isEmpty) return;
   stdout.writeln();
   stdout.writeln('Apply a bridge?');
@@ -183,7 +244,13 @@ void _handleShapeError(
   try {
     final result = evaluateAst(bridged, data);
     stdout.writeln(
-      _formatResult(result, outputFormat, pretty: pretty, raw: raw),
+      _formatResult(
+        result,
+        outputFormat,
+        pretty: pretty,
+        raw: raw,
+        flattenCells: flattenCells,
+      ),
     );
   } on QueryError catch (e2) {
     stderr.writeln('Error applying "${choice.display}": ${e2.message}');
@@ -272,21 +339,32 @@ String _formatResult(
   OutputFormat format, {
   required bool pretty,
   required bool raw,
+  required CellPolicy flattenCells,
 }) {
   if (raw && result is String) return result;
 
   if (result is List<Object?> && result.length > 10) {
     final truncated = result.sublist(0, 10);
     final rest = result.length - 10;
-    return '${_encode(truncated, format, pretty: pretty)}\n... and $rest more';
+    return '${_encode(truncated, format, pretty: pretty, flattenCells: flattenCells)}\n... and $rest more';
   }
 
-  return _encode(result, format, pretty: pretty);
+  return _encode(result, format, pretty: pretty, flattenCells: flattenCells);
 }
 
-String _encode(Object? value, OutputFormat format, {required bool pretty}) {
+String _encode(
+  Object? value,
+  OutputFormat format, {
+  required bool pretty,
+  required CellPolicy flattenCells,
+}) {
   if (format != OutputFormat.json) {
-    return formatOutput(value, format, pretty: pretty);
+    return formatOutput(
+      value,
+      format,
+      pretty: pretty,
+      flattenCells: flattenCells,
+    );
   }
   if (stdout.hasTerminal && pretty) {
     return _colorJson(value, 0);
@@ -306,36 +384,34 @@ const _red = '\x1b[31m';
 
 /// Render [value] as colorized, pretty-printed JSON.
 String _colorJson(Object? value, int depth) {
-  if (value == null) return '$_red${null}$_reset';
-  if (value is bool) return '$_magenta$value$_reset';
-  if (value is num) return '$_yellow$value$_reset';
-  if (value is String) return '$_green${jsonEncode(value)}$_reset';
-
   final indent = '  ' * (depth + 1);
   final closingIndent = '  ' * depth;
-
-  if (value is List<Object?>) {
-    if (value.isEmpty) return '$_dim[]$_reset';
-    final items = value
-        .map((e) => '$indent${_colorJson(e, depth + 1)}')
-        .join('$_dim,$_reset\n');
-    return '$_dim[$_reset\n$items\n$closingIndent$_dim]$_reset';
-  }
-
-  if (value is Map<String, Object?>) {
-    if (value.isEmpty) return '$_dim{}$_reset';
-    final entries = value.entries
-        .map(
-          (e) =>
-              '$indent$_cyan${jsonEncode(e.key)}$_reset'
-              '$_dim:$_reset '
-              '${_colorJson(e.value, depth + 1)}',
-        )
-        .join('$_dim,$_reset\n');
-    return '$_dim{$_reset\n$entries\n$closingIndent$_dim}$_reset';
-  }
-
-  return jsonEncode(value);
+  return switch (value) {
+    null => '$_red${null}$_reset',
+    bool() => '$_magenta$value$_reset',
+    num() => '$_yellow$value$_reset',
+    String() => '$_green${jsonEncode(value)}$_reset',
+    List<Object?>() when value.isEmpty => '$_dim[]$_reset',
+    List<Object?>() => () {
+      final items = value
+          .map((e) => '$indent${_colorJson(e, depth + 1)}')
+          .join('$_dim,$_reset\n');
+      return '$_dim[$_reset\n$items\n$closingIndent$_dim]$_reset';
+    }(),
+    Map<String, Object?>() when value.isEmpty => '$_dim{}$_reset',
+    Map<String, Object?>() => () {
+      final entries = value.entries
+          .map(
+            (e) =>
+                '$indent$_cyan${jsonEncode(e.key)}$_reset'
+                '$_dim:$_reset '
+                '${_colorJson(e.value, depth + 1)}',
+          )
+          .join('$_dim,$_reset\n');
+      return '$_dim{$_reset\n$entries\n$closingIndent$_dim}$_reset';
+    }(),
+    _ => jsonEncode(value),
+  };
 }
 
 String _briefDescription(Object? data) {
@@ -379,16 +455,24 @@ Object? _loadFile(String path) {
 
 void _printHelp() {
   stdout.writeln('Commands:');
-  stdout.writeln('  :schema         Show data structure');
   stdout.writeln(
-    '  :to <format>    Set output format (json, yaml, toml, csv, tsv, hcl)',
+    '  :schema [path]           Load (with path) or show the active schema',
   );
-  stdout.writeln('  :raw            Toggle raw string output');
-  stdout.writeln('  :pretty         Toggle pretty-printing');
-  stdout.writeln('  :load <file>    Load a different data file');
-  stdout.writeln('  :history        Show query history');
-  stdout.writeln('  :help           Show this help');
-  stdout.writeln('  :quit, :q       Exit');
+  stdout.writeln(
+    '  :print-shape             Print the data\'s inferred shape as JSON Schema',
+  );
+  stdout.writeln(
+    '  :to <format>             Set output format (json, yaml, toml, csv, tsv, hcl)',
+  );
+  stdout.writeln('  :raw                     Toggle raw string output');
+  stdout.writeln('  :pretty                  Toggle pretty-printing');
+  stdout.writeln(
+    '  :flatten-cells <policy>  CSV/TSV cell policy (refuse, json)',
+  );
+  stdout.writeln('  :load <file>             Load a different data file');
+  stdout.writeln('  :history                 Show query history');
+  stdout.writeln('  :help                    Show this help');
+  stdout.writeln('  :quit, :q                Exit');
   stdout.writeln();
   stdout.writeln('Shortcuts: Tab for completion, Up/Down for history');
 }

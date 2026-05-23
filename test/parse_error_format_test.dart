@@ -156,4 +156,215 @@ void main() {
       }
     });
   });
+
+  group('jq-idiom hints', () {
+    test('.users[] suggests map()', () {
+      try {
+        parseAst('.users[]');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('no `[]` iterate-all'));
+        expect(e.message, contains('map(.name)'));
+      }
+    });
+
+    test('.items[].name suggests map()', () {
+      try {
+        parseAst('.items[].name');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('no `[]` iterate-all'));
+      }
+    });
+
+    test('.foo? suggests has() / shape-check', () {
+      try {
+        parseAst('.foo?');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('no `?` optional-path suffix'));
+        expect(e.message, contains('has('));
+      }
+    });
+
+    test('.. suggests explicit paths', () {
+      try {
+        parseAst('..');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('no `..` recursive descent'));
+      }
+    });
+
+    test('| select(pred) suggests filter()', () {
+      try {
+        parseAst('.x | select(.active)');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('select'));
+        expect(e.message, contains('filter'));
+      }
+    });
+
+    test('map(select(...)) suggests filter()', () {
+      try {
+        parseAst('.users | map(select(.active))');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('only valid inside `filter'));
+      }
+    });
+
+    test('| empty suggests filter()', () {
+      try {
+        parseAst('.x | empty');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('`empty` does not exist'));
+        expect(e.message, contains('filter'));
+      }
+    });
+
+    test('if/then/else/end with empty suggests filter()', () {
+      try {
+        parseAst('.x | map(if .a then .a else empty end)');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('no `empty` keyword'));
+      }
+    });
+
+    test('| if as pipe stage explains the expression-only rule', () {
+      try {
+        parseAst('.x | if . > 0 then . else null end');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('if/then/else/end'));
+        expect(e.message, contains('expression'));
+      }
+    });
+
+    test('did-you-mean still fires for plain typos', () {
+      try {
+        parseAst('.users | filtre(.age)');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('did you mean "filter"?'));
+      }
+    });
+
+    test('| try suggests if/else or shape checks', () {
+      try {
+        parseAst('.x | try .a');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('try'));
+        expect(e.message, contains('exception model'));
+      }
+    });
+
+    test('try at top level suggests if/else', () {
+      try {
+        parseAst('try .a catch null');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('try'));
+      }
+    });
+
+    test('| recurse suggests explicit paths', () {
+      try {
+        parseAst('.x | recurse(.children)');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('recursive descent'));
+      }
+    });
+
+    test('| walk suggests explicit paths', () {
+      try {
+        parseAst('.x | walk(. * 2)');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('recursive descent'));
+      }
+    });
+
+    test('| paths suggests --print-shape', () {
+      try {
+        parseAst('.x | paths');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('paths'));
+        expect(e.message, contains('print-shape'));
+      }
+    });
+
+    test('| leaf_paths suggests --print-shape', () {
+      try {
+        parseAst('.x | leaf_paths');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('print-shape'));
+      }
+    });
+
+    test('range generator hint', () {
+      try {
+        parseAst('range(0; 10)');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('range'));
+        expect(e.message, contains('generator'));
+      }
+    });
+
+    test('| limit suggests slicing', () {
+      try {
+        parseAst('.x | limit(3; .)');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('limit'));
+        expect(e.message, contains('slicing'));
+      }
+    });
+
+    test('| nth suggests slicing or first/last', () {
+      try {
+        parseAst('.x | nth(0; .)');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('nth'));
+      }
+    });
+
+    test('@csv suggests as(csv)', () {
+      try {
+        parseAst('.users | @csv');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('@csv'));
+        expect(e.message, contains('as(csv)'));
+      }
+    });
+
+    test('@tsv suggests as(tsv)', () {
+      try {
+        parseAst('.users | @tsv');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('as(tsv)'));
+      }
+    });
+
+    test('@base64 explicitly unsupported', () {
+      try {
+        parseAst('.x | @base64');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('@base64'));
+        expect(e.message, contains('not support'));
+      }
+    });
+  });
 }

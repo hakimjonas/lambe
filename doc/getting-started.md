@@ -189,13 +189,34 @@ $ echo $?
 
 The exit code is 0 if the assertion passes, 1 if it fails.
 
+## Value computations with no input
+
+For pure value computations — query expressions that build their own
+data and don't read from a file or stdin — pass `-n` (`--null-input`):
+
+```bash
+$ lam -n '[1,2,3] | unique'
+[
+  1,
+  2,
+  3
+]
+
+$ lam -n '[1,2,3] | sum'
+6
+```
+
+Without `-n`, lambé errors on a missing input — that's deliberate
+footgun-catching for typo'd filenames and missing redirects. The
+flag makes "I have no input" explicit.
+
 ## The REPL
 
 For exploring unfamiliar data, use interactive mode:
 
 ```bash
 $ lam -i data.json
-lambe v0.8.0 - type :help for commands, :q to quit
+lambe v0.9.0 - type :help for commands, :q to quit
 Data loaded: {2 fields, 3 users}
 
 lambe>
@@ -250,7 +271,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  lambe: ^0.7.0
+  lambe: ^0.9.0
 ```
 
 ## Next steps

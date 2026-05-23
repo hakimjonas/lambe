@@ -107,6 +107,102 @@ void main() {
     }
   });
 
+  group('canWriteAs agrees with formatOutput under CellPolicy.json', () {
+    for (final entry in _representatives.entries) {
+      final label = entry.key;
+      final value = entry.value;
+      for (final fmt in [OutputFormat.csv, OutputFormat.tsv]) {
+        test('$label as ${fmt.name} with json policy', () {
+          final report = canWriteAs(value, fmt, flattenCells: CellPolicy.json);
+          Object? thrown;
+          try {
+            formatOutput(value, fmt, flattenCells: CellPolicy.json);
+          } catch (e) {
+            thrown = e;
+          }
+
+          switch (report) {
+            case Writable():
+              expect(
+                thrown,
+                isNot(isA<OutputShapeError>()),
+                reason:
+                    'canWriteAs(flattenCells: json) said Writable for '
+                    '$label -> ${fmt.name}, but formatOutput raised '
+                    'OutputShapeError. Under json policy the writer '
+                    'must accept any list shape the check accepts.',
+              );
+            case NotWritable():
+              expect(
+                thrown,
+                isA<OutputShapeError>(),
+                reason:
+                    'canWriteAs(flattenCells: json) said NotWritable '
+                    'for $label -> ${fmt.name}, but formatOutput did '
+                    'not raise OutputShapeError. Widened check and '
+                    'widened writer must agree on rejection too.',
+              );
+          }
+        });
+      }
+    }
+  });
+
+  group('NotWritable.hints fire exactly for CSV/TSV refuse + SList root', () {
+    for (final entry in _representatives.entries) {
+      final label = entry.key;
+      final value = entry.value;
+      for (final fmt in OutputFormat.values) {
+        test('$label as ${fmt.name} under refuse', () {
+          final report = canWriteAs(value, fmt);
+          if (report is! NotWritable) return; // hints only on rejection.
+          final isListRoot = value is List<Object?>;
+          final isDelimited =
+              fmt == OutputFormat.csv || fmt == OutputFormat.tsv;
+          if (isListRoot && isDelimited) {
+            expect(
+              report.hints,
+              hasLength(1),
+              reason:
+                  'List-root rejection under csv/tsv refuse should surface '
+                  'the --flatten-cells hint for $label -> ${fmt.name}.',
+            );
+            expect(report.hints.first.cliFlag, '--flatten-cells json');
+          } else {
+            expect(
+              report.hints,
+              isEmpty,
+              reason:
+                  'Hint should not fire for $label -> ${fmt.name}: the flag '
+                  'would not resolve this mismatch.',
+            );
+          }
+        });
+      }
+    }
+
+    test('json policy never produces hints (nothing left to recommend)', () {
+      for (final entry in _representatives.entries) {
+        for (final fmt in [OutputFormat.csv, OutputFormat.tsv]) {
+          final report = canWriteAs(
+            entry.value,
+            fmt,
+            flattenCells: CellPolicy.json,
+          );
+          if (report is NotWritable) {
+            expect(
+              report.hints,
+              isEmpty,
+              reason:
+                  'Already under json policy; no further --flatten-cells '
+                  'hint should be added for ${entry.key} -> ${fmt.name}.',
+            );
+          }
+        }
+      }
+    });
+  });
+
   group('Writer never silently stringifies non-scalar CSV/TSV cells', () {
     final offenders = <String, Object?>{
       'list of maps with a list-valued cell': <Object?>[

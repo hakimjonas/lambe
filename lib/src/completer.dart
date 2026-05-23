@@ -40,10 +40,12 @@ final List<String> pipelineOps = parser_.pipeOpNames;
 
 /// REPL command names, sorted alphabetically.
 const _replCommands = <String>[
+  'flatten-cells',
   'help',
   'history',
   'load',
   'pretty',
+  'print-shape',
   'q',
   'quit',
   'raw',
@@ -90,6 +92,20 @@ final Parser<ParseError, (int, String)> _pipeCtx = char('|')
 /// the `.` within the parsed remainder.
 final Parser<ParseError, (int, String)> _fieldTailCtx = position<ParseError>()
     .thenSkip(char('.'))
+    .zip(_ident.optional)
+    .thenSkip(_wsRaw)
+    .thenSkip(eof())
+    .map((pair) => (pair.$1, pair.$2 ?? ''));
+
+/// Bare-identifier context: a partial identifier with no leading `.`
+/// or `|`, optional trailing whitespace, then end-of-input.
+///
+/// Used inside parameterised pipe ops (`map(...)`, `filter(...)`)
+/// where bare op names like `text`, `to_entries`, `length` are legal
+/// expressions (sugar for `. | op`). Yields the partial's offset
+/// within the remainder and the partial text. The empty partial
+/// matches too — `map(` with cursor right after the open paren.
+final Parser<ParseError, (int, String)> _bareIdentCtx = position<ParseError>()
     .zip(_ident.optional)
     .thenSkip(_wsRaw)
     .thenSkip(eof())
@@ -179,11 +195,38 @@ Completions _completeRaw(String text, int cursor, Object? data) {
     value: (final dotOff, final partial),
   ) when dotOff == 0) {
     final dotPos = consumed + dotOff;
-    return _fieldsOf(_resolveTarget(ast, rootShape), partial, dotPos);
+    return _fieldsOf(_resolveTarget(ast, rootShape, data), partial, dotPos);
+  }
+
+  // Bare-identifier remainder inside a parameterised pipe op:
+  // `map(t`, `filter(le`, `map(text`. Offer pipe-op candidates
+  // accepted on the element shape. Shorter than wiring the partial
+  // through `_completionContext` because the position math is local
+  // to the remainder.
+  if (ast is Pipe && _innerExpr(ast.op) != null) {
+    final bareRes = _bareIdentCtx.run(remainder);
+    if (bareRes case Success<ParseError, (int, String)>(
+      value: (final partialStart, final partial),
+    ) when partial.isNotEmpty) {
+      final collection = inferShape(ast.input, rootShape);
+      final unwrapped = collection is SOptional ? collection.inner : collection;
+      final elementShape =
+          unwrapped is SList ? unwrapped.element : const SAny();
+      final tokenStart = consumed + partialStart;
+      return (
+        start: tokenStart,
+        end: tokenStart + partial.length,
+        candidates: <String>[
+          for (final op in pipelineOps)
+            if (op.startsWith(partial) && acceptsInputShape(op, elementShape))
+              op,
+        ],
+      );
+    }
   }
 
   if (ast != null) {
-    return _completionContext(ast, astEnd, rootShape);
+    return _completionContext(ast, astEnd, rootShape, data);
   }
 
   return (start: cursor, end: cursor, candidates: <String>[]);
@@ -226,13 +269,33 @@ Completions _completeCommand(String before) {
 /// expression against the element shape of the pipe input. A query
 /// such as `.users | filter(.address.ci` resolves the trailing
 /// identifier against the shape of one user's `address`.
-Completions _completionContext(LamExpr ast, int astEnd, Shape inputShape) {
+///
+/// When the static element shape resolves to [SAny] (heterogeneous
+/// list, or any list whose element type the shape system can't
+/// narrow), the [data] fallback navigates the actual values along the
+/// pipe's input AST and shape-of's the first element. This makes
+/// `.children | map(.<TAB>` useful on real markdown documents
+/// (where `children` is `list<any>` because markdown nodes are
+/// union-typed).
+Completions _completionContext(
+  LamExpr ast,
+  int astEnd,
+  Shape inputShape, [
+  Object? data,
+]) {
   if (ast is Pipe) {
     final inner = _innerExpr(ast.op);
     if (inner != null) {
       final collection = inferShape(ast.input, inputShape);
-      if (collection is SList) {
-        return _completionContext(inner, astEnd, collection.element);
+      // An optional list completes against its element shape.
+      final unwrapped = collection is SOptional ? collection.inner : collection;
+      if (unwrapped is SList) {
+        var elementShape = unwrapped.element;
+        if (elementShape is SAny && data != null) {
+          final sample = _sampleListElement(ast.input, data);
+          if (sample != null) elementShape = shapeOf(sample);
+        }
+        return _completionContext(inner, astEnd, elementShape);
       }
       return (start: astEnd, end: astEnd, candidates: <String>[]);
     }
@@ -282,11 +345,15 @@ Completions _completeAstTail(
 /// produces no field candidates.
 Completions _fieldsOf(Shape target, String partial, int dotPos) {
   final tokenEnd = dotPos + 1 + partial.length;
-  if (target is! SMap) {
+  // Optional maps still offer their fields for completion; null
+  // propagation at runtime handles the absent case.
+  final unwrapped = target is SOptional ? target.inner : target;
+  if (unwrapped is! SMap) {
     return (start: tokenEnd, end: tokenEnd, candidates: <String>[]);
   }
   final matching =
-      target.fields.keys.where((k) => k.startsWith(partial)).toList()..sort();
+      unwrapped.fields.keys.where((k) => k.startsWith(partial)).toList()
+        ..sort();
   return (
     start: dotPos,
     end: tokenEnd,
@@ -301,14 +368,32 @@ Completions _fieldsOf(Shape target, String partial, int dotPos) {
 /// walks the inner expression against it. A query like
 /// `.users | map(.address.` resolves the trailing `.` against a single
 /// user's `address` shape rather than the pipeline result shape.
-Shape _resolveTarget(LamExpr? ast, Shape inputShape) {
+///
+/// When the static element shape resolves to [SAny] (heterogeneous
+/// list, or any list whose element type the shape system can't
+/// narrow), the [data] fallback navigates the actual values to
+/// recover a sample-element shape. This makes `.children | map(.`
+/// useful on real markdown documents (where `children` is
+/// `list<any>` because markdown nodes are union-typed) without
+/// requiring a structural change to the [Shape] ADT.
+Shape _resolveTarget(LamExpr? ast, Shape inputShape, [Object? data]) {
   if (ast == null) return inputShape;
   if (ast is Pipe) {
     final inner = _innerExpr(ast.op);
     if (inner != null) {
       final collection = inferShape(ast.input, inputShape);
-      if (collection is SList) {
-        return inferShape(inner, collection.element);
+      final unwrapped = collection is SOptional ? collection.inner : collection;
+      if (unwrapped is SList) {
+        var elementShape = unwrapped.element;
+        // Heterogeneous lists collapse to SList<SAny>; the static
+        // shape is honest but unhelpful for completion. Try to
+        // recover an element shape by walking the data along
+        // ast.input and shape-of-ing the first element.
+        if (elementShape is SAny && data != null) {
+          final sample = _sampleListElement(ast.input, data);
+          if (sample != null) elementShape = shapeOf(sample);
+        }
+        return inferShape(inner, elementShape);
       }
       return const SAny();
     }
@@ -316,19 +401,80 @@ Shape _resolveTarget(LamExpr? ast, Shape inputShape) {
   return inferShape(ast, inputShape);
 }
 
+/// Navigate [data] along the path expressed by [ast] (a sequence of
+/// [Field]/[Access]/[Index] nodes ultimately rooted at [Identity]) and
+/// return the first element of the resulting list, or `null` if any
+/// step fails or the result isn't a non-empty list.
+///
+/// Restricted to a small AST shape on purpose — this is a completion
+/// helper, not a general evaluator. We never want to actually run a
+/// user query for completion (per-element work could be expensive on
+/// large data); only structural navigation.
+Object? _sampleListElement(LamExpr ast, Object? data) {
+  final value = _navigate(ast, data);
+  if (value is List<Object?> && value.isNotEmpty) return value.first;
+  return null;
+}
+
+Object? _navigate(LamExpr ast, Object? data) {
+  switch (ast) {
+    case Identity():
+      return data;
+    case Field(:final name):
+      if (data is Map<String, Object?>) return data[name];
+      return null;
+    case Access(:final target, :final field):
+      final inner = _navigate(target, data);
+      if (inner is Map<String, Object?>) return inner[field];
+      return null;
+    case Index(:final target, :final index):
+      final inner = _navigate(target, data);
+      if (inner is List<Object?> && index is NumLit) {
+        final i = index.value.toInt();
+        final resolved = i < 0 ? inner.length + i : i;
+        if (resolved < 0 || resolved >= inner.length) return null;
+        return inner[resolved];
+      }
+      return null;
+    case Pipe(:final input, :final op):
+      // Pipe ops that preserve list shape (filter, sort, sort_by,
+      // unique, unique_by, reverse) keep the same element family.
+      // Skip the op and navigate to the underlying list's first
+      // element. Strictly less precise than running the filter (which
+      // could narrow the type), but completion is best-effort and
+      // we never want to actually run user queries during completion.
+      // For ops that change shape (map, group_by, to_entries, ...) we
+      // give up rather than guess.
+      if (op is BuiltinPipeOp && _shapePreservingOps.contains(op.name)) {
+        return _navigate(input, data);
+      }
+      return null;
+    default:
+      return null;
+  }
+}
+
+/// Pipe ops that preserve the input list's element shape (the result
+/// is still `list<T>` with the same `T`). Used by [_navigate] to skip
+/// past the op when sampling a list element for completion. `map`,
+/// `group_by`, `to_entries`, etc. are deliberately excluded — they
+/// transform the element type.
+const Set<String> _shapePreservingOps = {
+  'filter',
+  'sort',
+  'sort_by',
+  'unique',
+  'unique_by',
+  'reverse',
+};
+
 /// Extract the inner expression from a parameterized pipe operation.
 ///
-/// Returns `null` for simple (no-arg) ops like [SortOp], [ReverseOp],
-/// etc. and for non-operation expressions like [ObjConstruct].
-LamExpr? _innerExpr(LamExpr op) => switch (op) {
-  FilterOp(:final predicate) => predicate,
-  MapOp(:final transform) => transform,
-  SortByOp(:final key) => key,
-  GroupByOp(:final key) => key,
-  UniqueByOp(:final key) => key,
-  FilterValuesOp(:final predicate) => predicate,
-  MapValuesOp(:final transform) => transform,
-  FilterKeysOp(:final predicate) => predicate,
-  HasOp(:final key) => key,
-  _ => null,
-};
+/// Returns `null` for zero-arg ops (`sort`, `reverse`, `length`, ...)
+/// and for non-operation expressions like [ObjConstruct]. The unified
+/// [BuiltinPipeOp] dispatch makes this trivial: any one-arg op stores
+/// its inner expression at `args[0]`.
+LamExpr? _innerExpr(LamExpr op) {
+  if (op is! BuiltinPipeOp) return null;
+  return op.args.isEmpty ? null : op.args[0];
+}

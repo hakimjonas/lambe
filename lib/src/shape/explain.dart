@@ -8,10 +8,13 @@
 /// pass [SAny] when no input data is available.
 library;
 
+import 'dart:convert';
+
 import '../ast.dart';
 import '../output_format.dart';
 import 'check.dart';
 import 'infer.dart';
+import 'pipe_ops.dart';
 import 'shape.dart';
 
 /// A single row in an explain trace.
@@ -33,15 +36,38 @@ final class ExplainStage {
   const ExplainStage({required this.source, required this.shape});
 }
 
-/// A static-analysis warning attached to an explain report.
+/// Category of static-analysis finding surfaced by [explain].
 ///
-/// Warnings call out constructs that evaluate to a trivial result
-/// regardless of input, such as a `filter` predicate whose inferred
-/// shape is not [SBool]. `filter` requires `== true`, so any non-bool
-/// predicate makes the filter always empty.
+/// - [emptyFilter]: a `filter`/`filter_values`/`filter_keys` predicate
+///   is provably non-boolean, so the filter always returns empty.
+/// - [runtimeRejection]: a pipe op's input shape is provably
+///   incompatible with the op (e.g. `filter` on an [SMap]); the query
+///   will throw at runtime if reached.
+/// - [trivialResult]: a parameterised op (`sort_by`, `group_by`,
+///   `map`, `unique_by`) references a field that is provably absent
+///   from the element shape. The op runs, but the field access yields
+///   null for every element, so the result is trivial (same order,
+///   same group, same null). Often a typo but legitimate uses exist,
+///   which is why this class is opt-in via [explain]'s
+///   `includeTrivial` parameter.
+enum WarningKind {
+  /// A filter predicate is provably non-boolean.
+  emptyFilter,
+
+  /// The op's input shape is provably incompatible; runtime throw.
+  runtimeRejection,
+
+  /// The op runs but the result is trivial (opt-in).
+  trivialResult,
+}
+
+/// A static-analysis finding attached to an explain report.
 ///
-/// [stageIndex] points into [ExplainReport.stages] so a renderer can
-/// highlight the offending stage.
+/// Each warning points at a specific [ExplainReport.stages] entry
+/// via [stageIndex] and carries a one-line human-readable [message]
+/// plus a [kind] classifier for filtering (CLI flag gates
+/// [WarningKind.trivialResult], for example, and a JSON consumer
+/// might want to surface only [WarningKind.runtimeRejection]).
 final class ExplainWarning {
   /// The stage this warning refers to, as an index into
   /// [ExplainReport.stages].
@@ -50,8 +76,15 @@ final class ExplainWarning {
   /// One-line human-readable message.
   final String message;
 
+  /// The warning category, for filtering and machine-readable output.
+  final WarningKind kind;
+
   /// Creates an [ExplainWarning].
-  const ExplainWarning({required this.stageIndex, required this.message});
+  const ExplainWarning({
+    required this.stageIndex,
+    required this.message,
+    required this.kind,
+  });
 }
 
 /// A full explain report for a query.
@@ -69,18 +102,45 @@ final class ExplainReport {
   /// nothing was flagged.
   final List<ExplainWarning> warnings;
 
+  /// The CSV/TSV cell policy the report was generated under. Default
+  /// is [CellPolicy.refuse]; pass [CellPolicy.json] to [explain] to
+  /// get writability lists that reflect the widened element-shape
+  /// requirement.
+  final CellPolicy flattenCells;
+
   /// Creates an [ExplainReport].
   const ExplainReport({
     required this.stages,
     required this.writableAs,
     required this.notWritableAs,
     this.warnings = const [],
+    this.flattenCells = CellPolicy.refuse,
   });
 }
 
 /// Produce an [ExplainReport] for [expr] given [inputShape] as the
 /// initial context. Pass [SAny] when the input's shape is unknown.
-ExplainReport explain(LamExpr expr, Shape inputShape) {
+///
+/// [flattenCells] widens the CSV/TSV element-shape requirement so the
+/// report's writability lists reflect the policy in effect at the
+/// caller (CLI `--flatten-cells`, REPL `:flatten-cells`, MCP
+/// `flatten_cells`). Default is [CellPolicy.refuse], matching the
+/// library's conservative default.
+///
+/// [includeTrivial] controls whether [WarningKind.trivialResult]
+/// findings are emitted. Defaults to `false`; trivial findings are
+/// often legitimate (e.g. `sort_by(.missing)` intentionally as a
+/// stable no-op sort) and can produce noise. The CLI enables them via
+/// `--explain-trivial`. [WarningKind.emptyFilter] and
+/// [WarningKind.runtimeRejection] findings are always emitted:
+/// empty-filter is almost always a bug, and runtime-rejection means
+/// the query will throw.
+ExplainReport explain(
+  LamExpr expr,
+  Shape inputShape, {
+  CellPolicy flattenCells = CellPolicy.refuse,
+  bool includeTrivial = false,
+}) {
   final backbone = _flattenPipe(expr);
   final stages = <ExplainStage>[];
   final warnings = <ExplainWarning>[];
@@ -88,10 +148,42 @@ ExplainReport explain(LamExpr expr, Shape inputShape) {
   var ctx = inputShape;
   for (var i = 0; i < backbone.length; i++) {
     final piece = backbone[i];
-    final warning = _analyzePredicate(piece, prev);
-    if (warning != null) {
-      warnings.add(ExplainWarning(stageIndex: i, message: warning));
+
+    final emptyFilter = _analyzePredicate(piece, prev);
+    if (emptyFilter != null) {
+      warnings.add(
+        ExplainWarning(
+          stageIndex: i,
+          message: emptyFilter,
+          kind: WarningKind.emptyFilter,
+        ),
+      );
     }
+
+    final rejection = _analyzeRejection(piece, prev);
+    if (rejection != null) {
+      warnings.add(
+        ExplainWarning(
+          stageIndex: i,
+          message: rejection,
+          kind: WarningKind.runtimeRejection,
+        ),
+      );
+    }
+
+    if (includeTrivial) {
+      final trivial = _analyzeTrivial(piece, prev);
+      if (trivial != null) {
+        warnings.add(
+          ExplainWarning(
+            stageIndex: i,
+            message: trivial,
+            kind: WarningKind.trivialResult,
+          ),
+        );
+      }
+    }
+
     ctx = inferShape(piece, ctx);
     stages.add(
       ExplainStage(
@@ -105,7 +197,7 @@ ExplainReport explain(LamExpr expr, Shape inputShape) {
   final writable = <OutputFormat>[];
   final notWritable = <OutputFormat>[];
   for (final fmt in OutputFormat.values) {
-    if (canWriteShapeAs(ctx, fmt) is Writable) {
+    if (canWriteShapeAs(ctx, fmt, flattenCells: flattenCells) is Writable) {
       writable.add(fmt);
     } else {
       notWritable.add(fmt);
@@ -117,6 +209,7 @@ ExplainReport explain(LamExpr expr, Shape inputShape) {
     writableAs: writable,
     notWritableAs: notWritable,
     warnings: warnings,
+    flattenCells: flattenCells,
   );
 }
 
@@ -141,21 +234,26 @@ ExplainReport explain(LamExpr expr, Shape inputShape) {
 ///
 /// Returns `null` when no warning applies.
 String? _analyzePredicate(LamExpr op, Shape inputShape) {
-  switch (op) {
-    case FilterOp(:final predicate):
-      final element = inputShape is SList ? inputShape.element : const SAny();
-      return _predicateWarning(predicate, element, 'filter', 'element');
-    case FilterValuesOp(:final predicate):
-      final value = switch (inputShape) {
+  // Unwrap optional for per-op analysis: the op's behavior is
+  // determined by the inner shape; absence is handled by the
+  // runtime-rejection warning elsewhere.
+  final concrete = inputShape is SOptional ? inputShape.inner : inputShape;
+  if (op is! BuiltinPipeOp) return null;
+  switch (op.name) {
+    case 'filter':
+      final element = concrete is SList ? concrete.element : const SAny();
+      return _predicateWarning(op.args[0], element, 'filter', 'element');
+    case 'filter_values':
+      final value = switch (concrete) {
         SMap(:final fields) when fields.isNotEmpty => fields.values.reduce(
           (a, b) => a == b ? a : const SAny(),
         ),
         _ => const SAny(),
       };
-      return _predicateWarning(predicate, value, 'filter_values', 'value');
-    case FilterKeysOp(:final predicate):
+      return _predicateWarning(op.args[0], value, 'filter_values', 'value');
+    case 'filter_keys':
       return _predicateWarning(
-        predicate,
+        op.args[0],
         const SString(),
         'filter_keys',
         'key',
@@ -177,9 +275,66 @@ String? _predicateWarning(
         '$opName will always be empty';
   }
   final predShape = inferShape(predicate, context);
-  if (predShape is SBool || predShape is SAny) return null;
+  // Unwrap optional: an optional bool predicate may be absent at
+  // runtime (yields null, fails the == true check) but isn't
+  // "provably" non-boolean. Let it pass this check; the
+  // runtime-rejection warning surfaces the absence concern.
+  final unwrapped = switch (predShape) {
+    SOptional(:final inner) => inner,
+    _ => predShape,
+  };
+  if (unwrapped is SBool || unwrapped is SAny) return null;
   return '$opName predicate has shape ${renderShape(predShape)}; '
       '$opName requires a boolean, so this will always be empty';
+}
+
+/// Detect input shapes that the pipe op will reject at runtime.
+///
+/// Each pipe op has an `accepts(Shape)` predicate in `pipe_ops.dart`.
+/// When the input shape is concrete (not [SAny]) and the predicate
+/// returns false, the query will throw at runtime. This warning
+/// surfaces that statically.
+///
+/// Returns `null` when [op] is not a pipe op (e.g. an object
+/// constructor), when the input shape is [SAny] (cannot prove), or
+/// when the op accepts the input shape.
+String? _analyzeRejection(LamExpr op, Shape inputShape) {
+  if (inputShape is SAny) return null;
+  final info = pipeOpInfoFor(op);
+  if (info == null) return null;
+  if (info.accepts(inputShape)) return null;
+  return '${info.name} rejects ${renderShape(inputShape)}; '
+      'this will throw at runtime';
+}
+
+/// Detect parameterised ops whose argument references a field
+/// provably absent from the element shape.
+///
+/// Applies to `sort_by`, `group_by`, `map`, `unique_by`. The op runs,
+/// but because the field access yields null for every element, the
+/// result is trivial (identity sort, single group, all-nulls map).
+/// Often a typo but legitimate uses exist (stable no-op sort for
+/// padding, explicit null projection), which is why this warning is
+/// opt-in via `explain(..., includeTrivial: true)`.
+///
+/// Returns `null` for ops not in this set, for inputs that are not
+/// lists (outer shape errors surface as runtime-rejection warnings
+/// instead), or when the argument references a field that may exist.
+String? _analyzeTrivial(LamExpr op, Shape inputShape) {
+  if (op is! BuiltinPipeOp) return null;
+  final (argExpr, opName) = switch (op.name) {
+    'sort_by' || 'group_by' || 'map' || 'unique_by' => (op.args[0], op.name),
+    _ => (null, null),
+  };
+  if (argExpr == null || opName == null) return null;
+  // Unwrap optional: the op either runs on the inner list or is
+  // flagged by runtime-rejection, both handled elsewhere.
+  final concrete = inputShape is SOptional ? inputShape.inner : inputShape;
+  if (concrete is! SList) return null;
+  final missing = _missingFieldPath(argExpr, concrete.element);
+  if (missing == null) return null;
+  return '$opName argument $missing does not exist on the element shape; '
+      'the result is trivial';
 }
 
 /// Render `.a.b.c` if [expr] is a [Field]/[Access] chain whose root
@@ -210,6 +365,11 @@ String? _missingFieldPath(LamExpr expr, Shape context) {
 
   var ctx = context;
   for (var i = 0; i < segments.length; i++) {
+    // Walk through optional wrappers transparently: an optional map
+    // still has its declared fields, just maybe absent as a whole.
+    while (ctx is SOptional) {
+      ctx = ctx.inner;
+    }
     if (ctx is SAny) return null;
     if (ctx is! SMap) return null;
     final name = segments[i];
@@ -256,32 +416,9 @@ String _render(LamExpr expr) => switch (expr) {
   UnaryOp(:final op, :final operand) => '$op${_render(operand)}',
   BinaryOp(:final op, :final left, :final right) =>
     '${_render(left)} $op ${_render(right)}',
-  FilterOp(:final predicate) => 'filter(${_render(predicate)})',
-  MapOp(:final transform) => 'map(${_render(transform)})',
-  SortByOp(:final key) => 'sort_by(${_render(key)})',
-  GroupByOp(:final key) => 'group_by(${_render(key)})',
-  UniqueByOp(:final key) => 'unique_by(${_render(key)})',
-  FilterValuesOp(:final predicate) => 'filter_values(${_render(predicate)})',
-  MapValuesOp(:final transform) => 'map_values(${_render(transform)})',
-  FilterKeysOp(:final predicate) => 'filter_keys(${_render(predicate)})',
-  HasOp(:final key) => 'has(${_render(key)})',
-  SortOp() => 'sort',
-  ReverseOp() => 'reverse',
-  KeysOp() => 'keys',
-  ValuesOp() => 'values',
-  LengthOp() => 'length',
-  FirstOp() => 'first',
-  LastOp() => 'last',
-  SumOp() => 'sum',
-  AvgOp() => 'avg',
-  MinOp() => 'min',
-  MaxOp() => 'max',
-  UniqueOp() => 'unique',
-  FlattenOp() => 'flatten',
-  ToEntriesOp() => 'to_entries',
-  FromEntriesOp() => 'from_entries',
-  ToNumberOp() => 'to_number',
-  TypeOp() => 'type',
+  BuiltinPipeOp(:final name, :final args) when args.isEmpty => name,
+  BuiltinPipeOp(:final name, :final args) =>
+    '$name(${args.map(_render).join(', ')})',
   As(:final target) => 'as(${target.name})',
   ObjConstruct(:final entries) =>
     '{${[for (final (k, v) in entries) '$k: ${_render(v)}'].join(', ')}}',
@@ -291,6 +428,9 @@ String _render(LamExpr expr) => switch (expr) {
         '${end == null ? '' : _render(end)}]',
   Conditional(:final condition, :final then_, :final else_) =>
     'if ${_render(condition)} then ${_render(then_)} else ${_render(else_)}',
+  Alternative(:final left, :final right) =>
+    '${_render(left)} // ${_render(right)}',
+  ListConstruct(:final parts) => '[${parts.map(_render).join(', ')}]',
 };
 
 /// Render an [ExplainReport] as a plaintext table suitable for stdout.
@@ -325,17 +465,81 @@ String renderExplain(ExplainReport report) {
   }
 
   buf.write('\n');
-  if (report.writableAs.isNotEmpty) {
-    buf.write(
-      'Writable as: ${report.writableAs.map((f) => f.name).join(", ")}',
-    );
-    buf.write('\n');
+  // When a runtime-rejection warning is present earlier in the
+  // pipeline, the writability lists are misleading: the pipeline will
+  // throw before any writer runs, but inferShape widens the post-
+  // rejection shape to SAny, which makes every format pass canWriteAs.
+  // Suppress the section and surface why.
+  if (_hasRuntimeRejection(report)) {
+    buf.write('Writable as: (suppressed — runtime-rejection warning above)\n');
+  } else {
+    if (report.writableAs.isNotEmpty) {
+      buf.write(
+        'Writable as: ${report.writableAs.map((f) => f.name).join(", ")}',
+      );
+      buf.write('\n');
+    }
+    if (report.notWritableAs.isNotEmpty) {
+      buf.write(
+        'Not writable as: '
+        '${report.notWritableAs.map((f) => f.name).join(", ")}',
+      );
+      buf.write('\n');
+    }
   }
-  if (report.notWritableAs.isNotEmpty) {
-    buf.write(
-      'Not writable as: ${report.notWritableAs.map((f) => f.name).join(", ")}',
-    );
-    buf.write('\n');
+  if (report.flattenCells != CellPolicy.refuse) {
+    buf.write('Cell policy: ${report.flattenCells.name}\n');
   }
   return buf.toString();
 }
+
+bool _hasRuntimeRejection(ExplainReport report) =>
+    report.warnings.any((w) => w.kind == WarningKind.runtimeRejection);
+
+/// Render an [ExplainReport] as a JSON string for programmatic
+/// consumers (agent tooling, build pipelines).
+///
+/// The payload is a map with keys `stages`, `warnings`, `writable_as`,
+/// `not_writable_as`, and `flatten_cells`. Each stage carries its
+/// `source` string and a `shape` serialized via [shapeToJson] (a
+/// nested `{kind, ...}` tree rather than the `renderShape` text form,
+/// so consumers can pattern-match without re-parsing). Each warning
+/// carries `stage_index`, `kind` (one of `empty_filter`,
+/// `runtime_rejection`, `trivial_result`), and `message`.
+String renderExplainJson(ExplainReport report) {
+  // Suppress writability when a runtime-rejection warning fires —
+  // listing every format would mislead, since the pipeline throws
+  // before any writer runs. Agents should pattern-match on warnings
+  // first; null on writability is the explicit "uncertain" signal.
+  final suppressWritability = _hasRuntimeRejection(report);
+  final payload = <String, Object?>{
+    'stages': [
+      for (final s in report.stages)
+        {'source': s.source, 'shape': shapeToJson(s.shape)},
+    ],
+    'warnings': [
+      for (final w in report.warnings)
+        {
+          'stage_index': w.stageIndex,
+          'kind': _warningKindName(w.kind),
+          'message': w.message,
+        },
+    ],
+    'writable_as':
+        suppressWritability
+            ? null
+            : [for (final f in report.writableAs) f.name],
+    'not_writable_as':
+        suppressWritability
+            ? null
+            : [for (final f in report.notWritableAs) f.name],
+    'flatten_cells': report.flattenCells.name,
+  };
+  return const JsonEncoder.withIndent('  ').convert(payload);
+}
+
+String _warningKindName(WarningKind k) => switch (k) {
+  WarningKind.emptyFilter => 'empty_filter',
+  WarningKind.runtimeRejection => 'runtime_rejection',
+  WarningKind.trivialResult => 'trivial_result',
+};
