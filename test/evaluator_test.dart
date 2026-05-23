@@ -643,7 +643,7 @@ void main() {
 
   group('List literals', () {
     test('[] evaluates to empty list', () {
-      expect(query('[]', {}), []);
+      expect(query('[]', {}), <Object?>[]);
     });
 
     test('[1, 2, 3] evaluates to a list of numbers', () {
