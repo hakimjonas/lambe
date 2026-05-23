@@ -160,6 +160,48 @@ Full document prose, no markup:
 $ lam '. | text' README.md
 ```
 
+### Querying a CHANGELOG
+
+A release notes file follows a recurring shape: H2 per release, H3 per
+subsection. The same `text` op recovers the release names regardless of
+inline formatting.
+
+Every release version:
+
+```bash
+$ lam '.children | filter(.type == "heading" and .level == 2) | map(text)' CHANGELOG.md
+[
+  "0.9.0",
+  "0.8.0",
+  "0.7.1"
+]
+```
+
+Latest release name:
+
+```bash
+$ lam '.children | filter(.type == "heading" and .level == 2) | map(text) | first' CHANGELOG.md
+"0.9.0"
+```
+
+Every subsection title (informational; structure under each release):
+
+```bash
+$ lam '.children | filter(.type == "heading" and .level == 3) | map(text)' CHANGELOG.md
+```
+
+Check for duplicate release entries (returns `true` when none):
+
+```bash
+$ lam '.children | filter(.type == "heading" and .level == 2) | map(text) | length == (.children | filter(.type == "heading" and .level == 2) | map(text) | unique | length)' CHANGELOG.md
+true
+```
+
+These same queries are gated by `--assert` in `tool/lint_changelog.sh`,
+which CI runs on every push: lambé itself validates lambé's release
+notes, parsed by lambé's own Markdown parser. Real-world example of the
+pattern.
+
 ## TOML (Rust, Python config)
 
 Get a dependency version from Cargo.toml:
