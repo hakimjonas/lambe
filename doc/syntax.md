@@ -2,7 +2,7 @@
 
 The complete Lambë query language. Every feature, with input and output examples.
 
-All examples use this data unless stated otherwise:
+All examples use this data unless stated otherwise. Save it as `data.json`:
 
 ```json
 {
@@ -20,6 +20,8 @@ All examples use this data unless stated otherwise:
 }
 ```
 
+Examples that don't reference input data use `lam -n` (null input).
+
 ## Data model
 
 Lambë operates on JSON-compatible values: maps (objects), lists (arrays), strings, numbers, booleans, and null.
@@ -30,183 +32,221 @@ All input formats (YAML, TOML, HCL, CSV, TSV, Markdown) are converted to this mo
 
 `.` returns the current value unchanged.
 
-```
-.
--> (the entire document)
+```bash
+$ lam '.' data.json
+# (the entire document, pretty-printed)
 ```
 
 ## Field access
 
 `.field` accesses a named field on a map.
 
-```
-.version
--> "1.0.0"
+```bash
+$ lam '.version' data.json
+"1.0.0"
 
-.config.database.host
--> "localhost"
+$ lam '.config.database.host' data.json
+"localhost"
 ```
 
 Accessing a field that doesn't exist returns `null`:
 
-```
-.missing
--> null
+```bash
+$ lam '.missing' data.json
+null
 
-.missing.nested
--> null
+$ lam '.missing.nested' data.json
+null
 ```
 
 ## Indexing
 
 `[n]` indexes into a list. Zero-based. Negative indices count from the end.
 
-```
-.users[0]
--> {"name": "Alice", "age": 25, "active": true}
+```bash
+$ lam '.users[0]' data.json
+{
+  "name": "Alice",
+  "age": 25,
+  "active": true
+}
 
-.users[-1].name
--> "Carol"
+$ lam '.users[-1].name' data.json
+"Carol"
 
-.tags[1]
--> "v1"
+$ lam '.tags[1]' data.json
+"v1"
 ```
 
 Out-of-bounds returns `null`:
 
-```
-.users[99]
--> null
+```bash
+$ lam '.users[99]' data.json
+null
 ```
 
 ## Slicing
 
 `[start:end]` extracts a sub-list. Start is inclusive, end is exclusive.
 
-```
-.tags[0:2]
--> ["api", "v1"]
+```bash
+$ lam '.tags[0:2]' data.json
+[
+  "api",
+  "v1"
+]
 
-.tags[:2]
--> ["api", "v1"]
+$ lam '.tags[:2]' data.json
+[
+  "api",
+  "v1"
+]
 
-.tags[1:]
--> ["v1", "stable"]
+$ lam '.tags[1:]' data.json
+[
+  "v1",
+  "stable"
+]
 
-.tags[:-1]
--> ["api", "v1"]
+$ lam '.tags[:-1]' data.json
+[
+  "api",
+  "v1"
+]
 ```
 
 Slicing works on strings too:
 
-```
-.version[0:1]
--> "1"
+```bash
+$ lam '.version[0:1]' data.json
+"1"
 ```
 
 ## Arithmetic
 
 `+`, `-`, `*`, `/`, `%` on numbers.
 
-```
-.users[0].age + 10
--> 35
+```bash
+$ lam '.users[0].age + 10' data.json
+35
 
-.users[0].age * 2
--> 50
+$ lam '.users[0].age * 2' data.json
+50
 
-.config.database.port % 100
--> 32
+$ lam '.config.database.port % 100' data.json
+32.0
 ```
 
 Using arithmetic on null throws an error:
 
-```
-.missing + 5
--> Error: +: expected number, got null
+```bash
+$ lam '.missing + 5' data.json
+Error: +: expected number, got null
 ```
 
 ## Comparison
 
 `<`, `>`, `<=`, `>=` compare numbers. `==`, `!=` compare any type with deep equality.
 
-```
-.users[0].age > 30
--> false
+```bash
+$ lam '.users[0].age > 30' data.json
+false
 
-.version == "1.0.0"
--> true
+$ lam '.version == "1.0.0"' data.json
+true
 
-.config.debug != true
--> true
+$ lam '.config.debug != true' data.json
+true
 ```
 
 Comparing null throws (except for `==` and `!=`):
 
-```
-.missing > 5
--> Error: >: expected number, got null
+```bash
+$ lam '.missing > 5' data.json
+Error: >: expected number, got null
 
-.missing == null
--> true
+$ lam '.missing == null' data.json
+true
 ```
 
 ## Boolean logic
 
 `&&`, `||`, `!` with short-circuit evaluation.
 
-```
-.users[0].active && .users[0].age < 30
--> true
+```bash
+$ lam '.users[0].active && .users[0].age < 30' data.json
+true
 
-!.config.debug
--> true
+$ lam '!.config.debug' data.json
+true
 ```
 
 ## String literals
 
 Double-quoted. Supports `\"`, `\\`, `\n`, `\t`.
 
-```
-.users | filter(.name == "Alice") | length
--> 1
+```bash
+$ lam '.users | filter(.name == "Alice") | length' data.json
+1
 ```
 
 ## String interpolation
 
 `\(expr)` inside a string evaluates the expression and inserts the result.
 
-```
-.users | map("\(.name) is \(.age)")
--> ["Alice is 25", "Bob is 35", "Carol is 42"]
+```bash
+$ lam '.users | map("\(.name) is \(.age)")' data.json
+[
+  "Alice is 25",
+  "Bob is 35",
+  "Carol is 42"
+]
 ```
 
 ## Object construction
 
 Build new maps from the current context. `{name}` expands to `{name: .name}`.
 
-```
-.users[0] | {name, age}
--> {"name": "Alice", "age": 25}
+```bash
+$ lam '.users[0] | {name, age}' data.json
+{
+  "name": "Alice",
+  "age": 25
+}
 
-.users | map({name, senior: .age > 40})
--> [
-     {"name": "Alice", "senior": false},
-     {"name": "Bob", "senior": false},
-     {"name": "Carol", "senior": true}
-   ]
+$ lam '.users | map({name, senior: .age > 40})' data.json
+[
+  {
+    "name": "Alice",
+    "senior": false
+  },
+  {
+    "name": "Bob",
+    "senior": false
+  },
+  {
+    "name": "Carol",
+    "senior": true
+  }
+]
 ```
 
 Keys that are valid identifiers use the bare form (`name:`); keys that
 are not (hyphenated, spaces, leading digits) use a JSON-string literal
 in key position. Both spellings produce identical maps.
 
-```
-{"x-axis": .a, "y-axis": .b}
--> {"x-axis": 1, "y-axis": 2}
+```bash
+$ lam '{"x-axis": .config.database.port, "y-axis": .users[0].age}' data.json
+{
+  "x-axis": 5432,
+  "y-axis": 25
+}
 
-{name, "Content-Type": "application/json"}
--> {"name": "Alice", "Content-Type": "application/json"}
+$ lam '{name: .users[0].name, "Content-Type": "application/json"}' data.json
+{
+  "name": "Alice",
+  "Content-Type": "application/json"
+}
 ```
 
 Interpolation (`"\(expr)"`) is not allowed in key position — build
@@ -218,25 +258,32 @@ on its own is not supported.
 
 `if condition then value else value`. The condition must evaluate to a boolean.
 
-```
-.users | map(if .age > 40 then "senior" else "junior")
--> ["junior", "junior", "senior"]
+```bash
+$ lam '.users | map(if .age > 40 then "senior" else "junior")' data.json
+[
+  "junior",
+  "junior",
+  "senior"
+]
 ```
 
 ## Pipelines
 
 `|` passes the left side's result into the right side's operation.
 
-```
-.users | filter(.active) | sort_by(.age) | map(.name)
--> ["Alice", "Carol"]
+```bash
+$ lam '.users | filter(.active) | sort_by(.age) | map(.name)' data.json
+[
+  "Alice",
+  "Carol"
+]
 ```
 
 Pipelines bind tighter than binary operators:
 
-```
-.tags | length > 0
--> true
+```bash
+$ lam '.tags | length > 0' data.json
+true
 ```
 
 This parses as `(.tags | length) > 0`, not `.tags | (length > 0)`.
@@ -247,64 +294,117 @@ This parses as `(.tags | length) > 0`, not `.tags | (length > 0)`.
 
 Keep elements where the predicate is true.
 
-```
-.users | filter(.age > 30)
--> [{"name": "Bob", ...}, {"name": "Carol", ...}]
+```bash
+$ lam '.users | filter(.age > 30)' data.json
+[
+  {
+    "name": "Bob",
+    "age": 35,
+    "active": false
+  },
+  {
+    "name": "Carol",
+    "age": 42,
+    "active": true
+  }
+]
 
-.users | filter(.active && .age < 40)
--> [{"name": "Alice", "age": 25, "active": true}]
+$ lam '.users | filter(.active && .age < 40)' data.json
+[
+  {
+    "name": "Alice",
+    "age": 25,
+    "active": true
+  }
+]
 ```
 
 ### map(expression)
 
 Transform each element.
 
-```
-.users | map(.name)
--> ["Alice", "Bob", "Carol"]
+```bash
+$ lam '.users | map(.name)' data.json
+[
+  "Alice",
+  "Bob",
+  "Carol"
+]
 
-.users | map(.age * 2)
--> [50, 70, 84]
+$ lam '.users | map(.age * 2)' data.json
+[
+  50,
+  70,
+  84
+]
 ```
 
 ### sort
 
 Sort elements by natural order.
 
-```
-.tags | sort
--> ["api", "stable", "v1"]
+```bash
+$ lam '.tags | sort' data.json
+[
+  "api",
+  "stable",
+  "v1"
+]
 ```
 
 ### sort_by(key)
 
 Sort elements by a key expression.
 
-```
-.users | sort_by(.age)
--> [Alice (25), Bob (35), Carol (42)]
-
-.users | sort_by(.name) | map(.name)
--> ["Alice", "Bob", "Carol"]
+```bash
+$ lam '.users | sort_by(.age) | map(.name)' data.json
+[
+  "Alice",
+  "Bob",
+  "Carol"
+]
 ```
 
 ### group_by(key)
 
 Group elements by a key. Returns `[{key, values}]`.
 
-```
-.users | group_by(.active)
--> [
-     {"key": true, "values": [Alice, Carol]},
-     {"key": false, "values": [Bob]}
-   ]
+```bash
+$ lam '.users | group_by(.active)' data.json
+[
+  {
+    "key": true,
+    "values": [
+      {
+        "name": "Alice",
+        "age": 25,
+        "active": true
+      },
+      {
+        "name": "Carol",
+        "age": 42,
+        "active": true
+      }
+    ]
+  },
+  {
+    "key": false,
+    "values": [
+      {
+        "name": "Bob",
+        "age": 35,
+        "active": false
+      }
+    ]
+  }
+]
 ```
 
 ### unique
 
 Remove duplicate values.
 
-```
+```bash
 $ lam -n '[1, 2, 2, 3, 1] | unique'
 [
   1,
@@ -317,16 +417,19 @@ $ lam -n '[1, 2, 2, 3, 1] | unique'
 
 Remove duplicates by a key expression.
 
-```
-.users | unique_by(.active) | map(.name)
--> ["Alice", "Bob"]
+```bash
+$ lam '.users | unique_by(.active) | map(.name)' data.json
+[
+  "Alice",
+  "Bob"
+]
 ```
 
 ### flatten
 
 Flatten one level of nesting.
 
-```
+```bash
 $ lam -n '[[1, 2], [3, 4], [5]] | flatten'
 [
   1,
@@ -341,92 +444,106 @@ $ lam -n '[[1, 2], [3, 4], [5]] | flatten'
 
 Reverse the order.
 
-```
-.tags | reverse
--> ["stable", "v1", "api"]
+```bash
+$ lam '.tags | reverse' data.json
+[
+  "stable",
+  "v1",
+  "api"
+]
 ```
 
 ### keys
 
 Map keys or list indices.
 
-```
-.config | keys
--> ["database", "debug"]
+```bash
+$ lam '.config | keys' data.json
+[
+  "database",
+  "debug"
+]
 
-.tags | keys
--> [0, 1, 2]
+$ lam '.tags | keys' data.json
+[
+  0,
+  1,
+  2
+]
 ```
 
 ### values
 
 Map values (identity for lists).
 
-```
-.config.database | values
--> ["localhost", 5432]
+```bash
+$ lam '.config.database | values' data.json
+[
+  "localhost",
+  5432
+]
 ```
 
 ### length
 
 Length of a list, map, or string.
 
-```
-.users | length
--> 3
+```bash
+$ lam '.users | length' data.json
+3
 
-.version | length
--> 5
+$ lam '.version | length' data.json
+5
 ```
 
 ### first, last
 
 First or last element of a list.
 
-```
-.users | first | .name
--> "Alice"
+```bash
+$ lam '.users | first | .name' data.json
+"Alice"
 
-.tags | last
--> "stable"
+$ lam '.tags | last' data.json
+"stable"
 ```
 
 ### sum, avg, min, max
 
 Aggregate operations on numeric lists.
 
-```
-.users | map(.age) | sum
--> 102
+```bash
+$ lam '.users | map(.age) | sum' data.json
+102
 
-.users | map(.age) | avg
--> 34.0
+$ lam '.users | map(.age) | avg' data.json
+34.0
 
-.users | map(.age) | min
--> 25
+$ lam '.users | map(.age) | min' data.json
+25
 
-.users | map(.age) | max
--> 42
+$ lam '.users | map(.age) | max' data.json
+42
 ```
 
 ### has(key)
 
 Check if a map contains a key.
 
-```
-.config | has("database")
--> true
+```bash
+$ lam '.config | has("database")' data.json
+true
 
-.config | has("missing")
--> false
+$ lam '.config | has("missing")' data.json
+false
 ```
 
 ### to_entries, from_entries
 
 Convert between maps and `[{key, value}]` lists.
 
-```
-$ echo '{"config":{"database":{"host":"localhost","port":5432}}}' | lam '.config.database | to_entries'
+```bash
+$ lam '.config.database | to_entries' data.json
 [
   {
     "key": "host",
@@ -451,7 +568,7 @@ Parse a string as a number. Pass-through for existing numbers.
 CSV and TSV cells are strings by default; use `to_number` to coerce them
 before arithmetic.
 
-```
+```bash
 $ lam -n '"42" | to_number'
 42
 
@@ -475,7 +592,7 @@ Return the runtime type of the input as a string.
 Possible return values: `"null"`, `"boolean"`, `"number"`, `"string"`,
 `"array"`, `"object"`.
 
-```
+```bash
 $ lam -n '42 | type'
 "number"
 
@@ -502,16 +619,18 @@ $ lam -n '[1, "two", 3] | filter((. | type) == "number")'
 
 Filter a map's values.
 
-```
-.config.database | filter_values(. == "localhost")
--> {"host": "localhost"}
+```bash
+$ lam '.config.database | filter_values(. == "localhost")' data.json
+{
+  "host": "localhost"
+}
 ```
 
 ### map_values(expression)
 
 Transform a map's values.
 
-```
+```bash
 $ lam -n '{a: 1, b: 2} | map_values(. * 10)'
 {
   "a": 10,
@@ -523,9 +642,14 @@ $ lam -n '{a: 1, b: 2} | map_values(. * 10)'
 
 Filter a map's keys.
 
-```
-.config | filter_keys(. != "debug")
--> {"database": {"host": "localhost", "port": 5432}}
+```bash
+$ lam '.config | filter_keys(. != "debug")' data.json
+{
+  "database": {
+    "host": "localhost",
+    "port": 5432
+  }
+}
 ```
 
 ### text
@@ -544,15 +668,15 @@ The only pipe op tuned to a specific input format. It exists because
 (nested emphasis, links, code) and "compose with explicit paths" cannot
 fix that without recursion.
 
-```
-.children[0] | text
--> "hello"     # for `# *hello*`
+```bash
+$ echo '# Hello' | lam -f markdown '.children[0] | text'
+"Hello"
 
-.children | filter(.type == "heading") | map(text)
--> ["First", "Second"]
-
-. | text
--> "FirstA paragraph.Second"   # full document prose
+$ echo -e '# First\n\n# Second' | lam -f markdown '.children | filter(.type == "heading") | map(text)'
+[
+  "First",
+  "Second"
+]
 ```
 
 ## Null propagation
@@ -561,20 +685,34 @@ Navigation on null returns null. Computation on null throws.
 
 **Returns null** (absence is data):
 
-```
-.missing              -> null
-.missing.nested       -> null
-.users[99]            -> null
-null | length         -> null
-null | filter(.x)     -> null
+```bash
+$ lam '.missing' data.json
+null
+
+$ lam '.missing.nested' data.json
+null
+
+$ lam '.users[99]' data.json
+null
+
+$ lam -n 'null | length'
+null
+
+$ lam -n 'null | filter(.x)'
+null
 ```
 
 **Throws** (type mismatch is an error):
 
-```
-null + 5              -> Error: +: expected number, got null
-null > 3              -> Error: >: expected number, got null
-if null then 1 else 2 -> Error: if: expected bool, got null
+```bash
+$ lam -n 'null + 5'
+Error: +: expected number, got null
+
+$ lam -n 'null > 3'
+Error: >: expected number, got null
+
+$ lam -n 'if null then 1 else 2'
+Error: if: expected boolean, got null
 ```
 
 ## Operator precedence
