@@ -161,11 +161,11 @@ String _cell(Object? cell, OutputFormat fmt, CellPolicy policy) {
 /// Used by [_scalarCell] to render errors like "got list" instead of
 /// "got _GrowableList". Falls back to [Object.runtimeType] for kinds
 /// outside List and Map.
-String _describeCellKind(Object cell) {
-  if (cell is List) return 'list';
-  if (cell is Map) return 'map';
-  return cell.runtimeType.toString();
-}
+String _describeCellKind(Object cell) => switch (cell) {
+  List() => 'list',
+  Map() => 'map',
+  _ => cell.runtimeType.toString(),
+};
 
 /// Collect the union of keys across [maps] preserving first-seen order.
 ///
@@ -174,15 +174,17 @@ String _describeCellKind(Object cell) {
 /// order they first appear. Rows missing a key render as an empty cell
 /// rather than silently dropping the column, symmetric with how the
 /// writer refuses non-scalar cells elsewhere.
+///
+/// Implementation note: Dart's default `Set<String>{}` is a
+/// `LinkedHashSet`, which preserves insertion order. One pass adds
+/// every key; iteration yields the first-seen ordering. No parallel
+/// "seen" tracking required.
 List<String> _unionHeaders(List<Map<String, Object?>> maps) {
-  final seen = <String>{};
-  final headers = <String>[];
+  final headers = <String>{};
   for (final map in maps) {
-    for (final key in map.keys) {
-      if (seen.add(key)) headers.add(key);
-    }
+    headers.addAll(map.keys);
   }
-  return headers;
+  return headers.toList();
 }
 
 String _toHcl(Object? value) {

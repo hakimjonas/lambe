@@ -384,36 +384,34 @@ const _red = '\x1b[31m';
 
 /// Render [value] as colorized, pretty-printed JSON.
 String _colorJson(Object? value, int depth) {
-  if (value == null) return '$_red${null}$_reset';
-  if (value is bool) return '$_magenta$value$_reset';
-  if (value is num) return '$_yellow$value$_reset';
-  if (value is String) return '$_green${jsonEncode(value)}$_reset';
-
   final indent = '  ' * (depth + 1);
   final closingIndent = '  ' * depth;
-
-  if (value is List<Object?>) {
-    if (value.isEmpty) return '$_dim[]$_reset';
-    final items = value
-        .map((e) => '$indent${_colorJson(e, depth + 1)}')
-        .join('$_dim,$_reset\n');
-    return '$_dim[$_reset\n$items\n$closingIndent$_dim]$_reset';
-  }
-
-  if (value is Map<String, Object?>) {
-    if (value.isEmpty) return '$_dim{}$_reset';
-    final entries = value.entries
-        .map(
-          (e) =>
-              '$indent$_cyan${jsonEncode(e.key)}$_reset'
-              '$_dim:$_reset '
-              '${_colorJson(e.value, depth + 1)}',
-        )
-        .join('$_dim,$_reset\n');
-    return '$_dim{$_reset\n$entries\n$closingIndent$_dim}$_reset';
-  }
-
-  return jsonEncode(value);
+  return switch (value) {
+    null => '$_red${null}$_reset',
+    bool() => '$_magenta$value$_reset',
+    num() => '$_yellow$value$_reset',
+    String() => '$_green${jsonEncode(value)}$_reset',
+    List<Object?>() when value.isEmpty => '$_dim[]$_reset',
+    List<Object?>() => () {
+      final items = value
+          .map((e) => '$indent${_colorJson(e, depth + 1)}')
+          .join('$_dim,$_reset\n');
+      return '$_dim[$_reset\n$items\n$closingIndent$_dim]$_reset';
+    }(),
+    Map<String, Object?>() when value.isEmpty => '$_dim{}$_reset',
+    Map<String, Object?>() => () {
+      final entries = value.entries
+          .map(
+            (e) =>
+                '$indent$_cyan${jsonEncode(e.key)}$_reset'
+                '$_dim:$_reset '
+                '${_colorJson(e.value, depth + 1)}',
+          )
+          .join('$_dim,$_reset\n');
+      return '$_dim{$_reset\n$entries\n$closingIndent$_dim}$_reset';
+    }(),
+    _ => jsonEncode(value),
+  };
 }
 
 String _briefDescription(Object? data) {

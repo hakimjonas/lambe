@@ -98,36 +98,32 @@ Object? _field(Object? target, String name) {
   throw QueryError('Cannot access .$name on ${typeName(target)}');
 }
 
-Object? _index(Object? target, Object? idx) {
-  if (target == null) return null;
-  if (target is List<Object?>) {
-    if (idx is num) {
-      final i = idx.toInt();
-      final resolved = i < 0 ? target.length + i : i;
-      if (resolved < 0 || resolved >= target.length) return null;
-      return target[resolved];
-    }
-    throw QueryError('Cannot index list with ${typeName(idx)}');
-  }
-  if (target is Map<String, Object?>) {
-    if (idx is String) return target[idx];
-    throw QueryError('Cannot index map with ${typeName(idx)}');
-  }
+Object? _index(Object? target, Object? idx) => switch (target) {
+  null => null,
+  List<Object?>() when idx is num => () {
+    final i = idx.toInt();
+    final resolved = i < 0 ? target.length + i : i;
+    if (resolved < 0 || resolved >= target.length) return null;
+    return target[resolved];
+  }(),
+  List<Object?>() =>
+    throw QueryError('Cannot index list with ${typeName(idx)}'),
+  Map<String, Object?>() when idx is String => target[idx],
+  Map<String, Object?>() =>
+    throw QueryError('Cannot index map with ${typeName(idx)}'),
   // String single-char indexing mirrors slice semantics: `.name[0]`
   // returns a one-character substring, matching how `.name[0:1]` already
   // worked. Out-of-range returns null (same convention as list
   // indexing).
-  if (target is String) {
-    if (idx is num) {
-      final i = idx.toInt();
-      final resolved = i < 0 ? target.length + i : i;
-      if (resolved < 0 || resolved >= target.length) return null;
-      return target.substring(resolved, resolved + 1);
-    }
-    throw QueryError('Cannot index string with ${typeName(idx)}');
-  }
-  throw QueryError('Cannot index ${typeName(target)}');
-}
+  String() when idx is num => () {
+    final i = idx.toInt();
+    final resolved = i < 0 ? target.length + i : i;
+    if (resolved < 0 || resolved >= target.length) return null;
+    return target.substring(resolved, resolved + 1);
+  }(),
+  String() => throw QueryError('Cannot index string with ${typeName(idx)}'),
+  _ => throw QueryError('Cannot index ${typeName(target)}'),
+};
 
 Object? _pipe(Object? input, LamExpr op) {
   if (input == null) return null;
@@ -181,24 +177,24 @@ Object? _slice(
   LamExpr? startExpr,
   LamExpr? endExpr,
   Object? ctx,
-) {
-  if (target == null) return null;
-  if (target is List<Object?>) {
+) => switch (target) {
+  null => null,
+  List<Object?>() => () {
     final len = target.length;
     final start = _resolveSliceIndex(startExpr, ctx, len, 0);
     final end = _resolveSliceIndex(endExpr, ctx, len, len);
     if (start >= end || start >= len) return <Object?>[];
     return target.sublist(start.clamp(0, len), end.clamp(0, len));
-  }
-  if (target is String) {
+  }(),
+  String() => () {
     final len = target.length;
     final start = _resolveSliceIndex(startExpr, ctx, len, 0);
     final end = _resolveSliceIndex(endExpr, ctx, len, len);
     if (start >= end || start >= len) return '';
     return target.substring(start.clamp(0, len), end.clamp(0, len));
-  }
-  throw QueryError('Cannot slice ${typeName(target)}');
-}
+  }(),
+  _ => throw QueryError('Cannot slice ${typeName(target)}'),
+};
 
 int _resolveSliceIndex(
   LamExpr? expr,
