@@ -30,11 +30,34 @@ consolidation, and a `rumil_tokens`-based REPL highlighter.
   `lib/src/highlight_grammar.dart`. The grammar lives in lambé (not
   in `rumil_tokens`' built-in five) because it's lambé-specific.
 - New runtime dependency: `rumil_tokens ^0.1.0`.
+- Pipe op names (`filter`, `map`, `text`, etc.) now colour as
+  keywords (magenta) — they're routed through `LangGrammar.types`
+  and sourced from `pipe_ops.dart`'s spec table, so adding a new op
+  picks up colouring automatically.
+- Highlighting is re-rendered on every keystroke. Earlier sessions
+  used a fast-path that wrote each typed character verbatim without
+  re-tokenising, so keywords stayed plain until a later edit
+  triggered a full redraw. With `rumil_tokens` actually being fast,
+  the fast-path was a UX bug; now `filter` colours on the final `r`,
+  not after the next backspace.
 - Visible behavioural change in the REPL: `.field` colours as two
   tokens (`.` punctuation + `field` identifier) rather than one
   cyan run; negative literals colour as `-` operator + number
   rather than one yellow run. The audit determined the new
   behaviour is more principled; the visual effect is subtle.
+
+### REPL Tab completion: bare pipe ops inside parameterised ops
+
+- `map(t<TAB>` now offers `text`, `to_entries`, `type`, etc. instead
+  of nothing useful. Bare pipe-op names like `text`, `length`,
+  `to_entries` are legal expressions in lambé (sugar for `. | op`),
+  so the completer should offer them inside `map(...)` /
+  `filter(...)` when the user is typing a partial name without a
+  leading `.`. Candidates are filtered by the element shape of the
+  surrounding pipe input — same shape-gated rule that already
+  governed post-pipe completion. The new `text` op makes
+  `map(text)` a useful and discoverable pattern; this change ensures
+  the completer can help users find it.
 
 ### Markdown text extraction
 
