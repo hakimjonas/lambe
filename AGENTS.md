@@ -91,7 +91,7 @@ recursion, no `def`/lambdas. Don't reach for it when the user wants:
 . | length               count elements (list / map / string)
 . | first                first element
 . | last                 last element
-. | sum                  sum numbers
+. | sum                  sum numbers (jq alias: add)
 . | avg                  average
 . | min / max            minimum / maximum
 . | keys                 map keys or list indices
@@ -99,7 +99,7 @@ recursion, no `def`/lambdas. Don't reach for it when the user wants:
 . | has("field")         check field exists (returns bool)
 . | to_entries           map to [{key, value}]
 . | from_entries         [{key, value}] to map
-. | to_number            parse a string as a number (use on CSV numeric columns)
+. | to_number            parse a string as a number (use on CSV numeric columns; jq alias: tonumber)
 . | type                 runtime type: null, boolean, number, string, array, object
 . | filter_values(. > 5) filter a map's values
 . | map_values(. * 2)    transform a map's values

@@ -95,6 +95,23 @@ jq returns `[[group1], [group2]]`. Lambe returns `[{key: true, values: [...]}, {
 
 jq uses `add` for sum and `add / length` for average. Lambe has `sum` and `avg` directly.
 
+`add` is also accepted as a jq-compatibility alias for `sum` — both
+parse, both produce the same AST, and `--explain` canonicalises to
+`sum`. Use `sum` in new lambé queries; `add` exists so jq habits
+don't fail on the parser.
+
+## Type coercion
+
+| jq | Lambe |
+|----|-------|
+| `"42" \| tonumber` | `"42" \| to_number` (or jq alias `tonumber`) |
+| `"3.14" \| tonumber` | `"3.14" \| to_number` (or jq alias `tonumber`) |
+
+`to_number` is lambé's canonical name; `tonumber` is accepted as a
+jq-compatibility alias. Both parse, both throw `to_number: cannot
+parse "..."` on a non-numeric string, and `--explain` canonicalises
+to `to_number`.
+
 ## Object construction
 
 | jq | Lambe |
@@ -126,9 +143,13 @@ Identical syntax.
 | jq | Lambe |
 |----|-------|
 | `.config \| has("host")` | `.config \| has("host")` |
-| `.config.missing // "default"` | not yet supported |
+| `.config.missing // "default"` | `.config.missing // "default"` |
 
-`has` is identical. jq's `//` (alternative operator) does not exist in Lambe yet.
+`has` is identical. `//` is the null-fallback operator: `expr // alt`
+returns `alt` when `expr` evaluates to `null`. It is not an
+error-handler — computation errors still propagate. For "the field
+might not exist," `// default` is the idiom; for "this might fail,"
+use shape checks (`has(...)`, `--print-shape`) before the call site.
 
 ## Entry conversion
 

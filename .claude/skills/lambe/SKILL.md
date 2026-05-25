@@ -12,6 +12,12 @@ metadata:
 Lambé is on the user's PATH after `dart pub global activate lambe`. You
 invoke it via shell. The binary is named `lam`.
 
+**Sandbox note for Claude Code:** the Bash tool does not always inherit
+the user's interactive shell PATH. If `lam: command not found` appears,
+fall back to the absolute path `~/.pub-cache/bin/lam`, which is where
+`dart pub global activate` installs it. This is a Claude-Code shell
+behavior, not a lambé issue.
+
 ## When to reach for `lam`
 
 The user wants to do something with a **structured data file**:
