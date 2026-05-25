@@ -134,12 +134,42 @@ Object? _parseDelimited(String input, DelimitedConfig? config) {
 }
 
 /// Parse CommonMark Markdown into queryable native Dart types.
+///
+/// Uses [parseMarkdownWithFrontmatter] so a leading `---` YAML
+/// frontmatter block is detected and surfaced as a sibling
+/// `frontmatter` field on the document, instead of being absorbed into
+/// the body as prose. Files without frontmatter parse identically to
+/// the previous [parseMarkdown]-only path.
 Object? _parseMd(String input) {
-  final result = parseMarkdown(input);
+  final result = parseMarkdownWithFrontmatter(input);
   return switch (result) {
-    Success(:final value) => mdToNative(value),
-    Partial(:final value) => mdToNative(value),
+    Success(:final value) => mdToNativeWithFrontmatter(value),
+    Partial(:final value) => mdToNativeWithFrontmatter(value),
     Failure() => throw QueryError('Markdown parse error: ${result.errors}'),
+  };
+}
+
+/// Convert a [MarkdownDocument] (Markdown body + optional YAML
+/// frontmatter) into queryable native Dart types.
+///
+/// When frontmatter is absent the result matches [mdToNative]
+/// byte-for-byte — `{type: 'document', children: [...]}`. When present,
+/// a sibling `frontmatter` key carries the parsed YAML as native Dart
+/// values (maps, lists, scalars), addressable via the usual lambé path
+/// access (e.g. `.frontmatter.title`).
+///
+/// Frontmatter is decoded via rumil_parsers' [yamlToNative], which
+/// resolves YAML anchors and aliases before flattening — so a
+/// frontmatter block that happens to use them (rare but valid)
+/// queries identically to inline-only YAML.
+Map<String, Object?> mdToNativeWithFrontmatter(MarkdownDocument doc) {
+  final body = mdToNative(doc.document);
+  final fm = doc.frontmatter;
+  if (fm == null) return body as Map<String, Object?>;
+  return {
+    'type': 'document',
+    'frontmatter': yamlToNative(fm),
+    'children': (body as Map<String, Object?>)['children'],
   };
 }
 

@@ -126,6 +126,48 @@ void main() {
     });
   });
 
+  group('YAML frontmatter is split out, not absorbed as prose', () {
+    const fmSource =
+        '---\n'
+        'title: My Title\n'
+        'tags:\n'
+        '  - alpha\n'
+        '  - beta\n'
+        '---\n'
+        '\n'
+        '# Heading\n'
+        '\n'
+        'Body.\n';
+
+    test('text op no longer scoops up the frontmatter', () {
+      final doc = _md(fmSource);
+      final result = query('. | text', doc) as String;
+      // Pre-fix: the result included "title: My Title alpha beta..." because
+      // the YAML block was parsed as a paragraph. Post-fix: only the body.
+      expect(result, contains('Heading'));
+      expect(result, contains('Body.'));
+      expect(result, isNot(contains('title:')));
+      expect(result, isNot(contains('alpha')));
+    });
+
+    test('frontmatter is addressable via .frontmatter', () {
+      final doc = _md(fmSource);
+      expect(query('.frontmatter.title', doc), 'My Title');
+      expect(query('.frontmatter.tags', doc), <String>['alpha', 'beta']);
+    });
+
+    test('document without frontmatter has no frontmatter field', () {
+      final doc = _md('# heading\n\nbody.\n');
+      expect(query('. | has("frontmatter")', doc), false);
+    });
+
+    test('children of frontmatter doc preserve previous shape', () {
+      final doc = _md(fmSource);
+      final firstChild = query('.children[0]', doc) as Map<String, Object?>;
+      expect(firstChild['type'], 'heading');
+    });
+  });
+
   group('text op metadata', () {
     test('registered in pipeOpNames', () {
       expect(pipeOpNames, contains('text'));

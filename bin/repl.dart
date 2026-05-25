@@ -11,9 +11,10 @@ import 'dart:io';
 
 import 'package:rumil/rumil.dart';
 
-import '../lambe.dart';
-import 'completer.dart';
+import 'package:lambe/lambe.dart';
+import 'package:lambe/src/completer.dart';
 import 'readline.dart';
+import 'schema_io.dart';
 
 /// Run the interactive REPL with [data].
 ///

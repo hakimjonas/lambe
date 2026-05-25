@@ -64,7 +64,10 @@ class OutputShapeError extends QueryError {
     buf.write(renderShape(r.got));
     buf.write('.');
     if (r.suggestions.isNotEmpty) {
-      buf.write('\nTry appending one of:');
+      buf.write(
+        '\nAppend one of these stages to the end of your query '
+        '(keep your existing flags such as `-t ${r.format.name}`):',
+      );
       for (final s in r.suggestions) {
         buf.write('\n  | ');
         buf.write(s.display);

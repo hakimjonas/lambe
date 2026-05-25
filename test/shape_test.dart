@@ -45,7 +45,17 @@ void main() {
     });
 
     test('heterogeneous list collapses to SAny element', () {
-      expect(shapeOf(<Object?>[1, 'x', true]), const SList(SAny()));
+      final shape = shapeOf(<Object?>[1, 'x', true]);
+      expect(shape, isA<SList>());
+      final list = shape as SList;
+      expect(list.element, const SAny());
+      // Heterogeneous lists carry the distinct observed shapes so the
+      // schema renderer can describe what was actually present.
+      expect(list.sampledKinds, isNotNull);
+      expect(
+        list.sampledKinds,
+        containsAll(<Shape>[const SNum(), const SString(), const SBool()]),
+      );
     });
 
     test('nested list of lists', () {
@@ -76,7 +86,15 @@ void main() {
 
     test('sampling: heterogeneity within the sample window is detected', () {
       final value = <Object?>[1, 2, 3, 'x', 5];
-      expect(shapeOf(value), const SList(SAny()));
+      final shape = shapeOf(value);
+      expect(shape, isA<SList>());
+      final list = shape as SList;
+      expect(list.element, const SAny());
+      // Both number and string were in the sample window.
+      expect(
+        list.sampledKinds,
+        containsAll(<Shape>[const SNum(), const SString()]),
+      );
     });
   });
 

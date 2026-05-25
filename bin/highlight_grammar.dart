@@ -8,7 +8,7 @@ library;
 
 import 'package:rumil_tokens/rumil_tokens.dart';
 
-import 'shape/pipe_ops.dart' as shape_ops;
+import 'package:lambe/src/shape/pipe_ops.dart' as shape_ops;
 
 /// Lambé query grammar for the REPL highlighter.
 ///
