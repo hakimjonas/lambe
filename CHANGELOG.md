@@ -1,3 +1,116 @@
+## 0.10.0
+
+Polish release built on rumil 0.7.1 / rumil_parsers 0.8.1. The library
+becomes WASM-clean (no `dart:io` in `lib/`) so it runs in browsers
+without the CLI binary, frontmatter no longer leaks into Markdown
+prose, foreign-jq idioms get redirect hints, and a handful of error
+messages clarify themselves. End-to-end speedup on representative
+workloads: 5–12% AOT, 5–12% WASM (the rumil hot/cold split lands
+through the lambé pipeline).
+
+### Breaking — library API surface
+
+- **Removed from `package:lambe`**: `loadSchemaFromFile`,
+  `loadSchemaForData`. The file-loading helpers moved to
+  `bin/schema_io.dart` because they pull in `dart:io`. `lib/` is now
+  `dart:io`-free, which lets the library compile to WASM without
+  bridges (the lambé playground in arda-web depends on this).
+
+  **`mergeSchemaWithData` stays** — it's pure and remains exported.
+
+  Migration: a library consumer who needs the file-loading shape
+  inlines `parseJsonSchema(File(path).readAsStringSync())`. The CLI
+  unchanged; both `lam` and `lam-mcp` keep their schema flags.
+
+### Markdown frontmatter no longer absorbed as prose
+
+- `parseInput(text, Format.markdown)` now uses
+  `parseMarkdownWithFrontmatter` from rumil_parsers 0.8.1. A leading
+  YAML frontmatter block (delimited by `---` lines) becomes a sibling
+  `frontmatter` field on the document, instead of being concatenated
+  into the body text by the `text` op or by the children list.
+
+  Files without frontmatter parse byte-identically to before. Files
+  with frontmatter gain a `frontmatter` key addressable via
+  `.frontmatter.title`, `.frontmatter.tags[0]`, etc.
+
+  Pre-fix: `lam '. | text' SKILL.md` returned `"name: lambe
+  description: | ...First headingBody."` (the YAML scooped up by the
+  prose walker).
+
+  Post-fix: `lam '. | text' SKILL.md` returns `"First headingBody."`
+  and the metadata is queryable separately.
+
+### Foreign-idiom redirects (jq-compatibility)
+
+The parser already emitted `help: ...` redirects for `select`/`paths`/
+`..`/`try` in 0.9. This release widens coverage to the rest of the
+common jq habits the model might draft:
+
+- **Pipe-op redirects** (fire when written as `... | name(...)`):
+  `getpath`, `setpath`, `env`, `gsub`/`sub`/`test`/`match`/`scan`/
+  `splits` (regex family), `tojson`, `fromjson`.
+- **Inline-idiom redirects** (fire on character patterns):
+  `@uri`, `@html`, `@sh`, `@json`, `$ENV` and other variable-binding
+  forms (`$NAME`).
+- **Closest-match overrides**: `test`, `match`, `sub` previously
+  produced misleading "did you mean text/map/sum?" guesses. Now they
+  produce the regex-family explanation directly.
+
+### Other user-visible changes
+
+- **Output-shape error messages clarify "appending":** the writer's
+  bridge suggestion now reads `Append one of these stages to the end
+  of your query (keep your existing flags such as -t hcl):` instead
+  of the ambiguous `Try appending one of:`. The format name is
+  interpolated dynamically.
+- **`--schema <data-file>` migration hint:** when the argument has a
+  data extension (`.json`/`.yaml`/`.toml`/etc.) instead of a
+  `*.schema.json`, the error suggests the new flag:
+  `hint: --schema is now for declaring a JSON Schema (renamed from
+  0.8.0). To inspect data shape use: lam --print-shape <file>`.
+- **`.jsonlines` extension auto-implies `--ndjson`** (joining the
+  existing `.ndjson` and `.jsonl` auto-detection).
+- **Heterogeneous-list shape descriptions list the sampled types:**
+  `--print-shape` on a mixed array now emits `"description":
+  "sampled: number, string, boolean, null, array (heterogeneous)"`
+  instead of the generic `"sampled, may be heterogeneous"`. Empty
+  lists keep the original wording (no observed kinds).
+- **`tonumber` and `add` jq-compatibility aliases now documented** in
+  `doc/jq-to-lambe.md`, `doc/syntax.md`, `doc/lam.1.md`, and
+  `AGENTS.md`. The aliases were already implemented in 0.9; the
+  surface was just undocumented.
+- **`//` documentation tightened** in `doc/jq-to-lambe.md` (it's the
+  null-fallback operator, not an error-handler — `expr // alt`
+  returns `alt` when `expr` evaluates to null, but computation
+  errors still propagate).
+
+### Performance
+
+End-to-end CLI / library benchmark (median of 7 runs, after
+warm-up), comparing lambé 0.9.0 (rumil 0.7.0 / rumil_parsers 0.8.0)
+against this release (rumil 0.7.1 / rumil_parsers 0.8.1):
+
+| Workload                                  | AOT 0.9.0 | AOT 0.10.0 | Δ      | WASM 0.9.0 | WASM 0.10.0 | Δ      |
+|-------------------------------------------|----------:|-----------:|-------:|-----------:|------------:|-------:|
+| `--print-shape` on 50k items              |  742.2 ms |   693.8 ms | -6.5%  |   319.9 ms |    290.1 ms | -9.3%  |
+| `.items \| filter(.value > 50000) \| length` |  748.5 ms |   704.8 ms | -5.8%  |   324.9 ms |    285.9 ms | -12.0% |
+| `group_by(.role)` on 1k records           |   30.7 ms |    27.1 ms | -11.7% |    12.4 ms |     11.8 ms | -4.8%  |
+
+The win comes from rumil's hot/cold dispatch split (4–6% on
+synthetic format benches; compounded through lambé's deeper call
+chain). WASM is also the relevant runtime for the lambé playground
+in arda-web; users get faster live-explain feedback in the browser.
+
+Reproduce with `tool/bench/cli_bench.sh` (AOT) — the WASM library
+bench requires a host program importing `package:lambe` and
+compiling with `dart compile wasm`.
+
+### Dependency bumps
+
+- `rumil_parsers ^0.8.0` → `^0.8.1` (required for
+  `parseMarkdownWithFrontmatter`).
+
 ## 0.9.0
 
 Closes the shape feedback loop. Declare a JSON Schema, check queries

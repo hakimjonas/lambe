@@ -106,21 +106,50 @@ final class SString extends Shape {
 ///
 /// The [element] is the shape of all elements if they agree, or [SAny] if
 /// the list is empty or contains mixed shapes.
+///
+/// [sampledKinds] is non-null only when [element] is [SAny] *because of
+/// observed heterogeneity* (mixed types in the sample), and lists the
+/// distinct observed element shapes. It is null for the empty-list case
+/// (no observations) and for any [SList] whose element is not [SAny].
+/// Renderers and explainers can use it to surface what was actually
+/// seen, without having to re-walk the source data.
 final class SList extends Shape {
   /// Shape of each element. [SAny] for empty or heterogeneous lists.
   final Shape element;
 
+  /// Distinct observed element shapes, when [element] is [SAny] due to
+  /// heterogeneity. Null when not applicable.
+  final List<Shape>? sampledKinds;
+
   /// Creates an [SList] shape with the given [element] shape.
-  const SList(this.element);
+  const SList(this.element, {this.sampledKinds});
 
   @override
-  bool operator ==(Object other) => other is SList && other.element == element;
+  bool operator ==(Object other) =>
+      other is SList &&
+      other.element == element &&
+      _kindsEqual(other.sampledKinds, sampledKinds);
 
   @override
-  int get hashCode => Object.hash('list', element);
+  int get hashCode => Object.hash('list', element, _kindsHash(sampledKinds));
 
   @override
   String toString() => 'list<$element>';
+}
+
+bool _kindsEqual(List<Shape>? a, List<Shape>? b) {
+  if (identical(a, b)) return true;
+  if (a == null || b == null) return false;
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
+int _kindsHash(List<Shape>? kinds) {
+  if (kinds == null) return 0;
+  return Object.hashAll(kinds);
 }
 
 /// Shape of a map, with the shape of each known field.
@@ -227,7 +256,19 @@ Shape _listShape(List<Object?> list) {
   final limit =
       list.length < _heteroSampleLimit ? list.length : _heteroSampleLimit;
   for (var i = 1; i < limit; i++) {
-    if (shapeOf(list[i]) != first) return const SList(SAny());
+    final next = shapeOf(list[i]);
+    if (next != first) {
+      // Heterogeneous: collect distinct shapes from the sample so the
+      // schema renderer can describe what was observed instead of just
+      // saying "may be heterogeneous." Stable insertion order, by-equality
+      // dedup; cheap because limit is bounded by [_heteroSampleLimit].
+      final kinds = <Shape>[first];
+      for (var j = 1; j < limit; j++) {
+        final k = shapeOf(list[j]);
+        if (!kinds.contains(k)) kinds.add(k);
+      }
+      return SList(const SAny(), sampledKinds: kinds);
+    }
   }
   return SList(first);
 }

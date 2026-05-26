@@ -18,6 +18,11 @@ import 'dart:io';
 import 'package:lambe/lambe.dart';
 import 'package:test/test.dart';
 
+// File-loading helpers live in `bin/` (not in `lib/`) so the published
+// library has no `dart:io` imports. They're still under test via this
+// relative import.
+import '../bin/schema_io.dart';
+
 void main() {
   group('loadSchemaFromFile', () {
     late Directory tmp;

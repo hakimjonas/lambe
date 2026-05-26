@@ -10,7 +10,9 @@ import 'dart:io';
 
 import 'package:args/args.dart';
 import 'package:lambe/lambe.dart';
-import 'package:lambe/src/repl.dart' show runRepl;
+
+import 'repl.dart' show runRepl;
+import 'schema_io.dart';
 
 void main(List<String> arguments) {
   final argParser =
@@ -157,6 +159,19 @@ void main(List<String> arguments) {
 
   final rest = args.rest;
   if (rest.isEmpty && !isPrintShapeMode && !isInteractive) {
+    // 0.8 → 0.9 migration: --schema took a data file in 0.8 and printed
+    // its shape. In 0.9 it takes a JSON Schema file (the shape printer
+    // moved to --print-shape). When the argument looks like data, point
+    // the user at the new flag instead of the generic usage dump.
+    if (schemaPath != null && _looksLikeDataFile(schemaPath)) {
+      stderr.writeln('Error: missing query expression.');
+      stderr.writeln(
+        '  hint: --schema is now for declaring a JSON Schema (renamed '
+        'from 0.8.0).',
+      );
+      stderr.writeln('  To inspect data shape use: lam --print-shape <file>');
+      exit(1);
+    }
     stderr.writeln('Error: missing query expression.');
     stderr.writeln();
     _usage(argParser);
@@ -197,7 +212,9 @@ void main(List<String> arguments) {
   // format auto-detection convention for .csv, .yaml, etc.
   if (!isNdjsonMode && rest.length > fileArgIndex) {
     final fpath = rest[fileArgIndex].toLowerCase();
-    if (fpath.endsWith('.ndjson') || fpath.endsWith('.jsonl')) {
+    if (fpath.endsWith('.ndjson') ||
+        fpath.endsWith('.jsonl') ||
+        fpath.endsWith('.jsonlines')) {
       isNdjsonMode = true;
     }
   }
@@ -646,6 +663,37 @@ Iterable<String> _stdinLines() sync* {
   while ((line = stdin.readLineSync()) != null) {
     yield line!;
   }
+}
+
+/// True if [path] has a data-format extension (`.json`, `.yaml`, etc.)
+/// rather than the `*.schema.json` JSON-Schema convention. Used by the
+/// 0.8 → 0.9 migration hint: `--schema /path/to/data.json` is almost
+/// certainly stale shell history from when `--schema` printed shapes
+/// (now `--print-shape`).
+bool _looksLikeDataFile(String path) {
+  final lower = path.toLowerCase();
+  // *.schema.json is the canonical JSON Schema filename — not data.
+  if (lower.endsWith('.schema.json')) return false;
+  const dataExts = [
+    '.json',
+    '.ndjson',
+    '.jsonl',
+    '.jsonlines',
+    '.yaml',
+    '.yml',
+    '.toml',
+    '.tf',
+    '.hcl',
+    '.csv',
+    '.tsv',
+    '.md',
+    '.markdown',
+    '.proto',
+  ];
+  for (final ext in dataExts) {
+    if (lower.endsWith(ext)) return true;
+  }
+  return false;
 }
 
 /// Print usage information to stderr.

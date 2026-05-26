@@ -139,8 +139,8 @@ Length of list, map, or string.
 \fBfirst\fR, \fBlast\fR
 First or last element.
 .TP
-\fBsum\fR, \fBavg\fR, \fBmin\fR, \fBmax\fR
-Aggregate operations on numeric lists.
+\fBsum\fR (jq alias: \fBadd\fR), \fBavg\fR, \fBmin\fR, \fBmax\fR
+Aggregate operations on numeric lists. \fCadd\fR is accepted for jq-compatibility; \fC--explain\fR canonicalises to \fCsum\fR.
 .TP
 \fBhas\fR(\fIkey\fR)
 Check if a map contains a key.
@@ -151,8 +151,8 @@ Map to [{key, value}].
 \fBfrom_entries\fR
 [{key, value}] to map.
 .TP
-\fBto_number\fR
-Parse a string as a number. Pass-through for existing numbers.
+\fBto_number\fR (jq alias: \fBtonumber\fR)
+Parse a string as a number. Pass-through for existing numbers. Both names parse identically; \fC--explain\fR canonicalises to \fCto_number\fR.
 .TP
 \fBtype\fR
 Runtime type of the value as a string: "null", "boolean", "number", "string", "array", or "object".

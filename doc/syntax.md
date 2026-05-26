@@ -510,7 +510,8 @@ $ lam '.tags | last' data.json
 
 ### sum, avg, min, max
 
-Aggregate operations on numeric lists.
+Aggregate operations on numeric lists. `add` is accepted as a
+jq-compatibility alias for `sum`; `--explain` canonicalises to `sum`.
 
 ```bash
 $ lam '.users | map(.age) | sum' data.json
@@ -567,6 +568,10 @@ Parse a string as a number. Pass-through for existing numbers.
 
 CSV and TSV cells are strings by default; use `to_number` to coerce them
 before arithmetic.
+
+`tonumber` is accepted as a jq-compatibility alias — both names parse
+identically and `--explain` canonicalises to `to_number`. Use
+`to_number` in new lambé queries.
 
 ```bash
 $ lam -n '"42" | to_number'

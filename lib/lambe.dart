@@ -32,8 +32,7 @@ export 'src/input.dart'
 export 'src/mcp_payload.dart' show renderMcpShapeErrorPayload;
 export 'src/output.dart'
     show OutputFormat, CellPolicy, formatOutput, inferSchema;
-export 'src/schema/loader.dart'
-    show loadSchemaFromFile, loadSchemaForData, mergeSchemaWithData;
+export 'src/schema/loader.dart' show mergeSchemaWithData;
 export 'src/schema/parser.dart' show parseJsonSchema;
 export 'src/schema/renderer.dart' show renderJsonSchema;
 export 'src/shape/shape.dart'
@@ -452,6 +451,16 @@ String? _jqPipeOpHint(String word) {
     case 'leaf_paths':
       return 'Lambé has no `$word` op. Use `--print-shape` (CLI) or '
           '`lambe_print_shape` (MCP) to see the structure of the data.';
+    case 'getpath':
+      return '`getpath([...])` is not a lambé op. Lambé paths are '
+          'static: write `.users[0].age` instead of '
+          '`getpath(["users",0,"age"])`. For dynamic indexing, '
+          'compose with `map(...)` over the path components.';
+    case 'setpath':
+      return '`setpath([...]; v)` is not a lambé op. Lambé does not '
+          'mutate input; it produces new values. Construct the new '
+          'object with `{...}` literals, or use `map(...)` / '
+          '`map_values(...)` to update fields in lists / maps.';
     case 'range':
       return 'Lambé has no `range` generator. Build the list inline '
           '(`[0,1,2,...]`) or pre-compute it; lambé queries are '
@@ -461,6 +470,27 @@ String? _jqPipeOpHint(String word) {
       return '`$word` is not a lambé op. Use slicing `[:n]` to take a '
           'prefix, `[n:n+1]` to take an index, or `first`/`last` for '
           'the ends.';
+    case 'env':
+      return 'Lambé has no `env` op (queries are pure; environment '
+          'access lives outside the query). Set up the values via the '
+          'shell and pipe them in as data.';
+    case 'gsub':
+    case 'sub':
+    case 'test':
+    case 'match':
+    case 'scan':
+    case 'splits':
+      return '`$word` is a regex op; lambé treats strings as opaque. '
+          'Pipe through `grep` / `sed` / a regex tool before or after '
+          '`lam` for regex transforms.';
+    case 'tojson':
+      return '`tojson` is not a lambé op. Use `as(json)` to bridge to '
+          'a JSON-shaped value, or run `lam` with `-t json` (the '
+          'default) to serialize the result.';
+    case 'fromjson':
+      return '`fromjson` is not a lambé op. Lambé parses input by '
+          'format on read; for JSON-in-strings, decode upstream of '
+          'lambé or use `as(json)` after coercing the wrapping shape.';
     default:
       return null;
   }
@@ -583,6 +613,28 @@ String? _jqIdiomHint(String expression, int offset) {
   if (rest.startsWith('@base64')) {
     return 'Lambé does not support `@base64` encoding/decoding. '
         'Pre-process the data outside lambé if you need it.';
+  }
+  // `@uri` — explicitly unsupported.
+  if (rest.startsWith('@uri')) {
+    return 'Lambé does not support `@uri` URL-encoding. '
+        'Pre-process the data outside lambé if you need it.';
+  }
+  // `@html` / `@sh` / `@json` — other jq format strings.
+  if (rest.startsWith('@html') ||
+      rest.startsWith('@sh') ||
+      rest.startsWith('@json')) {
+    final fmt = RegExp(r'^@(\w+)').firstMatch(rest)?.group(1) ?? 'fmt';
+    return 'Lambé has no `@$fmt` format string. '
+        'Use `as(json)` for JSON shape bridges, `--to <fmt>` for '
+        'output formats, or pre-process outside lambé.';
+  }
+  // `$ENV` / `$NAME` — jq's environment-variable / variable-binding
+  // syntax. Lambé queries are pure; no in-query variables.
+  if (rest.startsWith(r'$')) {
+    return 'Lambé has no variable-binding (`\$NAME`) or environment '
+        '(`\$ENV`) syntax. Queries are pure; environment access lives '
+        'outside the query. Set up values via the shell, pipe them '
+        'as data.';
   }
   return null;
 }

@@ -59,7 +59,7 @@ Map<String, Object?> _encode(Shape shape) {
     SBool() => {'type': 'boolean'},
     SNum() => {'type': 'number'},
     SString() => {'type': 'string'},
-    SList(:final element) => {
+    SList(:final element, :final sampledKinds) => {
       'type': 'array',
       'items': _encode(element),
       // SList(SAny()) means "this list contained heterogeneous or
@@ -69,7 +69,17 @@ Map<String, Object?> _encode(Shape shape) {
       // parser ignores unknown keywords (per JSON Schema's
       // extensibility convention for metadata), so this round-trips
       // safely.
-      if (element is SAny) 'description': 'sampled, may be heterogeneous',
+      //
+      // When `sampledKinds` is populated, the heterogeneity was
+      // observed (mixed types in the sample) — list the distinct
+      // shapes so users see what's actually there. When it's null,
+      // the list was empty or shape-inference widened structurally
+      // without an observable sample (e.g. via static query analysis).
+      if (element is SAny)
+        'description':
+            sampledKinds != null && sampledKinds.isNotEmpty
+                ? 'sampled: ${_describeKinds(sampledKinds)} (heterogeneous)'
+                : 'sampled, may be heterogeneous',
     },
     SMap(:final fields) => _encodeMap(fields),
     // Unreachable: SOptional was unwrapped above. Present for
@@ -77,6 +87,23 @@ Map<String, Object?> _encode(Shape shape) {
     SOptional() => throw StateError('unreachable: SOptional unwrapped above'),
   };
 }
+
+/// Render a list of distinct sampled shapes as a comma-separated word
+/// list for the heterogeneous-list description string. Maps each
+/// [Shape] to a short human-readable name (number, string, list, ...);
+/// nested container shapes collapse to their kind without recursion.
+String _describeKinds(List<Shape> kinds) => kinds.map(_kindName).join(', ');
+
+String _kindName(Shape s) => switch (s) {
+  SNull() => 'null',
+  SBool() => 'boolean',
+  SNum() => 'number',
+  SString() => 'string',
+  SList() => 'array',
+  SMap() => 'object',
+  SOptional() => 'optional',
+  SAny() => 'any',
+};
 
 Map<String, Object?> _encodeMap(Map<String, Shape> fields) {
   final properties = <String, Object?>{};

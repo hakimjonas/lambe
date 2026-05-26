@@ -159,8 +159,8 @@ Queries start with **.** (the current document) and chain operations with **|**.
 **first**, **last**
 :   First or last element.
 
-**sum**, **avg**, **min**, **max**
-:   Aggregate operations on numeric lists.
+**sum** (jq alias: **add**), **avg**, **min**, **max**
+:   Aggregate operations on numeric lists. `add` is accepted for jq-compatibility; `--explain` canonicalises to `sum`.
 
 **has**(*key*)
 :   Check if a map contains a key.
@@ -171,8 +171,8 @@ Queries start with **.** (the current document) and chain operations with **|**.
 **from_entries**
 :   [{key, value}] to map.
 
-**to_number**
-:   Parse a string as a number. Pass-through for existing numbers.
+**to_number** (jq alias: **tonumber**)
+:   Parse a string as a number. Pass-through for existing numbers. Both names parse identically; `--explain` canonicalises to `to_number`.
 
 **type**
 :   Runtime type of the value as a string: "null", "boolean", "number", "string", "array", or "object".

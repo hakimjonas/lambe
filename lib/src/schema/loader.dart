@@ -1,10 +1,4 @@
-/// Load and merge schemas for the `--schema` entry point.
-///
-/// [loadSchemaFromFile] reads a schema file (JSON) and returns the
-/// parsed [Shape], after a JSON-Schema-looking sanity check.
-/// [loadSchemaForData] adds sibling auto-detection: given a data file
-/// path, it looks for `<datafile>.schema.json` next to it and loads
-/// that when present.
+/// Pure schema-merge logic for the `--schema` entry point.
 ///
 /// [mergeSchemaWithData] combines a user-declared schema with the
 /// shape inferred from actual data. See `doc/schema-design.md` section
@@ -12,56 +6,15 @@
 /// "schema augments, never contradicts" — agreements pass, schema
 /// fills in what data can't express (empty-list elements, optional
 /// fields), concrete-type disagreements error at load time.
+///
+/// File-loading helpers (`loadSchemaFromFile`, `loadSchemaForData`)
+/// live in `bin/schema_io.dart` because they pull in `dart:io`. The
+/// published library has zero `dart:io` imports so it stays
+/// WASM-compilable for browser consumers (e.g. the lambé playground).
 library;
-
-import 'dart:io';
 
 import '../errors.dart';
 import '../shape/shape.dart';
-import 'parser.dart';
-
-/// Load a schema from a file path, parsing it as a JSON Schema subset.
-///
-/// Throws [QueryError] if the file is missing or unreadable, or if
-/// the schema parser rejects the content.
-Shape loadSchemaFromFile(String path) {
-  final file = File(path);
-  if (!file.existsSync()) {
-    throw QueryError('schema file not found: $path');
-  }
-  final source = file.readAsStringSync();
-  return parseJsonSchema(source);
-}
-
-/// Load a schema for [dataPath], preferring [explicitSchemaPath] when
-/// provided and falling back to a `<dataPath>.schema.json` sibling.
-///
-/// Returns `null` when no explicit path is given and no sibling
-/// exists. Throws [QueryError] for explicit paths that fail to load.
-Shape? loadSchemaForData({String? explicitSchemaPath, String? dataPath}) {
-  if (explicitSchemaPath != null) {
-    return loadSchemaFromFile(explicitSchemaPath);
-  }
-  if (dataPath != null) {
-    final sibling = _siblingSchemaPath(dataPath);
-    if (sibling != null && File(sibling).existsSync()) {
-      return loadSchemaFromFile(sibling);
-    }
-  }
-  return null;
-}
-
-/// Compute the sibling schema path for [dataPath].
-///
-/// Strips the data file's extension and appends `.schema.json`:
-/// `data.json` → `data.schema.json`, `events.ndjson` → `events.schema.json`.
-/// Returns `null` for paths without a recognizable extension.
-String? _siblingSchemaPath(String dataPath) {
-  final lastDot = dataPath.lastIndexOf('.');
-  if (lastDot < 0) return null;
-  final base = dataPath.substring(0, lastDot);
-  return '$base.schema.json';
-}
 
 /// Merge a schema-declared [schema] shape with a data-inferred [data]
 /// shape. Schema augments data:
