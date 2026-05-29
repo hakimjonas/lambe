@@ -382,7 +382,31 @@ Markdown is input-only in this release. The Markdown AST is a presentation tree 
 
 ## AI Integration
 
-Lambë includes an MCP server for use with AI coding assistants.
+Lambë ships as both an [Agent Skill](https://agentskills.io) (loaded
+into an agent's session as expertise) and an MCP server (callable as a
+runtime tool).
+
+### Agent Skill
+
+The skill folder lives at `.agents/skills/lambe/` in this repository,
+following the cross-vendor [agent-skills specification](https://github.com/agentskills/agentskills)
+that Claude Code, OpenAI Codex, GitHub Copilot, Cursor, and the
+Microsoft Agent Framework all read.
+
+To make Lambë available to an agent in another project, copy the
+folder into the agent-conventional location:
+
+```bash
+# Personal (available across all your projects)
+git clone https://github.com/hakimjonas/lambe /tmp/lambe-skill
+mkdir -p ~/.agents/skills
+cp -r /tmp/lambe-skill/.agents/skills/lambe ~/.agents/skills/
+
+# Project-local
+cp -r /tmp/lambe-skill/.agents/skills/lambe <your-project>/.agents/skills/
+```
+
+Agents that follow the spec auto-discover the skill at session start.
 
 ### MCP Server
 

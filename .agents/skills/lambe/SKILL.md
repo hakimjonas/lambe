@@ -12,11 +12,11 @@ metadata:
 Lambé is on the user's PATH after `dart pub global activate lambe`. You
 invoke it via shell. The binary is named `lam`.
 
-**Sandbox note for Claude Code:** the Bash tool does not always inherit
-the user's interactive shell PATH. If `lam: command not found` appears,
-fall back to the absolute path `~/.pub-cache/bin/lam`, which is where
-`dart pub global activate` installs it. This is a Claude-Code shell
-behavior, not a lambé issue.
+**Sandbox note for agent harnesses:** some agent shells do not inherit
+the user's interactive PATH. If `lam: command not found` appears, fall
+back to the absolute path `~/.pub-cache/bin/lam`, which is where `dart
+pub global activate` installs it. This is a shell-environment behavior,
+not a lambé issue.
 
 ## When to reach for `lam`
 
@@ -136,13 +136,23 @@ and misses nested emphasis, links, and inline code.
 `..` recursive descent, `def` user functions, `try`/`catch`, regex,
 `getpath`/`setpath`, in-place mutation, streaming. If you draft a
 query needing any of these, lambé will tell you with an "unknown
-pipe op" error or a `_jqIdiomHint`. The repo's `doc/non-goals.md`
-documents the lambé idiom that replaces each omission.
+pipe op" error or a `_jqIdiomHint`. See the non-goals reference for
+the lambé idiom that replaces each omission.
 
 ## When you hit something this skill doesn't cover
 
-The repo's `AGENTS.md` has the broader reference (more examples, full
-pipeline op list, error pattern table, format auto-detect rules).
-`doc/syntax.md` is the language reference. `doc/recipes.md` has
-end-to-end examples. The MCP server `lam-mcp` is available for
-sandboxed agents that can't shell out.
+Deeper reference lives in the lambé repo:
+
+- `AGENTS.md` — broader reference: more examples, full pipeline op
+  list, error pattern table, format auto-detect rules.
+  <https://github.com/hakimjonas/lambe/blob/main/AGENTS.md>
+- `doc/syntax.md` — language reference.
+  <https://github.com/hakimjonas/lambe/blob/main/doc/syntax.md>
+- `doc/recipes.md` — end-to-end examples.
+  <https://github.com/hakimjonas/lambe/blob/main/doc/recipes.md>
+- `doc/non-goals.md` — what lambé deliberately doesn't do, and the
+  lambé idiom that replaces each omission.
+  <https://github.com/hakimjonas/lambe/blob/main/doc/non-goals.md>
+
+The MCP server `lam-mcp` is available for sandboxed agents that can't
+shell out.
