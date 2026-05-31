@@ -54,9 +54,11 @@ typedef PipeOpEval = Object? Function(LamExpr expr, Object? ctx);
 ///   `BuiltinPipeOp(name, [innerExpr])`.
 /// - [custom]: the op has grammar the generic rules cannot express
 ///   (e.g. `as(fmt)` takes a closed keyword set, not an arbitrary
-///   expression). The parser hand-writes these rules and the spec
-///   provides shape metadata only; runtime dispatch lives outside
-///   [BuiltinPipeOp] (see [As]).
+///   expression). The parser hand-writes these rules and the parser
+///   emits a dedicated AST class carrying a typed argument (currently
+///   only [As]). Inference and runtime still flow through this spec
+///   table; the spec's `infer` and `eval` destructure the typed AST
+///   node themselves.
 enum PipeOpParseKind {
   /// Bare keyword followed by a word boundary — `sort`, `length`,
   /// `to_entries`. Parser builds `BuiltinPipeOp(name, const [])`.
@@ -69,8 +71,9 @@ enum PipeOpParseKind {
 
   /// Op has custom grammar not expressible as `zeroArg` or `oneArg`,
   /// e.g. `as(fmt)` takes a closed keyword set instead of an arbitrary
-  /// expression. Parser hand-writes the rule; runtime dispatch lives
-  /// in a dedicated AST node (see [As]).
+  /// expression. Parser hand-writes the rule and emits a dedicated
+  /// AST class (see [As]). Inference and runtime dispatch still flow
+  /// through the spec table.
   custom,
 }
 

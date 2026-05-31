@@ -186,19 +186,26 @@ final class Slice extends LamExpr {
 
 /// Shape-directed bridge to an output format: `as(toml)`, `as(csv)`.
 ///
-/// At runtime the evaluator infers the shape of the current context and
-/// checks it against the target format's requirement. If the shape is
-/// already compatible, [As] returns the context unchanged. If a curated
-/// remediation exists for the mismatch, it is applied. Otherwise
-/// evaluation throws a [QueryError].
+/// At runtime the spec-table dispatch (`shape/pipe_ops.dart:_asSpec`)
+/// infers the shape of the current context and checks it against the
+/// target format's requirement. If the shape is already compatible,
+/// [As] returns the context unchanged. If a curated remediation
+/// exists for the mismatch, it is applied. Otherwise evaluation
+/// throws a [QueryError].
 ///
 /// The curated remediation table in `shape/check.dart:_suggestionsFor`
 /// returns at most one bridge per `(input shape, format)` pair, so in
 /// practice "no curated bridge" is the only failure mode users hit.
-/// A defensive multi-bridge branch in the evaluator (`_as` in
-/// `evaluator.dart`) guards against future curation errors that might
-/// add competing bridges; if that path ever fires the user will get a
-/// listing and a request to pick one explicitly.
+/// A defensive multi-bridge branch in `_asSpec.eval` guards against
+/// future curation errors that might add competing bridges; if that
+/// path ever fires the user will get a listing and a request to pick
+/// one explicitly.
+///
+/// [As] keeps a dedicated AST class because its argument is the typed
+/// [OutputFormat] enum rather than an arbitrary [LamExpr]. Inference
+/// and runtime dispatch flow through the same spec-table pathway as
+/// every [BuiltinPipeOp], so per-op invariants (null short-circuit,
+/// completer gating, trivial-warning detection) apply uniformly.
 final class As extends LamExpr {
   /// The target output format the pipeline should fit.
   final OutputFormat target;
