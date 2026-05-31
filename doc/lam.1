@@ -63,6 +63,9 @@ Treat input as ndjson or jsonl: one JSON document per line, evaluated independen
 \fB-n\fR, \fB--null-input\fR
 Run the query against \fBnull\fR context with no input. Useful for value computations like \fClam -n '[1,2,3] | unique'\fR. Without \fB-n\fR, the missing-input guard fires (a typo'd filename or missing redirect is a common footgun); the flag makes the "I have no input" intent explicit. Cannot combine with \fB--interactive\fR, \fB--ndjson\fR, \fB--schema\fR, or \fB--assert\fR.
 .TP
+\fB--skill\fR
+Print the embedded agent SKILL.md to stdout and exit. Lets agent harnesses install the skill regardless of how \fClam\fR was acquired: \fClam --skill > .agents/skills/lambe/SKILL.md\fR. The content is captured at compile time from \fC.agents/skills/lambe/SKILL.md\fR in the lambé source.
+.TP
 \fB-h\fR, \fB--help\fR
 Show usage information.
 .SH QUERY LANGUAGE

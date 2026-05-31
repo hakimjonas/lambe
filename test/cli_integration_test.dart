@@ -772,4 +772,35 @@ void main() {
       expect(jsonDecode(out), 6);
     });
   });
+
+  group('--skill: print embedded SKILL.md', () {
+    test('prints YAML-frontmatter header (skill is shaped right)', () async {
+      final (code, out, _) = await _runLam(['--skill']);
+      expect(code, 0);
+      expect(out, startsWith('---\nname: lambe\n'));
+    });
+
+    test('output round-trips as a Markdown document', () async {
+      // Pipe --skill output back through `lam -f markdown` to confirm
+      // the embedded content parses cleanly. The first child of any
+      // CommonMark document with a leading H1 should be a heading.
+      final (skillCode, skillOut, _) = await _runLam(['--skill']);
+      expect(skillCode, 0);
+
+      final (code, out, _) = await _runLam(
+        ['-f', 'markdown', '.children[0].type'],
+        stdinContents: skillOut,
+      );
+      expect(code, 0);
+      expect(out.trim(), '"heading"');
+    });
+
+    test('matches the on-disk .agents/skills/lambe/SKILL.md byte-for-byte', () async {
+      // Catches the "regenerated _skill.dart wasn't committed" case.
+      final source = await File('.agents/skills/lambe/SKILL.md').readAsString();
+      final (code, out, _) = await _runLam(['--skill']);
+      expect(code, 0);
+      expect(out, source);
+    });
+  });
 }
