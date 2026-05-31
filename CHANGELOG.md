@@ -1,3 +1,68 @@
+## 0.11.0
+
+Moves onto the rumil 0.10.0 family and rewrites the query parser's
+postfix chain to be `rule()`-free. No language or API changes; queries
+parse to identical ASTs. The changes are entirely performance.
+
+### Dependency bumps — rumil family 0.10.0
+
+- `rumil` 0.7.1 → 0.10.0, `rumil_parsers` 0.8.1 → 0.10.0,
+  `rumil_expressions` 0.7.0 → 0.10.0, `rumil_tokens` 0.1.0 → 0.10.0.
+
+  This crosses several upstream releases at once. The relevant changes
+  for lambé: rumil's interpreter became a single eval/apply (CEK)
+  trampoline that is stack-safe on structural nesting as well as width
+  and is ~2× faster, and rumil_parsers' value layer (the JSON/format
+  decoders lambé reads through) became iterative and faster. The 1657-
+  test suite passes unchanged on the new family.
+
+### Performance — query parser is now `rule()`-free
+
+- The left-recursive postfix chain (`.a.b[0] | op`) was parsed with
+  `rule()` (Warth seed-growth). It is now an atom followed by a left
+  fold of postfix suffixes — the standard LR-free form. Verified
+  byte-for-byte AST-identical to the old definition across a stress
+  corpus. On the query-parse path in isolation (same rumil on both
+  sides) this is ~1.3–1.6× faster, since it iterates with `many`
+  instead of re-running a growing seed per input position. lambé no
+  longer uses `rule()` at all.
+
+### Measured speedups (same machine, medians)
+
+End-to-end CLI, AOT, 11 runs — 0.10.0 (rumil 0.7.1) vs this release:
+
+| Workload                                  | 0.10.0   | 0.11.0  | Δ      |
+|-------------------------------------------|---------:|--------:|-------:|
+| `--print-shape` on 50k items              |  718 ms  |  196 ms | 3.7× faster |
+| `.items \| filter(.value > 50000) \| length` |  734 ms  |  201 ms | 3.7× faster |
+| `group_by(.role)` on 1k records           |   31 ms  |   10 ms | 3.1× faster |
+
+The CLI cases are dominated by parsing the 50k-item JSON input, so this
+win is mostly rumil_parsers' faster decoders compounding through
+lambé's pipeline; the postfix fold barely moves them (they do little
+query parsing).
+
+REPL completer (`tool/bench/completer_bench.dart`), AOT, median μs over
+1k records — the parse-and-infer path, with no large JSON decode to
+dilute it:
+
+| Scenario  | 0.10.0 | 0.11.0 | Δ      |
+|-----------|-------:|-------:|-------:|
+| simple    |  37 µs |   9 µs | 4.1× faster |
+| sort_by   |  65 µs |  13 µs | 5.0× faster |
+| group_by  |  93 µs |  31 µs | 3.0× faster |
+| unique    |  44 µs |  10 µs | 4.4× faster |
+| nested    |  45 µs |  13 µs | 3.5× faster |
+
+The completer combines both wins: rumil's faster engine plus the
+`rule()`-free postfix parse. WASM (the arda-web playground runtime)
+tracks the same direction; the library bench requires a host program
+importing `package:lambe` compiled with `dart compile wasm`.
+
+Reproduce the CLI numbers with `tool/bench/cli_bench.sh` (AOT) and the
+completer numbers with `dart run tool/bench/completer_bench.dart
+<scenario> <size>`.
+
 ## 0.10.0
 
 Polish release built on rumil 0.7.1 / rumil_parsers 0.8.1. The library

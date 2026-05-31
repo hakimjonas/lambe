@@ -2,7 +2,7 @@
 
 **Package**: `lambe` | **CLI**: `lam` | **Repo**: `github.com/hakimjonas/lambe`
 
-A query language for structured data: JSON, YAML, TOML, HCL, CSV, TSV, Markdown. Built on Rumil parser combinators with left-recursive grammar support via Warth seed-growth.
+A query language for structured data: JSON, YAML, TOML, HCL, CSV, TSV, Markdown. Built on Rumil parser combinators, with operator precedence via the Pratt combinator and the left-recursive postfix chain parsed as a left fold.
 
 ---
 
@@ -72,7 +72,7 @@ Absence is data (Maybe/Option semantics). Type mismatch is an error.
 
 ## Why Dart?
 
-1. **Left recursion.** Dart's parser libraries don't support left recursion or stack-safe deep recursion. Rumil adds that capability, and Lambë exercises it.
+1. **Stack-safe combinator parsing.** Dart's parser libraries don't offer stack-safe deep recursion or built-in left-recursion handling. Lambë's grammar is left-recursive (the postfix chain `.a.b[0] | op`); it's parsed as a left fold, the standard LR-free encoding, so it needs no special left-recursion support. Rumil's stack-safe interpreter is what keeps deeply-nested inputs and outputs from overflowing on the value layer Lambë reads and writes through.
 
 2. **dart2wasm.** Compiles to both AOT native and WasmGC from the same codebase.
 

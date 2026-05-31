@@ -2,8 +2,8 @@
 ///
 /// Lambé provides a composable query DSL for JSON, YAML, TOML, HCL, CSV, TSV,
 /// and Markdown, with pipeline operations, property access chains, and filter
-/// predicates. Built on Rumil parser combinators with left-recursive grammar
-/// support via Warth seed-growth.
+/// predicates. Built on Rumil parser combinators, with operator precedence via
+/// the Pratt combinator and postfix chains parsed as a left fold.
 ///
 /// ```dart
 /// import 'package:lambe/lambe.dart';

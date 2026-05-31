@@ -72,11 +72,12 @@ short answer. The full migration guide is in
 - **Streaming evaluation** → out of scope. Two blockers: (1) half the
   language (`sort`, `group_by`, `sum`, `unique`) cannot stream;
   building a parallel streaming pipeline would fork the semantics.
-  (2) Rumil's parser uses Warth seed-growth for left recursion, which
-  requires re-parsing a prefix as a seed grows; a streaming parser
-  cannot rewind buffers it has already discarded. This is algorithmic,
-  not a tuning knob. For the "tail a log file" use case, `--ndjson`
-  evaluates one document per line with no shared state.
+  (2) Rumil's format parsers are backtracking combinator parsers that
+  need random access to the whole input — an alternative can fail deep
+  in and rewind — so they read the full document into a buffer rather
+  than consuming a forward-only stream. This is algorithmic, not a
+  tuning knob. For the "tail a log file" use case, `--ndjson` evaluates
+  one document per line with no shared state.
 
 ## Format-specific
 
