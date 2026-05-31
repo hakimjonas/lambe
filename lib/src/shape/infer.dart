@@ -53,7 +53,15 @@ Shape inferShape(LamExpr expr, Shape input) {
     // `as(target)` needs access to the synthesis table, which lives in
     // this file to avoid importing it from `pipe_ops.dart`. Handle it
     // explicitly rather than teaching the spec table about synthesis.
-    if (expr is As) return _asShape(input, expr.target);
+    if (expr is As) {
+      // `as` is not in [nullSafePipeOpNames]: a null left-hand side
+      // is short-circuited by [Pipe] before `as` runs, so the shape
+      // stays null. Without this guard, `--explain` would synthesize
+      // a bridged shape (e.g. `map<value: null>` for `as(toml)`) and
+      // lie about which output formats accept the result.
+      if (input is SNull) return const SNull();
+      return _asShape(input, expr.target);
+    }
     return inferPipeOpShape(input, expr);
   }
   return switch (expr) {

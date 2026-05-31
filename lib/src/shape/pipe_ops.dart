@@ -184,12 +184,28 @@ bool acceptsInputShape(String opName, Shape shape) =>
 /// structural-failure case — at runtime the evaluator would throw, and
 /// downstream inference must not pretend the output has a concrete
 /// shape it cannot have.
+///
+/// Models the [Pipe] evaluator's null short-circuit: when the input
+/// shape is [SNull] and the op is not in [nullSafePipeOpNames], the
+/// runtime returns null without invoking the op, so the inferred
+/// shape is [SNull] rather than the op's nominal output. This keeps
+/// `--explain` honest about the documented "navigation on null
+/// returns null" contract instead of warning that the op will throw.
 Shape inferPipeOpShape(Shape input, LamExpr op) {
   final info = pipeOpInfoFor(op);
   if (info == null) return const SAny();
+  if (input is SNull && !_isNullSafe(op)) return const SNull();
   if (!info.accepts(input)) return const SAny();
   return info.infer(input, op);
 }
+
+/// Whether [op] opts out of the [Pipe] evaluator's null short-circuit.
+///
+/// True for [BuiltinPipeOp]s whose name is in [nullSafePipeOpNames].
+/// The custom-arity [As] node is never null-safe — bridging null to
+/// a target format is the responsibility of the caller, not `as`.
+bool _isNullSafe(LamExpr op) =>
+    op is BuiltinPipeOp && nullSafePipeOpNames.contains(op.name);
 
 /// Evaluate a built-in pipe op against [ctx].
 ///

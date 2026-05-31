@@ -728,4 +728,90 @@ void main() {
       });
     });
   });
+
+  group('explain: null-input short-circuit (Pipe contract)', () {
+    // The runtime [Pipe] short-circuits on null: a null left-hand
+    // side returns null without invoking the right-hand op. The
+    // shape analyser must model this — otherwise it warns "rejects
+    // null; will throw at runtime" for ops the runtime never even
+    // calls. Pinned here so the warning never drifts back.
+
+    test('null | length is shape-null with no rejection warning', () {
+      final report = explain(_parse('null | length'), const SNull());
+      expect(report.stages.last.shape, const SNull());
+      expect(
+        report.warnings.where((w) => w.message.contains('rejects null')),
+        isEmpty,
+      );
+    });
+
+    test('null | has("x") is shape-null, no rejection warning', () {
+      final report = explain(_parse('null | has("x")'), const SNull());
+      expect(report.stages.last.shape, const SNull());
+      expect(
+        report.warnings.where((w) => w.message.contains('rejects')),
+        isEmpty,
+      );
+    });
+
+    test('null | keys is shape-null, no rejection warning', () {
+      final report = explain(_parse('null | keys'), const SNull());
+      expect(report.stages.last.shape, const SNull());
+      expect(report.warnings, isEmpty);
+    });
+
+    test('null | sum is shape-null, no rejection warning', () {
+      final report = explain(_parse('null | sum'), const SNull());
+      expect(report.stages.last.shape, const SNull());
+      expect(report.warnings, isEmpty);
+    });
+
+    test('null | type is shape-string (the one null-safe op)', () {
+      // `type` opts in via [nullSafePipeOpNames]; runtime invokes it
+      // on null and returns the string "null". Inference must agree.
+      final report = explain(_parse('null | type'), const SNull());
+      expect(report.stages.last.shape, const SString());
+      expect(report.warnings, isEmpty);
+    });
+
+    test('null | type | length composes the null-safe escape hatch', () {
+      // `type` lifts null into a string, after which `length` is a
+      // normal string op — proves the analyser threads the
+      // null-safe exit correctly.
+      final report = explain(_parse('null | type | length'), const SNull());
+      expect(report.stages.last.shape, const SNum());
+      expect(report.warnings, isEmpty);
+    });
+
+    test('non-null concrete shape that the op rejects still warns', () {
+      // The fix is scoped to null-input short-circuit. Other
+      // concrete-shape rejections must still surface — this is the
+      // negative test that pins the scope.
+      final report = explain(_parse('. | sum'), const SNum());
+      expect(
+        report.warnings.where((w) => w.message.contains('rejects')),
+        isNotEmpty,
+      );
+    });
+
+    test('null | as(toml) is shape-null, not the bridged map', () {
+      // `as` lives outside [BuiltinPipeOp] dispatch and bypasses
+      // `inferPipeOpShape` to call the synthesis table directly.
+      // Without an explicit null-input guard, the bridge would
+      // produce `map<value: null>` and falsely claim TOML/HCL are
+      // writable — the runtime short-circuits to null before `as`
+      // runs.
+      final report = explain(_parse('null | as(toml)'), const SNull());
+      expect(report.stages.last.shape, const SNull());
+      expect(
+        report.writableAs.map((f) => f.name).toSet(),
+        unorderedEquals(<String>['json', 'yaml']),
+      );
+    });
+
+    test('null | as(csv) is shape-null, not the row-list bridge', () {
+      final report = explain(_parse('null | as(csv)'), const SNull());
+      expect(report.stages.last.shape, const SNull());
+    });
+  });
 }
