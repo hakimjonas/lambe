@@ -39,8 +39,7 @@ void main() {
     exit(1);
   }
 
-  final output =
-      '''
+  final output = '''
 // GENERATED FILE. DO NOT EDIT.
 // Run `dart run tool/gen_skill.dart` to regenerate after editing
 // .agents/skills/lambe/SKILL.md.

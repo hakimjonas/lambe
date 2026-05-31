@@ -122,10 +122,7 @@ void main() {
     });
 
     test('chaining a missing field into type returns "null" string', () {
-      expect(
-        query('.missing | type', <String, Object?>{'a': 1}),
-        'null',
-      );
+      expect(query('.missing | type', <String, Object?>{'a': 1}), 'null');
     });
 
     test('null | type | length confirms the result is a string, not null', () {
