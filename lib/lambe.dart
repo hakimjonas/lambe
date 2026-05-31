@@ -636,6 +636,15 @@ String? _jqIdiomHint(String expression, int offset) {
         'outside the query. Set up values via the shell, pipe them '
         'as data.';
   }
+  // `def` — jq's user-function definition. Lambé is a bounded tree
+  // transformer; user-defined functions, recursion, and closures are
+  // explicit non-goals (see `doc/non-goals.md`).
+  if (_atKeyword(rest, 'def')) {
+    return 'Lambé has no `def` user-defined functions. The language is '
+        'a bounded tree transformer by design — no `def`, no recursion, '
+        'no closures. For computation that needs functions or state, '
+        'compose the data outside lambé and pipe it in.';
+  }
   return null;
 }
 

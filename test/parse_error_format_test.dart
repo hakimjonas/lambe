@@ -366,5 +366,15 @@ void main() {
         expect(e.message, contains('not support'));
       }
     });
+
+    test('def gets a non-goal hint pointing at bounded design', () {
+      try {
+        parseAst('def add1(n): . + n; .x | add1(1)');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('def'));
+        expect(e.message, contains('bounded'));
+      }
+    });
   });
 }

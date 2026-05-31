@@ -83,8 +83,9 @@ boolean `&& || !`, null fallback `//`, conditional `if c then a else b`,
 object construction `{name, total: .price * .qty}`, string interpolation
 `"\(.name) is \(.age)"`, list literal `[1, 2, 3]`.
 
-**Boolean keywords**: lambé's logic operators are `&&` `||` `!`. Don't
-write `and` `or` `not` — the parser will tell you, but save the round trip.
+**Boolean keywords**: lambé's logic operators are `&&` `||` `!`. `and`
+and `or` are accepted as keyword aliases (jq compatibility). `not` is
+not aliased; use `!`.
 
 ## Markdown data model
 
