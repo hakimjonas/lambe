@@ -94,6 +94,24 @@ typedef PipeOpInfo =
       PipeOpParseKind parseKind,
     });
 
+/// Pipe ops that opt out of the [Pipe] evaluator's null short-circuit.
+///
+/// The default `Pipe` contract is "navigation on null returns null":
+/// when a pipe's left side evaluates to null, the right-hand op is
+/// skipped entirely and the result is null. That is correct for most
+/// ops (`.field`, `flatten`, `length`, `map`, …) — they walk structure
+/// they don't have. But it is wrong for ops whose semantics are
+/// *defined* over a null context. The canonical example is `type`,
+/// which inspects any context — including null — and returns a string
+/// describing it. Such ops are listed here; `_pipe` in `evaluator.dart`
+/// consults this set and forwards the null instead of short-circuiting.
+///
+/// Add an op to this set when:
+/// - the spec's `eval` has a deliberate branch for `null` input, AND
+/// - the spec's `infer` returns a non-null shape for null input
+///   (so the `--explain` contract matches the runtime behaviour).
+const Set<String> nullSafePipeOpNames = {'type'};
+
 /// Look up the spec for a pipe-op AST node, or `null` if [node] is not
 /// a pipe op.
 ///

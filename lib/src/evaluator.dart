@@ -126,7 +126,17 @@ Object? _index(Object? target, Object? idx) => switch (target) {
 };
 
 Object? _pipe(Object? input, LamExpr op) {
-  if (input == null) return null;
+  // Null short-circuit: navigation on null returns null. The exception
+  // is ops listed in [nullSafePipeOpNames] — they're defined over a
+  // null context (e.g. `type` inspects any value, including null, and
+  // returns a string describing it). For those ops, hand them the null
+  // and let their own `eval` handle it.
+  if (input == null) {
+    if (op is BuiltinPipeOp && nullSafePipeOpNames.contains(op.name)) {
+      return evaluate(op, input);
+    }
+    return null;
+  }
   return evaluate(op, input);
 }
 

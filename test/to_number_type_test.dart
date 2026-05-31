@@ -107,5 +107,31 @@ void main() {
       final items = <Object?>[1, 'two', 3, 'four', 5];
       expect(query('. | filter((. | type) == "number")', items), [1, 3, 5]);
     });
+
+    // Regression: `_pipe` in evaluator.dart used to short-circuit on
+    // null inputs unconditionally, so any pipe with null on its left
+    // side returned null without consulting the right-hand op. That
+    // broke `type`, whose contract is to inspect any context including
+    // null and return a string. The fix lets ops named in
+    // `nullSafePipeOpNames` (currently just `type`) bypass the
+    // short-circuit; these tests pin that null|type and `.missing|type`
+    // really do reach the evaluator and produce the documented label.
+    test('null | type via Pipe AST returns "null" string, not null', () {
+      expect(query('null | type', null), 'null');
+      expect(query('null | type', 0), 'null');
+    });
+
+    test('chaining a missing field into type returns "null" string', () {
+      expect(
+        query('.missing | type', <String, Object?>{'a': 1}),
+        'null',
+      );
+    });
+
+    test('null | type | length confirms the result is a string, not null', () {
+      // If type returned the JSON null (the bug), `length` would
+      // short-circuit and produce null. The string `'null'` has length 4.
+      expect(query('null | type | length', null), 4);
+    });
   });
 }
