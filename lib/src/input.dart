@@ -155,7 +155,7 @@ Object? _parseMd(String input) {
 /// When frontmatter is absent the result matches [mdToNative]
 /// byte-for-byte — `{type: 'document', children: [...]}`. When present,
 /// a sibling `frontmatter` key carries the parsed YAML as native Dart
-/// values (maps, lists, scalars), addressable via the usual lambé path
+/// values (maps, lists, scalars), addressable via the usual lambë path
 /// access (e.g. `.frontmatter.title`).
 ///
 /// Frontmatter is decoded via rumil_parsers' [yamlToNative], which

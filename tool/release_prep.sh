@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Release preparation routine for Lambe.
+# Release preparation routine for Lambë.
 #
 # Runs the full check matrix for a release candidate: version
 # consistency, quality gates, docs, release workflow sanity. Does NOT

@@ -130,10 +130,10 @@ Object? _alternative(LamExpr left, LamExpr right, Object? ctx) {
   return evaluate(right, ctx);
 }
 
-/// Lambé's binary-op wrapper. Intercepts `+` on two lists for
+/// Lambë's binary-op wrapper. Intercepts `+` on two lists for
 /// concatenation; delegates everything else to rumil_expressions'
 /// scalar dispatcher. A mixed list/scalar `+` is a type error —
-/// Lambé's strictness stance over silent lifting.
+/// Lambë's strictness stance over silent lifting.
 Object _binaryOp(String op, Object? l, Object? r) {
   if (op == '+' && l is List<Object?> && r is List<Object?>) {
     return [...l, ...r];

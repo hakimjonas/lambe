@@ -571,7 +571,7 @@ before arithmetic.
 
 `tonumber` is accepted as a jq-compatibility alias — both names parse
 identically and `--explain` canonicalises to `to_number`. Use
-`to_number` in new lambé queries.
+`to_number` in new lambë queries.
 
 ```bash
 $ lam -n '"42" | to_number'

@@ -206,7 +206,7 @@ $ lam -n '[1,2,3] | sum'
 6
 ```
 
-Without `-n`, lambé errors on a missing input — that's deliberate
+Without `-n`, lambë errors on a missing input — that's deliberate
 footgun-catching for typo'd filenames and missing redirects. The
 flag makes "I have no input" explicit.
 

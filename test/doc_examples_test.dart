@@ -1,4 +1,4 @@
-/// Extracts Lambé query expressions from human-facing docs (AGENTS.md
+/// Extracts Lambë query expressions from human-facing docs (AGENTS.md
 /// and the MCP server's tool descriptions and instructions), then asserts
 /// each one parses against a representative fixture.
 ///
@@ -84,7 +84,7 @@ void main() {
     }
     final exprs = _extractLamExpressions(file.readAsStringSync());
     if (exprs.isEmpty) {
-      test('AGENTS.md has lambe examples', () => fail('no examples extracted'));
+      test('AGENTS.md has lambë examples', () => fail('no examples extracted'));
       return;
     }
     for (final (expr, location) in exprs) {
@@ -103,7 +103,7 @@ void main() {
     }
     final exprs = _extractDartStringExpressions(file.readAsStringSync());
     if (exprs.isEmpty) {
-      test('mcp_server.dart has lambe examples', () {
+      test('mcp_server.dart has lambë examples', () {
         fail('no examples extracted');
       });
       return;
@@ -185,7 +185,7 @@ String? _extractExprFromShellLine(String line) {
   return raw.replaceAll(r'\|', '|').replaceAll(r"\'", "'");
 }
 
-/// Extracts Lambé query expressions from double-quoted Dart string literals.
+/// Extracts Lambë query expressions from double-quoted Dart string literals.
 ///
 /// Targets the tool descriptions and instruction text in `bin/mcp_server.dart`,
 /// where embedded examples appear as nested `"..."` within outer `'...'`

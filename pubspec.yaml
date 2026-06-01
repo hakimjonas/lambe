@@ -2,7 +2,7 @@ name: lambe
 description: >-
   A query language for structured data that shows you what you're working with.
   Shape-aware --explain, JSON Schema input, format bridges. CLI + library + MCP.
-version: 0.11.0
+version: 0.12.0
 homepage: https://ardaproject.org/lambe
 repository: https://github.com/hakimjonas/lambe
 topics:

@@ -1,10 +1,10 @@
-# Lambe schemas
+# Lambë schemas
 
-Lambe supports a JSON Schema subset as the contract between a query and its data. Declare the shape once; let Lambe check that queries make sense against it, validate data conforms at runtime, and round-trip schemas with the rest of the ecosystem.
+Lambë supports a JSON Schema subset as the contract between a query and its data. Declare the shape once; let Lambë check that queries make sense against it, validate data conforms at runtime, and round-trip schemas with the rest of the ecosystem.
 
 ## Why use a schema?
 
-Lambe's default inference samples the data at hand. That's robust for known inputs but has gaps:
+Lambë's default inference samples the data at hand. That's robust for known inputs but has gaps:
 
 - **Empty lists and maps.** `shapeOf([])` returns `list<any>`; the element type is lost.
 - **Mixed sampling.** Lists with heterogeneity beyond the sampling window collapse to `list<any>`.
@@ -31,7 +31,7 @@ Unknown keywords are ignored (JSON Schema's extensibility rule), so `$schema`, `
 
 Everything else is rejected with a per-keyword error and a JSON path:
 
-- **Value-level constraints** (`minimum`, `maximum`, `minLength`, `maxLength`, `pattern`, `enum`, `const`, `format`, `multipleOf`, `minItems`, `maxItems`, `uniqueItems`, `minProperties`, `maxProperties`). Lambe is a shape system, not a value validator.
+- **Value-level constraints** (`minimum`, `maximum`, `minLength`, `maxLength`, `pattern`, `enum`, `const`, `format`, `multipleOf`, `minItems`, `maxItems`, `uniqueItems`, `minProperties`, `maxProperties`). Lambë is a shape system, not a value validator.
 - **Structural combinators** (`allOf`, `oneOf`, `anyOf`, `not`). The shape ADT is union-free by design.
 - **Conditionals** (`if`, `then`, `else`, `dependencies`, `dependentRequired`, `dependentSchemas`). Would require a constraint solver.
 - **References** (`$ref`, `$defs`, `definitions`). Schemas are single-file in 0.9.
@@ -67,9 +67,9 @@ Object with required and optional fields:
 }
 ```
 
-In Lambe's shape language, that last one is `map<name: string, age: number, email: optional<string>>`.
+In Lambë's shape language, that last one is `map<name: string, age: number, email: optional<string>>`.
 
-## How Lambe uses your schema
+## How Lambë uses your schema
 
 ### CLI
 
@@ -136,7 +136,7 @@ final schemaText2 = renderJsonSchema(shape);
 
 ## Disagreement semantics
 
-When schema and data are both present, Lambe merges them:
+When schema and data are both present, Lambë merges them:
 
 - **Both agree on a concrete type.** Use that type.
 - **Schema has a field data doesn't.** Use the schema's shape for that field.
@@ -165,7 +165,7 @@ Lossy corner: `SOptional` inside a list's `items` or at the top level has no sta
 
 ## What schemas don't do
 
-- **No value coercion.** Schema says `age: number`, data has `"30"`. Lambe does not parse the string at query time. The user still writes `.age | to_number`. A future release may add opt-in coercion.
+- **No value coercion.** Schema says `age: number`, data has `"30"`. Lambë does not parse the string at query time. The user still writes `.age | to_number`. A future release may add opt-in coercion.
 - **No runtime constraints.** Schema saying `age` is `number` does not enforce `age >= 0` or `age <= 150` at query time. Value-level constraints are rejected from the schema at load time.
 - **No schema composition.** `$ref` is rejected. For cross-file schemas, merge them yourself before pointing `--schema` at the result.
 - **No runtime validation after load.** A CSV column with mixed strings and numbers won't surface at per-row granularity; we check the aggregate shape, not every value.

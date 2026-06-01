@@ -1,3 +1,77 @@
+## 0.12.0
+
+Six bug fixes against the 0.11.0 binary surfaced an architectural
+smell: `as` was the lone pipe op outside the spec table, so per-op
+invariants like null short-circuit had to be reimplemented at its
+callsite. This release lands the fixes and unifies `as` through the
+same dispatch as every other pipe op.
+
+### Fixes
+
+- `null | type` returned JSON null instead of the string `"null"`.
+  The `Pipe` evaluator unconditionally short-circuited on null input;
+  `type` now opts into a `nullSafePipeOpNames` set that suppresses the
+  short-circuit for ops whose contract covers null.
+- `inferShape` didn't model the null short-circuit, so `null | length`
+  inferred shape `any` and `--explain` warned `length rejects null;
+  this will throw at runtime` against both the documented contract
+  and runtime behaviour. Fixed in `inferPipeOpShape`,
+  `_analyzeRejection`, and the `As` branch in `infer.dart`.
+- `null | as(toml)` falsely advertised TOML and HCL as writable. `As`
+  shape inference went through a separate code path that skipped
+  `inferPipeOpShape`. Fixed by short-circuiting before synthesis.
+- SKILL.md claimed `and`/`or`/`not` would be parser-rejected. In fact
+  `and` and `or` are accepted as keyword aliases for `&&` and `||`;
+  `not` is not aliased. Doc and idiom hints corrected.
+
+### Features
+
+- `lam --skill` prints the embedded `.agents/skills/lambe/SKILL.md` to
+  stdout. Intended use is install-via-shell-out:
+  `lam --skill > .agents/skills/lambe/SKILL.md`. Content is captured
+  at compile time via `tool/gen_skill.dart`.
+- `def` is now redirected with a non-goal hint: lambë has no
+  user-defined functions, recursion, or closures by design.
+
+### Tests and CI
+
+- The `--ndjson stdin streaming` test was wall-clock-based and skipped
+  under `CI=true`. Reframed: streaming means N inputs produce N
+  outputs in lockstep. The new helper feeds one line, awaits its
+  output, then feeds the next. A buffered implementation never
+  produces the first output before EOF, so the per-line timeout fails
+  clearly. No CI skip.
+- New `generated-files-in-sync` CI job re-runs `gen_version.dart`,
+  `gen_skill.dart`, and `manpage.dart`, and fails the build if any
+  output differs from the committed copy.
+
+### Refactor: `as` flows through the spec table
+
+Every pipe op (BuiltinPipeOp and the typed-argument `As`) now goes
+through the same `pipeOpInfoFor -> spec.eval / spec.infer` dispatch.
+The `As` AST class survives because its argument is the typed
+`OutputFormat` enum rather than a `LamExpr`, but it carries data only.
+
+The null short-circuit fix above had to land in two places
+(`inferPipeOpShape` and the `As` branch in `infer.dart`) because they
+were parallel implementations. After this release there is one place.
+
+Side effect: the `pipe_ops -> synthesize -> check -> parser ->
+pipe_ops` import cycle is broken. `check.dart` no longer imports
+`parser.dart`; remediation templates are hand-built `const LamExpr`
+values.
+
+### Breaking
+
+- `PipeOpInfo.eval` signature changed from `(ctx, args, eval)` to
+  `(ctx, op, eval)`. Specs that need arguments destructure the AST
+  themselves: `(op as BuiltinPipeOp).args[0]` for the generic case,
+  `(op as As).target` for the typed case. Affects custom specs.
+- Public `Remediation()` and `Remediation.withDisplay()` factories
+  that took a `source` string are removed. Internal callers
+  exclusively used the private `Remediation._`. The public type and
+  its read-only fields stay exported.
+
 ## 0.11.0
 
 Moves onto the rumil 0.10.0 family and rewrites the query parser's
@@ -10,10 +84,10 @@ parse to identical ASTs. The changes are entirely performance.
   `rumil_expressions` 0.7.0 → 0.10.0, `rumil_tokens` 0.1.0 → 0.10.0.
 
   This crosses several upstream releases at once. The relevant changes
-  for lambé: rumil's interpreter became a single eval/apply (CEK)
+  for lambë: rumil's interpreter became a single eval/apply (CEK)
   trampoline that is stack-safe on structural nesting as well as width
   and is ~2× faster, and rumil_parsers' value layer (the JSON/format
-  decoders lambé reads through) became iterative and faster. The 1657-
+  decoders lambë reads through) became iterative and faster. The 1657-
   test suite passes unchanged on the new family.
 
 ### Performance — query parser is now `rule()`-free
@@ -24,7 +98,7 @@ parse to identical ASTs. The changes are entirely performance.
   byte-for-byte AST-identical to the old definition across a stress
   corpus. On the query-parse path in isolation (same rumil on both
   sides) this is ~1.3–1.6× faster, since it iterates with `many`
-  instead of re-running a growing seed per input position. lambé no
+  instead of re-running a growing seed per input position. lambë no
   longer uses `rule()` at all.
 
 ### Measured speedups (same machine, medians)
@@ -39,7 +113,7 @@ End-to-end CLI, AOT, 11 runs — 0.10.0 (rumil 0.7.1) vs this release:
 
 The CLI cases are dominated by parsing the 50k-item JSON input, so this
 win is mostly rumil_parsers' faster decoders compounding through
-lambé's pipeline; the postfix fold barely moves them (they do little
+lambë's pipeline; the postfix fold barely moves them (they do little
 query parsing).
 
 REPL completer (`tool/bench/completer_bench.dart`), AOT, median μs over
@@ -71,7 +145,7 @@ without the CLI binary, frontmatter no longer leaks into Markdown
 prose, foreign-jq idioms get redirect hints, and a handful of error
 messages clarify themselves. End-to-end speedup on representative
 workloads: 5–12% AOT, 5–12% WASM (the rumil hot/cold split lands
-through the lambé pipeline).
+through the lambë pipeline).
 
 ### Breaking — library API surface
 
@@ -79,7 +153,7 @@ through the lambé pipeline).
   `loadSchemaForData`. The file-loading helpers moved to
   `bin/schema_io.dart` because they pull in `dart:io`. `lib/` is now
   `dart:io`-free, which lets the library compile to WASM without
-  bridges (the lambé playground in arda-web depends on this).
+  bridges (the lambë playground in arda-web depends on this).
 
   **`mergeSchemaWithData` stays** — it's pure and remains exported.
 
@@ -153,7 +227,7 @@ common jq habits the model might draft:
 ### Performance
 
 End-to-end CLI / library benchmark (median of 7 runs, after
-warm-up), comparing lambé 0.9.0 (rumil 0.7.0 / rumil_parsers 0.8.0)
+warm-up), comparing lambë 0.9.0 (rumil 0.7.0 / rumil_parsers 0.8.0)
 against this release (rumil 0.7.1 / rumil_parsers 0.8.1):
 
 | Workload                                  | AOT 0.9.0 | AOT 0.10.0 | Δ      | WASM 0.9.0 | WASM 0.10.0 | Δ      |
@@ -163,8 +237,8 @@ against this release (rumil 0.7.1 / rumil_parsers 0.8.1):
 | `group_by(.role)` on 1k records           |   30.7 ms |    27.1 ms | -11.7% |    12.4 ms |     11.8 ms | -4.8%  |
 
 The win comes from rumil's hot/cold dispatch split (4–6% on
-synthetic format benches; compounded through lambé's deeper call
-chain). WASM is also the relevant runtime for the lambé playground
+synthetic format benches; compounded through lambë's deeper call
+chain). WASM is also the relevant runtime for the lambë playground
 in arda-web; users get faster live-explain feedback in the browser.
 
 Reproduce with `tool/bench/cli_bench.sh` (AOT) — the WASM library
@@ -205,8 +279,8 @@ consolidation, and a `rumil_tokens`-based REPL highlighter.
 - `lib/src/readline.dart`'s 100-line hand-rolled tokenizer is gone.
   The highlighter now consumes a `Token` stream from the
   `rumil_tokens` `LangGrammar` defined in
-  `lib/src/highlight_grammar.dart`. The grammar lives in lambé (not
-  in `rumil_tokens`' built-in five) because it's lambé-specific.
+  `lib/src/highlight_grammar.dart`. The grammar lives in lambë (not
+  in `rumil_tokens`' built-in five) because it's lambë-specific.
 - New runtime dependency: `rumil_tokens ^0.1.0`.
 - Pipe op names (`filter`, `map`, `text`, etc.) now colour as
   keywords (magenta) — they're routed through `LangGrammar.types`
@@ -228,7 +302,7 @@ consolidation, and a `rumil_tokens`-based REPL highlighter.
 
 - `map(t<TAB>` now offers `text`, `to_entries`, `type`, etc. instead
   of nothing useful. Bare pipe-op names like `text`, `length`,
-  `to_entries` are legal expressions in lambé (sugar for `. | op`),
+  `to_entries` are legal expressions in lambë (sugar for `. | op`),
   so the completer should offer them inside `map(...)` /
   `filter(...)` when the user is typing a partial name without a
   leading `.`. Candidates are filtered by the element shape of the
@@ -342,7 +416,7 @@ consolidation, and a `rumil_tokens`-based REPL highlighter.
   deliberate change.
 - **`syntax.md` examples** revert from `echo … | lam '. | op'` to
   the cleaner `lam -n '… | op'` form now that `-n` exists. Several
-  pre-A6 examples were also silently broken: lambé object
+  pre-A6 examples were also silently broken: lambë object
   construction uses bare identifiers (`{a: 1}`), not JSON-string
   keys (`{"a": 1}`), so `[{"key": "a"}] | from_entries` was never
   runnable. Fixed.
@@ -351,9 +425,9 @@ consolidation, and a `rumil_tokens`-based REPL highlighter.
   structured output (objects, arrays, numbers, booleans, null). The
   previous wording ("Output strings without quotes") read as a
   pretty-print toggle and surprised users on non-string values.
-- **`doc/non-goals.md`** — new page enumerating the features lambé
-  deliberately omits, with the lambé idiom that replaces each one.
-  Cross-linked from `README.md` ("What lambé is not"),
+- **`doc/non-goals.md`** — new page enumerating the features lambë
+  deliberately omits, with the lambë idiom that replaces each one.
+  Cross-linked from `README.md` ("What lambë is not"),
   `jq-to-lambe.md`, and `AGENTS.md`. Covers Turing-completeness,
   recursive descent (`..`), `try`/`catch`, `select` outside `filter`,
   `paths`/`leaf_paths`/`getpath`/`setpath`, regex, `range`/`limit`/
@@ -407,24 +481,24 @@ consolidation, and a `rumil_tokens`-based REPL highlighter.
   single `variable`) no longer require N=1-vs-N≥2 branching. Fixed
   upstream in `rumil_parsers 0.8.0` (decoder uses the `HclBlock`
   discriminator already present in the AST instead of inferring shape
-  from key collisions); lambé adopts it via a constraint bump from
+  from key collisions); lambë adopts it via a constraint bump from
   `^0.7.0` to `^0.8.0`.
 
 ### Dependencies
 
 - **`rumil_parsers ^0.8.0`.** The JSON parser AST splits `JsonNumber`
-  into a sealed `JsonInt | JsonDouble` sum. Lambé propagates the
+  into a sealed `JsonInt | JsonDouble` sum. Lambë propagates the
   change through one schema-parser switch case — `JsonInt() ||
   JsonDouble() => 'number'` in `lib/src/schema/parser.dart`. No
-  user-visible behavior change at the lambé surface; downstream
-  consumers of lambé's library API see no shape difference because
+  user-visible behavior change at the lambë surface; downstream
+  consumers of lambë's library API see no shape difference because
   `parseInput`-flavored Map/List types remain canonical Dart types
   (the AST split is only visible when you reach into the JSON AST
-  directly via the lambé schema layer). The HCL fix described above
+  directly via the lambë schema layer). The HCL fix described above
   also rides this dependency bump (originally scoped as
   `rumil_parsers 0.7.1`; rolled into 0.8.0 alongside the AST split).
   See `rumil_parsers/BENCHMARKS.md` for the JSON parser perf wins on
-  the 0.8.0 release; lambé queries operating on JSON inputs benefit
+  the 0.8.0 release; lambë queries operating on JSON inputs benefit
   transparently.
 - **Object construction accepts JSON-string keys.** `{name: .x}` was
   the only spelling; `{"name": .x}` errored with a confusing
@@ -432,7 +506,7 @@ consolidation, and a `rumil_tokens`-based REPL highlighter.
   that are valid identifiers should still use the bare form (`name:`);
   keys that aren't (hyphenated, spaces, leading digits) use a
   JSON-string literal in key position — `{"x-axis": .a}`,
-  `{"Content-Type": "application/json"}`, `{"my key": 1}`. Lambé's
+  `{"Content-Type": "application/json"}`, `{"my key": 1}`. Lambë's
   data model accepts any string as a key; the construction grammar
   now matches. Interpolation (`{"\(expr)": .y}`) is rejected with a
   clear message — key position is structurally not an expression
@@ -443,14 +517,14 @@ consolidation, and a `rumil_tokens`-based REPL highlighter.
 ### jq compatibility
 
 - **`add` is now recognized as an alias for `sum`.** A jq idiom that
-  matches Lambé's `sum` exactly. `_jqAliases` in `parser.dart` is the
+  matches Lambë's `sum` exactly. `_jqAliases` in `parser.dart` is the
   table; entries belong there only when the jq semantics are an
   exact match.
 - **Idiom hints for column-1 jq keywords.** `_jqIdiomHint` and
   `_jqPipeOpHint` now recognise `try` / `try ... catch`, `recurse`,
   `walk`, `paths`, `leaf_paths`, `range`, `limit`, `nth`, `@csv`,
   `@tsv`, and `@base64`. Each produces a one-liner pointing at the
-  lambé equivalent (or, for `@base64`, the explicit "not supported"
+  lambë equivalent (or, for `@base64`, the explicit "not supported"
   signal) instead of the giant op-vocabulary dump. Folds into the
   pre-existing hints for `[]`, `?`, `..`, `select`, `empty`, and
   stranded `end`.
@@ -642,12 +716,12 @@ mode:
 
 ### Tooling
 
-- **CHANGELOG self-validation.** `tool/lint_changelog.sh` uses lambé
+- **CHANGELOG self-validation.** `tool/lint_changelog.sh` uses lambë
   itself (via `--assert`) to validate this file's structural
   invariants on every CI run: at least one H2 release entry, no
   duplicate H2s, the first heading is H2, and the latest H2 matches
   `pubspec.yaml`'s version. The toolchain checks itself: rumil's
-  Markdown parser handles the input, lambé's query model expresses
+  Markdown parser handles the input, lambë's query model expresses
   the invariants. See `doc/recipes.md#querying-a-changelog` for the
   underlying queries.
 

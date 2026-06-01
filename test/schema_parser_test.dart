@@ -1,7 +1,7 @@
 /// Tests for the JSON Schema subset parser.
 ///
 /// The contract:
-///   1. All seven scalar and container shapes in the Lambe ADT
+///   1. All seven scalar and container shapes in the Lambë ADT
 ///      round-trip through `type` plus the appropriate subkey.
 ///   2. `required` drives the optionality of properties: listed keys
 ///      stay required, unlisted keys become [SOptional].
@@ -24,7 +24,7 @@ void main() {
     test('number', () {
       expect(parseJsonSchema('{"type": "number"}'), const SNum());
     });
-    test('integer maps to number (Lambe has no int/double distinction)', () {
+    test('integer maps to number (Lambë has no int/double distinction)', () {
       expect(parseJsonSchema('{"type": "integer"}'), const SNum());
     });
     test('string', () {

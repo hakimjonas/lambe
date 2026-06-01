@@ -97,7 +97,7 @@ jobs:
           {
             "\$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
             "name": "io.github.hakimjonas/lambe",
-            "title": "Lambe",
+            "title": "Lambë",
             "description": "Shape-aware query language for structured data — JSON, YAML, TOML, HCL, CSV, Markdown.",
             "repository": {
               "url": "https://github.com/hakimjonas/lambe.git",

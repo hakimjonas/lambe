@@ -2,7 +2,7 @@
 ///
 /// Lives in bin/ rather than lib/ so the published library has zero
 /// `dart:io` imports — making it safely usable from `dart compile wasm`
-/// and dart2js consumers (e.g. the lambé playground in arda-web).
+/// and dart2js consumers (e.g. the lambë playground in arda-web).
 ///
 /// The pure schema-merge logic stays in `lib/src/schema/loader.dart` as
 /// [mergeSchemaWithData]; only the path-based loaders moved.

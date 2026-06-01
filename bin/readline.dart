@@ -387,7 +387,7 @@ const _hYellow = '\x1b[33m';
 const _hMagenta = '\x1b[35m';
 const _hRed = '\x1b[31m';
 
-/// rumil_tokens parser for the Lambé grammar. Built once at module
+/// rumil_tokens parser for the Lambë grammar. Built once at module
 /// load time so per-keystroke highlighting only pays the run cost.
 final Parser<ParseError, List<Spanned<Token>>> _highlightTokenizer =
     buildTokenizer(lambeGrammar);

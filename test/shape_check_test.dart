@@ -142,7 +142,7 @@ void main() {
     // it throws ArgumentError. The test exercises every (shape, format)
     // combination for which a suggestion is defined, so a bad template
     // cannot slip past CI.
-    test('every curated remediation is valid Lambe syntax', () {
+    test('every curated remediation is valid Lambë syntax', () {
       final combos = <(Object?, OutputFormat)>[
         (<Object?>[1], OutputFormat.toml),
         (<Object?>[1], OutputFormat.hcl),

@@ -1,7 +1,7 @@
-/// Test matchers for Lambé queries.
+/// Test matchers for Lambë queries.
 ///
 /// Provides [Matcher] implementations that let you assert on structured
-/// data using Lambé's query DSL in your Dart tests.
+/// data using Lambë's query DSL in your Dart tests.
 ///
 /// ```dart
 /// import 'package:lambe_test/lambe_test.dart';

@@ -1,4 +1,4 @@
-/// Lambé REPL - interactive query exploration.
+/// Lambë REPL - interactive query exploration.
 ///
 /// Provides an interactive read-eval-print loop for exploring structured data.
 /// Supports tab completion on field names and pipeline operations, multi-line

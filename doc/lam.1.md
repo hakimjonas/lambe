@@ -1,9 +1,9 @@
 ---
 title: LAM
 section: 1
-source: Lambë 0.9.0
+source: Lambë 0.12.0
 author: Hakim Jonas Ghoula
-date: May 2026
+date: June 2026
 ---
 
 # NAME
@@ -20,7 +20,7 @@ lam - query structured data files
 
 Query JSON, YAML, TOML, HCL, CSV, TSV, and Markdown files using a composable pipeline DSL. Format is auto-detected from file extension.
 
-Lambe infers the structural shape of query results and reports incompatibilities with target output formats. Use **--explain** to trace the shape at each pipeline stage, or the **as**(*fmt*) combinator inside a query to bridge common mismatches.
+Lambë infers the structural shape of query results and reports incompatibilities with target output formats. Use **--explain** to trace the shape at each pipeline stage, or the **as**(*fmt*) combinator inside a query to bridge common mismatches.
 
 If no file is given, reads from standard input.
 
@@ -72,7 +72,7 @@ If no file is given, reads from standard input.
 :   Run the query against **null** context with no input. Useful for value computations like `lam -n '[1,2,3] | unique'`. Without **-n**, the missing-input guard fires (a typo'd filename or missing redirect is a common footgun); the flag makes the "I have no input" intent explicit. Cannot combine with **--interactive**, **--ndjson**, **--schema**, or **--assert**.
 
 **--skill**
-:   Print the embedded agent SKILL.md to stdout and exit. Lets agent harnesses install the skill regardless of how `lam` was acquired: `lam --skill > .agents/skills/lambe/SKILL.md`. The content is captured at compile time from `.agents/skills/lambe/SKILL.md` in the lambé source.
+:   Print the embedded agent SKILL.md to stdout and exit. Lets agent harnesses install the skill regardless of how `lam` was acquired: `lam --skill > .agents/skills/lambe/SKILL.md`. The content is captured at compile time from `.agents/skills/lambe/SKILL.md` in the lambë source.
 
 **-h**, **--help**
 :   Show usage information.
@@ -301,7 +301,7 @@ Line-delimited JSON (logs, event streams):
 
 # SEE ALSO
 
-**jq**(1) — the established JSON query tool. Lambe shares its pipeline aesthetic and extends to multi-format input with shape-aware output.
+**jq**(1) — the established JSON query tool. Lambë shares its pipeline aesthetic and extends to multi-format input with shape-aware output.
 
 # BUGS
 

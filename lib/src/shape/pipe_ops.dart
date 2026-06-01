@@ -819,7 +819,7 @@ final PipeOpInfo _typeSpec = (
         _ =>
           throw QueryError(
             'type: data contains a non-JSON value (${ctx.runtimeType}). '
-            'Lambé queries operate on JSON-shaped data — pass results of '
+            'Lambë queries operate on JSON-shaped data — pass results of '
             'parseInput, jsonDecode, or canonical literals.',
           ),
       },

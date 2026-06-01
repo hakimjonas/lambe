@@ -1,4 +1,4 @@
-/// Tab completion for the Lambé REPL.
+/// Tab completion for the Lambë REPL.
 ///
 /// The completer uses [parsePartial] with `.recover()` to obtain the
 /// AST of a valid prefix (including inner expressions of parameterized

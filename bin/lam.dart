@@ -1,4 +1,4 @@
-/// CLI entry point for the Lambé query language.
+/// CLI entry point for the Lambë query language.
 ///
 /// Usage:
 ///   `lam 'expression' [file]`
@@ -212,7 +212,7 @@ void main(List<String> arguments) {
     // piped or no data). Disambiguate by file existence — if rest[0]
     // names an existing file, treat it as the file; otherwise treat
     // it as an expression. The collision case (a file whose name
-    // happens to be a valid lambé expression like `.users`) is
+    // happens to be a valid lambë expression like `.users`) is
     // vanishingly unlikely; plain identifier filenames aren't valid
     // queries either.
     fileArgIndex = File(rest[0]).existsSync() ? 0 : 1;

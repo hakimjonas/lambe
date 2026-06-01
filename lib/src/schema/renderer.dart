@@ -65,7 +65,7 @@ Map<String, Object?> _encode(Shape shape) {
       // SList(SAny()) means "this list contained heterogeneous or
       // unknown elements" — `shapeOf` collapses to SAny when it can't
       // narrow the element type. Surface the hint so users know the
-      // schema reflects sampling, not a guarantee. The lambé schema
+      // schema reflects sampling, not a guarantee. The lambë schema
       // parser ignores unknown keywords (per JSON Schema's
       // extensibility convention for metadata), so this round-trips
       // safely.

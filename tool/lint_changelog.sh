@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Validate CHANGELOG.md structural invariants using lambé itself.
+# Validate CHANGELOG.md structural invariants using lambë itself.
 #
 # Each invariant is an independent --assert call. Failures are reported
 # inline with the invariant name; the script keeps running so all

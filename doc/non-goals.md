@@ -1,7 +1,7 @@
 # Non-goals
 
-Lambé is a bounded tree transformer over JSON-shaped data. The list
-below is what lambé deliberately does not do, and the lambé idiom that
+Lambë is a bounded tree transformer over JSON-shaped data. The list
+below is what lambë deliberately does not do, and the lambë idiom that
 replaces each omission where one exists. The tool is small *because*
 these are excluded; staying bounded is what makes shape inference,
 `--explain`, and `as(fmt)` bridging work.
@@ -15,8 +15,8 @@ short answer. The full migration guide is in
 - **Turing-completeness** → no `def`, no recursion, no lambdas. jq has
   these and regrets them: their presence is exactly what prevents
   static analysis, makes error messages vague, and turns "quick query"
-  into "programming language to learn." Lambé's shape inference,
-  `--explain`, and `as(fmt)` bridging all work *because* lambé is a
+  into "programming language to learn." Lambë's shape inference,
+  `--explain`, and `as(fmt)` bridging all work *because* lambë is a
   bounded tree transformer.
 - **User-defined functions (`def`)** → not supported. The bounded tree
   transformer is the design.
@@ -28,8 +28,8 @@ short answer. The full migration guide is in
   see the structure first.
 - **`.[]` iteration sugar** → list ops are list ops. Use
   `.users | map(.)` instead of `.users[]`. jq's `.[]` overloads on
-  container type, which conflicts with lambé's shape-aware approach.
-- **`try` / `catch`** → lambé's contract is "navigation returns null,
+  container type, which conflicts with lambë's shape-aware approach.
+- **`try` / `catch`** → lambë's contract is "navigation returns null,
   computation throws." There is no exception model in user space. Use
   `// fallback` for null handling; let computation errors propagate to
   the CLI.
@@ -42,7 +42,7 @@ short answer. The full migration guide is in
   `lambe_print_shape` (MCP), or `renderJsonSchema(shapeOf(value))`
   (library). Structural exploration is a separate tool from query
   evaluation.
-- **`getpath` / `setpath`** → read-only by design. lambé does not
+- **`getpath` / `setpath`** → read-only by design. lambë does not
   mutate input; it produces new values. There is no in-place update.
 
 ## Iteration & limits
@@ -53,7 +53,7 @@ short answer. The full migration guide is in
 
 ## Strings
 
-- **Regex (`test`, `match`, `sub`, `gsub`)** → out of scope. Lambé
+- **Regex (`test`, `match`, `sub`, `gsub`)** → out of scope. Lambë
   treats strings as opaque values. For regex, pipe through `grep` or a
   regex tool before / after `lam`.
 - **`@base64`, `@uri`** → not supported. Encoding is out of scope.
@@ -81,7 +81,7 @@ short answer. The full migration guide is in
 
 ## Format-specific
 
-- **HCL evaluation** → lambé reads HCL syntax (parses Terraform `.tf`
+- **HCL evaluation** → lambë reads HCL syntax (parses Terraform `.tf`
   files, surfaces blocks and attributes), but does NOT evaluate
   Terraform expressions. Variable resolution, function calls,
   `for` expressions, splats, and conditionals serialise back to their

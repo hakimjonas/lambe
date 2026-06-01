@@ -1,6 +1,6 @@
 /// Multi-format query language for structured data.
 ///
-/// Lambé provides a composable query DSL for JSON, YAML, TOML, HCL, CSV, TSV,
+/// Lambë provides a composable query DSL for JSON, YAML, TOML, HCL, CSV, TSV,
 /// and Markdown, with pipeline operations, property access chains, and filter
 /// predicates. Built on Rumil parser combinators, with operator precedence via
 /// the Pratt combinator and postfix chains parsed as a left fold.
@@ -420,11 +420,11 @@ String _describeLeftover(String expression, int offset) {
   return 'unexpected input';
 }
 
-/// Hint for a jq pipe-op name that Lambé does not support. Returns null
+/// Hint for a jq pipe-op name that Lambë does not support. Returns null
 /// for unknown names.
 ///
 /// Fires when the model wrote `.x | empty` or `.x | select(...)` —
-/// jq pipe stages Lambé rejects. The hint points at the Lambé
+/// jq pipe stages Lambë rejects. The hint points at the Lambë
 /// equivalent so the retry lands the right idiom.
 String? _jqPipeOpHint(String word) {
   switch (word) {
@@ -432,47 +432,47 @@ String? _jqPipeOpHint(String word) {
       return '`select(pred)` only works inside `filter(...)`; '
           'write `filter(pred)` as the pipe stage instead.';
     case 'empty':
-      return '`empty` does not exist in Lambé. '
+      return '`empty` does not exist in Lambë. '
           'Use `filter(pred)` to drop items that fail a predicate.';
     case 'if':
-      return '`if/then/else/end` is not a pipe stage in Lambé. '
+      return '`if/then/else/end` is not a pipe stage in Lambë. '
           'Use it as an expression inside `map(...)` or `filter(...)`, '
           'or replace it with `filter(pred)`.';
     case 'not':
-      return '`not` is a prefix in Lambé: write `!pred`.';
+      return '`not` is a prefix in Lambë: write `!pred`.';
     case 'try':
-      return 'Lambé has no exception model. '
+      return 'Lambë has no exception model. '
           'Use `if`/`else` or shape checks (`has("k")`, '
           '`--print-shape`) instead of `try ... catch`.';
     case 'recurse':
     case 'walk':
-      return 'Lambé has no recursive descent. Use explicit paths; '
+      return 'Lambë has no recursive descent. Use explicit paths; '
           'combine `map(...)` and `flatten` for nested fan-out.';
     case 'paths':
     case 'leaf_paths':
-      return 'Lambé has no `$word` op. Use `--print-shape` (CLI) or '
+      return 'Lambë has no `$word` op. Use `--print-shape` (CLI) or '
           '`lambe_print_shape` (MCP) to see the structure of the data.';
     case 'getpath':
-      return '`getpath([...])` is not a lambé op. Lambé paths are '
+      return '`getpath([...])` is not a lambë op. Lambë paths are '
           'static: write `.users[0].age` instead of '
           '`getpath(["users",0,"age"])`. For dynamic indexing, '
           'compose with `map(...)` over the path components.';
     case 'setpath':
-      return '`setpath([...]; v)` is not a lambé op. Lambé does not '
+      return '`setpath([...]; v)` is not a lambë op. Lambë does not '
           'mutate input; it produces new values. Construct the new '
           'object with `{...}` literals, or use `map(...)` / '
           '`map_values(...)` to update fields in lists / maps.';
     case 'range':
-      return 'Lambé has no `range` generator. Build the list inline '
-          '(`[0,1,2,...]`) or pre-compute it; lambé queries are '
+      return 'Lambë has no `range` generator. Build the list inline '
+          '(`[0,1,2,...]`) or pre-compute it; lambë queries are '
           'data-driven, not generator-driven.';
     case 'limit':
     case 'nth':
-      return '`$word` is not a lambé op. Use slicing `[:n]` to take a '
+      return '`$word` is not a lambë op. Use slicing `[:n]` to take a '
           'prefix, `[n:n+1]` to take an index, or `first`/`last` for '
           'the ends.';
     case 'env':
-      return 'Lambé has no `env` op (queries are pure; environment '
+      return 'Lambë has no `env` op (queries are pure; environment '
           'access lives outside the query). Set up the values via the '
           'shell and pipe them in as data.';
     case 'gsub':
@@ -481,17 +481,17 @@ String? _jqPipeOpHint(String word) {
     case 'match':
     case 'scan':
     case 'splits':
-      return '`$word` is a regex op; lambé treats strings as opaque. '
+      return '`$word` is a regex op; lambë treats strings as opaque. '
           'Pipe through `grep` / `sed` / a regex tool before or after '
           '`lam` for regex transforms.';
     case 'tojson':
-      return '`tojson` is not a lambé op. Use `as(json)` to bridge to '
+      return '`tojson` is not a lambë op. Use `as(json)` to bridge to '
           'a JSON-shaped value, or run `lam` with `-t json` (the '
           'default) to serialize the result.';
     case 'fromjson':
-      return '`fromjson` is not a lambé op. Lambé parses input by '
+      return '`fromjson` is not a lambë op. Lambë parses input by '
           'format on read; for JSON-in-strings, decode upstream of '
-          'lambé or use `as(json)` after coercing the wrapping shape.';
+          'lambë or use `as(json)` after coercing the wrapping shape.';
     default:
       return null;
   }
@@ -501,14 +501,14 @@ String? _jqPipeOpHint(String word) {
 /// null if the surrounding context doesn't match a known pattern.
 ///
 /// Recognises:
-/// - `[]` iterate-all (Lambé has no iterate-all; use `map(...)`).
+/// - `[]` iterate-all (Lambë has no iterate-all; use `map(...)`).
 /// - `?` optional suffix (no optional-suffix; filter or shape-check).
 /// - `..` recursive descent (no recursive descent; explicit paths).
 /// - `select(...)` in non-filter position (only valid inside
 ///   `filter(...)`).
 /// - `empty` keyword (no `empty`; use `filter(pred)`).
 /// - `end` from a stranded `if/then/else/end` tail.
-/// - `try` / `try ... catch` (Lambé has no exception model).
+/// - `try` / `try ... catch` (Lambë has no exception model).
 /// - `recurse`, `walk` (no recursive descent; explicit paths).
 /// - `paths`, `leaf_paths` (use `--print-shape` to inspect structure).
 /// - `range`, `limit`, `nth` (use slicing or `first`/`last`).
@@ -521,7 +521,7 @@ String? _jqIdiomHint(String expression, int offset) {
   if (offset < expression.length && expression[offset] == ']') {
     final before = expression.substring(0, offset).trimRight();
     if (before.endsWith('[')) {
-      return 'Lambé has no `[]` iterate-all. '
+      return 'Lambë has no `[]` iterate-all. '
           'Use `map(.)` to fan out, or `map(.field)` to project. '
           'E.g. `.users | map(.name)` not `.users[].name`, '
           '`.items | map(.spec.containers) | flatten | map(.name)` '
@@ -530,7 +530,7 @@ String? _jqIdiomHint(String expression, int offset) {
   }
   // `.foo?`: `?` immediately after an identifier or bracket.
   if (offset < expression.length && expression[offset] == '?') {
-    return 'Lambé has no `?` optional-path suffix. '
+    return 'Lambë has no `?` optional-path suffix. '
         'Use `filter(has("foo")) | .foo`, or check the shape with '
         '`--print-shape` (CLI) / `lambe_print_shape` (MCP) first.';
   }
@@ -538,7 +538,7 @@ String? _jqIdiomHint(String expression, int offset) {
   if (offset < expression.length && expression[offset] == '.') {
     final before = expression.substring(0, offset).trimRight();
     if (before.endsWith('.') && !before.endsWith('..')) {
-      return 'Lambé has no `..` recursive descent. '
+      return 'Lambë has no `..` recursive descent. '
           'Use explicit paths; combine `map(...)` and `flatten` for '
           'nested fan-out.';
     }
@@ -546,105 +546,105 @@ String? _jqIdiomHint(String expression, int offset) {
   final rest = expression.substring(offset).trimLeft();
   // `select(...)` in non-filter position. Fires anywhere — inside
   // `map(...)`, at top level, in the middle of a pipeline — since
-  // `select` is only valid inside `filter(...)` in Lambé.
+  // `select` is only valid inside `filter(...)` in Lambë.
   if (rest.startsWith('select(') ||
       rest == 'select' ||
       (rest.startsWith('select') &&
           rest.length >= 7 &&
           !_isIdentChar(rest.codeUnitAt(6)))) {
     return '`select(pred)` is only valid inside `filter(...)` in '
-        'Lambé. Replace `map(select(pred))` with `filter(pred)`, and '
+        'Lambë. Replace `map(select(pred))` with `filter(pred)`, and '
         '`map(select(pred) | .field)` with '
         '`filter(pred) | map(.field)`.';
   }
   // `empty` keyword. Similar: may appear inside `map(if ... then ... else empty end)`.
   if (rest.startsWith('empty') &&
       (rest.length == 5 || !_isIdentChar(rest.codeUnitAt(5)))) {
-    return 'Lambé has no `empty` keyword. '
+    return 'Lambë has no `empty` keyword. '
         'Drop items with `filter(pred)` instead of '
         '`map(if pred then x else empty end)`.';
   }
   // `end` from a stranded `if/then/else/end`.
   if (rest.startsWith('end') &&
       (rest.length == 3 || !_isIdentChar(rest.codeUnitAt(3)))) {
-    return '`if/then/else/end` is an expression in Lambé, not a pipe '
+    return '`if/then/else/end` is an expression in Lambë, not a pipe '
         'stage. Use it inside `map(...)` / `filter(...)`, and drop '
-        'the `end` keyword — Lambé terminates `if` at the else branch.';
+        'the `end` keyword — Lambë terminates `if` at the else branch.';
   }
-  // `try` / `try ... catch`. jq's exception model has no lambé
+  // `try` / `try ... catch`. jq's exception model has no lambë
   // analogue.
   if (_atKeyword(rest, 'try')) {
-    return 'Lambé has no exception model. '
+    return 'Lambë has no exception model. '
         'Use `if`/`else` or shape checks (`has("k")`, `--print-shape`) '
         'instead of `try ... catch`.';
   }
   // `recurse`, `walk` — both jq's recursive-descent operators.
   if (_atKeyword(rest, 'recurse') || _atKeyword(rest, 'walk')) {
-    return 'Lambé has no recursive descent. Use explicit paths; '
+    return 'Lambë has no recursive descent. Use explicit paths; '
         'combine `map(...)` and `flatten` for nested fan-out.';
   }
-  // `paths`, `leaf_paths` — jq's path enumeration. Lambé exposes
+  // `paths`, `leaf_paths` — jq's path enumeration. Lambë exposes
   // structure via `--print-shape` instead.
   if (_atKeyword(rest, 'paths') || _atKeyword(rest, 'leaf_paths')) {
-    return 'Lambé has no `paths`/`leaf_paths`. Use `--print-shape` '
+    return 'Lambë has no `paths`/`leaf_paths`. Use `--print-shape` '
         '(CLI) or `lambe_print_shape` (MCP) to see the structure of '
         'the data.';
   }
   // `range`, `limit`, `nth` — jq generators / slicing helpers.
   if (_atKeyword(rest, 'range')) {
-    return 'Lambé has no `range` generator. Build the list inline '
-        '(`[0,1,2,...]`) or pre-compute it; lambé queries are '
+    return 'Lambë has no `range` generator. Build the list inline '
+        '(`[0,1,2,...]`) or pre-compute it; lambë queries are '
         'data-driven, not generator-driven.';
   }
   if (_atKeyword(rest, 'limit') || _atKeyword(rest, 'nth')) {
     final word = _atKeyword(rest, 'limit') ? 'limit' : 'nth';
-    return '`$word` is not a lambé op. Use slicing `[:n]` to take a '
+    return '`$word` is not a lambë op. Use slicing `[:n]` to take a '
         'prefix, `[n:n+1]` to take an index, or `first`/`last` for '
         'the ends.';
   }
-  // `@csv` / `@tsv` — jq's format strings. Lambé routes through
+  // `@csv` / `@tsv` — jq's format strings. Lambë routes through
   // `as(csv)` / `as(tsv)` instead.
   if (rest.startsWith('@csv') || rest.startsWith('@tsv')) {
     final fmt = rest.startsWith('@csv') ? 'csv' : 'tsv';
-    return 'Lambé has no `@$fmt` format string. Use `as($fmt)` to '
+    return 'Lambë has no `@$fmt` format string. Use `as($fmt)` to '
         'serialize a list-of-records as $fmt, or `--to $fmt` at the '
         'CLI level.';
   }
   // `@base64` — explicitly unsupported.
   if (rest.startsWith('@base64')) {
-    return 'Lambé does not support `@base64` encoding/decoding. '
-        'Pre-process the data outside lambé if you need it.';
+    return 'Lambë does not support `@base64` encoding/decoding. '
+        'Pre-process the data outside lambë if you need it.';
   }
   // `@uri` — explicitly unsupported.
   if (rest.startsWith('@uri')) {
-    return 'Lambé does not support `@uri` URL-encoding. '
-        'Pre-process the data outside lambé if you need it.';
+    return 'Lambë does not support `@uri` URL-encoding. '
+        'Pre-process the data outside lambë if you need it.';
   }
   // `@html` / `@sh` / `@json` — other jq format strings.
   if (rest.startsWith('@html') ||
       rest.startsWith('@sh') ||
       rest.startsWith('@json')) {
     final fmt = RegExp(r'^@(\w+)').firstMatch(rest)?.group(1) ?? 'fmt';
-    return 'Lambé has no `@$fmt` format string. '
+    return 'Lambë has no `@$fmt` format string. '
         'Use `as(json)` for JSON shape bridges, `--to <fmt>` for '
-        'output formats, or pre-process outside lambé.';
+        'output formats, or pre-process outside lambë.';
   }
   // `$ENV` / `$NAME` — jq's environment-variable / variable-binding
-  // syntax. Lambé queries are pure; no in-query variables.
+  // syntax. Lambë queries are pure; no in-query variables.
   if (rest.startsWith(r'$')) {
-    return 'Lambé has no variable-binding (`\$NAME`) or environment '
+    return 'Lambë has no variable-binding (`\$NAME`) or environment '
         '(`\$ENV`) syntax. Queries are pure; environment access lives '
         'outside the query. Set up values via the shell, pipe them '
         'as data.';
   }
-  // `def` — jq's user-function definition. Lambé is a bounded tree
+  // `def` — jq's user-function definition. Lambë is a bounded tree
   // transformer; user-defined functions, recursion, and closures are
   // explicit non-goals (see `doc/non-goals.md`).
   if (_atKeyword(rest, 'def')) {
-    return 'Lambé has no `def` user-defined functions. The language is '
+    return 'Lambë has no `def` user-defined functions. The language is '
         'a bounded tree transformer by design — no `def`, no recursion, '
         'no closures. For computation that needs functions or state, '
-        'compose the data outside lambé and pipe it in.';
+        'compose the data outside lambë and pipe it in.';
   }
   return null;
 }
