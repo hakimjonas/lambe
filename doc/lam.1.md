@@ -71,6 +71,9 @@ If no file is given, reads from standard input.
 **-n**, **--null-input**
 :   Run the query against **null** context with no input. Useful for value computations like `lam -n '[1,2,3] | unique'`. Without **-n**, the missing-input guard fires (a typo'd filename or missing redirect is a common footgun); the flag makes the "I have no input" intent explicit. Cannot combine with **--interactive**, **--ndjson**, **--schema**, or **--assert**.
 
+**--skill**
+:   Print the embedded agent SKILL.md to stdout and exit. Lets agent harnesses install the skill regardless of how `lam` was acquired: `lam --skill > .agents/skills/lambe/SKILL.md`. The content is captured at compile time from `.agents/skills/lambe/SKILL.md` in the lambé source.
+
 **-h**, **--help**
 :   Show usage information.
 

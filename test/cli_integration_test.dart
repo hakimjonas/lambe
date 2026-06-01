@@ -11,6 +11,7 @@
 /// here rather than in a mock.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -38,42 +39,70 @@ Future<(int, String, String)> _runLam(
   return (exitCode, await stdoutFuture, await stderrFuture);
 }
 
-/// Runs `dart bin/lam.dart` with [stdinLines] fed one at a time with
-/// [gap] between each line, so streaming behavior can be observed.
-/// Returns stdout lines paired with their arrival timestamps (ms since
-/// process start).
-Future<List<(int, String)>> _runLamWithTimedStdin(
+/// Runs `dart bin/lam.dart` with the given args, feeds [stdinLines]
+/// one at a time and waits for the corresponding output line before
+/// feeding the next. Returns the output lines in order.
+///
+/// The deadlock test for streaming: a buffered implementation that
+/// holds output until stdin closes will never produce the first
+/// output line, so the per-line wait blocks forever and the test
+/// times out. A streaming implementation completes one round-trip per
+/// line.
+///
+/// No wall-clock gap is measured. The signal is sequencing:
+/// "did N inputs produce N outputs in lockstep, before EOF?"
+Future<List<String>> _runLamLockstep(
   List<String> args,
-  List<String> stdinLines,
-  Duration gap,
-) async {
-  final start = DateTime.now();
+  List<String> stdinLines, {
+  Duration perLineTimeout = const Duration(seconds: 10),
+}) async {
   final process = await Process.start('dart', [
     'bin/lam.dart',
     ...args,
   ], workingDirectory: Directory.current.path);
 
-  // Feed lines with gaps; don't await each write (writeln is buffered
-  // through IOSink). Close stdin after the last line.
-  () async {
-    for (var i = 0; i < stdinLines.length; i++) {
-      if (i > 0) await Future<void>.delayed(gap);
-      process.stdin.writeln(stdinLines[i]);
-      await process.stdin.flush();
-    }
-    await process.stdin.close();
-  }();
-
-  final results = <(int, String)>[];
-  await process.stdout
+  // Hand-rolled async line queue: a list of completers fronts the
+  // stream; each output line wakes the next pending reader. Avoids
+  // taking on `package:async` for `StreamQueue` just for this test.
+  final pending = <Completer<String>>[];
+  final buffered = <String>[];
+  final sub = process.stdout
       .transform(utf8.decoder)
       .transform(const LineSplitter())
-      .forEach((line) {
-        final ms = DateTime.now().difference(start).inMilliseconds;
-        results.add((ms, line));
+      .listen((line) {
+        if (pending.isNotEmpty) {
+          pending.removeAt(0).complete(line);
+        } else {
+          buffered.add(line);
+        }
       });
-  await process.exitCode;
-  return results;
+
+  Future<String> nextLine() {
+    if (buffered.isNotEmpty) {
+      return Future.value(buffered.removeAt(0));
+    }
+    final c = Completer<String>();
+    pending.add(c);
+    return c.future;
+  }
+
+  final received = <String>[];
+  try {
+    for (final line in stdinLines) {
+      process.stdin.writeln(line);
+      await process.stdin.flush();
+      // Block until we get the corresponding output line. If the impl
+      // buffers until EOF this throws TimeoutException; the test then
+      // fails with a clear "streaming failed" message instead of
+      // racing flaky wall-clock assertions.
+      received.add(await nextLine().timeout(perLineTimeout));
+    }
+  } finally {
+    await process.stdin.close();
+    await sub.cancel();
+    await process.exitCode;
+  }
+  return received;
 }
 
 void main() {
@@ -223,56 +252,31 @@ void main() {
     test(
       'lines emitted as they arrive on stdin, not buffered to EOF',
       () async {
-        // Feed four lines with 500ms between each. Dart VM startup
-        // (~400ms) means the first two lines are likely already in
-        // the pipe when the process starts reading, so lines 1 and 2
-        // may appear to arrive together. The real streaming signal is
-        // the gap between the *last two* output lines, since by then
-        // the VM is fully up and any delay reflects the stdin flush
-        // pattern.
-        const gap = Duration(milliseconds: 500);
-        final results = await _runLamWithTimedStdin(
+        // Streaming property checked via lockstep round-trips:
+        //   - send line 1 → read line 1 (must complete before line 2 sent)
+        //   - send line 2 → read line 2 (...)
+        //   - send line N → read line N
+        //   - close stdin
+        //
+        // A buffered implementation that holds output until stdin
+        // closes would deadlock on the first read (no output available
+        // until EOF, but EOF doesn't come until we close, which we
+        // don't do until all lines are read). The per-line timeout
+        // surfaces that as a clean failure with reason text.
+        //
+        // No wall-clock gaps. Behaviour depends only on whether `lam`
+        // flushes per line, which is the actual contract being tested.
+        // Reliable under any host load and any CI runner stdio policy
+        // — the previous wall-clock-gap assertion was sensitive to
+        // both, so it's removed.
+        final received = await _runLamLockstep(
           ['--ndjson', '.a'],
           ['{"a":1}', '{"a":2}', '{"a":3}', '{"a":4}'],
-          gap,
         );
 
-        expect(results.length, 4);
-        expect([for (final (_, l) in results) l], ['1', '2', '3', '4']);
-
-        // The two mid-stream gaps (between lines 2->3 and 3->4) must
-        // each be at least 300ms (300ms slack on the 500ms feed gap).
-        // A buffered implementation would deliver all four at EOF
-        // with near-zero mid-stream gaps.
-        final t2 = results[1].$1;
-        final t3 = results[2].$1;
-        final t4 = results[3].$1;
-        expect(
-          t3 - t2,
-          greaterThanOrEqualTo(300),
-          reason: 'gap between lines 2 and 3 too small; output is batched',
-        );
-        expect(
-          t4 - t3,
-          greaterThanOrEqualTo(300),
-          reason: 'gap between lines 3 and 4 too small; output is batched',
-        );
+        expect(received, ['1', '2', '3', '4']);
       },
-      // Spawning dart + waiting on three 500ms gaps + VM startup
-      // takes several seconds; bump the default timeout.
       timeout: const Timeout(Duration(seconds: 30)),
-      // GitHub Actions' job runners batch a child process's stdout in
-      // a way that defeats the timing assertions: the parent test's
-      // forEach receives all four lines together at EOF, even though
-      // `lam` itself emits them line-by-line as they arrive (verified
-      // locally against TTY and file-redirected stdout). The test is
-      // a useful local smoke check that lambé's --ndjson flushes
-      // per line, but it isn't reliable under CI's stdio plumbing.
-      // Skip on CI; keep the assertion local.
-      skip:
-          Platform.environment['CI'] == 'true'
-              ? 'CI runners batch child stdout; runs locally'
-              : null,
     );
   });
 
@@ -771,5 +775,41 @@ void main() {
       expect(code, 0);
       expect(jsonDecode(out), 6);
     });
+  });
+
+  group('--skill: print embedded SKILL.md', () {
+    test('prints YAML-frontmatter header (skill is shaped right)', () async {
+      final (code, out, _) = await _runLam(['--skill']);
+      expect(code, 0);
+      expect(out, startsWith('---\nname: lambe\n'));
+    });
+
+    test('output round-trips as a Markdown document', () async {
+      // Pipe --skill output back through `lam -f markdown` to confirm
+      // the embedded content parses cleanly. The first child of any
+      // CommonMark document with a leading H1 should be a heading.
+      final (skillCode, skillOut, _) = await _runLam(['--skill']);
+      expect(skillCode, 0);
+
+      final (code, out, _) = await _runLam([
+        '-f',
+        'markdown',
+        '.children[0].type',
+      ], stdinContents: skillOut);
+      expect(code, 0);
+      expect(out.trim(), '"heading"');
+    });
+
+    test(
+      'matches the on-disk .agents/skills/lambe/SKILL.md byte-for-byte',
+      () async {
+        // Catches the "regenerated _skill.dart wasn't committed" case.
+        final source =
+            await File('.agents/skills/lambe/SKILL.md').readAsString();
+        final (code, out, _) = await _runLam(['--skill']);
+        expect(code, 0);
+        expect(out, source);
+      },
+    );
   });
 }

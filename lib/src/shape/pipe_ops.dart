@@ -33,7 +33,10 @@ import 'package:rumil_expressions/rumil_expressions.dart'
 
 import '../ast.dart';
 import '../errors.dart';
+import '../output_format.dart';
+import 'check.dart';
 import 'shape.dart';
+import 'synthesize.dart';
 
 /// Recursive evaluator callback. The spec's `eval` field invokes this to
 /// evaluate sub-expressions (predicates, key extractors, transforms)
@@ -51,9 +54,11 @@ typedef PipeOpEval = Object? Function(LamExpr expr, Object? ctx);
 ///   `BuiltinPipeOp(name, [innerExpr])`.
 /// - [custom]: the op has grammar the generic rules cannot express
 ///   (e.g. `as(fmt)` takes a closed keyword set, not an arbitrary
-///   expression). The parser hand-writes these rules and the spec
-///   provides shape metadata only; runtime dispatch lives outside
-///   [BuiltinPipeOp] (see [As]).
+///   expression). The parser hand-writes these rules and the parser
+///   emits a dedicated AST class carrying a typed argument (currently
+///   only [As]). Inference and runtime still flow through this spec
+///   table; the spec's `infer` and `eval` destructure the typed AST
+///   node themselves.
 enum PipeOpParseKind {
   /// Bare keyword followed by a word boundary — `sort`, `length`,
   /// `to_entries`. Parser builds `BuiltinPipeOp(name, const [])`.
@@ -66,8 +71,9 @@ enum PipeOpParseKind {
 
   /// Op has custom grammar not expressible as `zeroArg` or `oneArg`,
   /// e.g. `as(fmt)` takes a closed keyword set instead of an arbitrary
-  /// expression. Parser hand-writes the rule; runtime dispatch lives
-  /// in a dedicated AST node (see [As]).
+  /// expression. Parser hand-writes the rule and emits a dedicated
+  /// AST class (see [As]). Inference and runtime dispatch still flow
+  /// through the spec table.
   custom,
 }
 
@@ -77,22 +83,45 @@ enum PipeOpParseKind {
 /// The `infer` field is the shape transformer — given the input shape
 /// and the AST node for this op (so parameterized ops can recurse into
 /// their inner expression), it returns the output shape. The `eval`
-/// field is the runtime evaluator — given the input value, the parsed
-/// argument expressions, and the recursive [PipeOpEval] callback, it
-/// returns the op's result.
+/// field is the runtime evaluator — given the input value, the AST
+/// node, and the recursive [PipeOpEval] callback, it returns the op's
+/// result. Eval implementations that need argument expressions
+/// destructure the node: `(op as BuiltinPipeOp).args[0]` for the
+/// generic dispatch, or pattern-match on a custom node like [As] when
+/// the spec covers a typed-argument op.
 ///
 /// `parseKind` tells the parser which generic rule shape this op uses.
-/// `custom` ops are hand-written in the parser and use dedicated AST
-/// nodes; their `eval` field is unreachable via the [BuiltinPipeOp]
-/// dispatch and may be omitted.
+/// `custom` ops are hand-written in the parser and may use a dedicated
+/// AST class for their typed argument (currently only [As]). Their
+/// `infer` and `eval` flow through the same spec-table dispatch as
+/// every other op, so per-op invariants (null short-circuit, completer
+/// gating, trivial-warning detection) apply uniformly.
 typedef PipeOpInfo =
     ({
       String name,
       bool Function(Shape input) accepts,
       Shape Function(Shape input, LamExpr op) infer,
-      Object? Function(Object? ctx, List<LamExpr> args, PipeOpEval eval) eval,
+      Object? Function(Object? ctx, LamExpr op, PipeOpEval eval) eval,
       PipeOpParseKind parseKind,
     });
+
+/// Pipe ops that opt out of the [Pipe] evaluator's null short-circuit.
+///
+/// The default `Pipe` contract is "navigation on null returns null":
+/// when a pipe's left side evaluates to null, the right-hand op is
+/// skipped entirely and the result is null. That is correct for most
+/// ops (`.field`, `flatten`, `length`, `map`, …) — they walk structure
+/// they don't have. But it is wrong for ops whose semantics are
+/// *defined* over a null context. The canonical example is `type`,
+/// which inspects any context — including null — and returns a string
+/// describing it. Such ops are listed here; `_pipe` in `evaluator.dart`
+/// consults this set and forwards the null instead of short-circuiting.
+///
+/// Add an op to this set when:
+/// - the spec's `eval` has a deliberate branch for `null` input, AND
+/// - the spec's `infer` returns a non-null shape for null input
+///   (so the `--explain` contract matches the runtime behaviour).
+const Set<String> nullSafePipeOpNames = {'type'};
 
 /// Look up the spec for a pipe-op AST node, or `null` if [node] is not
 /// a pipe op.
@@ -166,27 +195,49 @@ bool acceptsInputShape(String opName, Shape shape) =>
 /// structural-failure case — at runtime the evaluator would throw, and
 /// downstream inference must not pretend the output has a concrete
 /// shape it cannot have.
+///
+/// Models the [Pipe] evaluator's null short-circuit: when the input
+/// shape is [SNull] and the op is not in [nullSafePipeOpNames], the
+/// runtime returns null without invoking the op, so the inferred
+/// shape is [SNull] rather than the op's nominal output. This keeps
+/// `--explain` honest about the documented "navigation on null
+/// returns null" contract instead of warning that the op will throw.
 Shape inferPipeOpShape(Shape input, LamExpr op) {
   final info = pipeOpInfoFor(op);
   if (info == null) return const SAny();
+  if (input is SNull && !_isNullSafe(op)) return const SNull();
   if (!info.accepts(input)) return const SAny();
   return info.infer(input, op);
 }
 
-/// Evaluate a built-in pipe op against [ctx].
+/// Whether [op] opts out of the [Pipe] evaluator's null short-circuit.
 ///
-/// Looks up the spec for [op]'s name and invokes its `eval` field with
-/// the parsed argument expressions and the recursive evaluator
-/// callback. Throws [QueryError] if [op]'s name has no registered
-/// spec — that means the parser produced a node the table does not
-/// know about, which is a programmer error rather than a user-input
-/// error.
-Object? evalBuiltinPipeOp(BuiltinPipeOp op, Object? ctx, PipeOpEval eval) {
-  final spec = _specsByName[op.name];
+/// True for [BuiltinPipeOp]s whose name is in [nullSafePipeOpNames].
+/// The custom-arity [As] node is never null-safe — bridging null to
+/// a target format is the responsibility of the caller, not `as`.
+bool _isNullSafe(LamExpr op) =>
+    op is BuiltinPipeOp && nullSafePipeOpNames.contains(op.name);
+
+/// Evaluate any pipe-op AST node against [ctx].
+///
+/// Dispatches through the spec table for both [BuiltinPipeOp] (the
+/// generic dispatch) and [As] (the one custom-AST op). Throws
+/// [QueryError] if the AST node is not a pipe op or its name has no
+/// registered spec — that means the parser produced a node the table
+/// does not know about, which is a programmer error rather than a
+/// user-input error.
+///
+/// Eval implementations destructure [op] themselves to read whatever
+/// arguments they need: `BuiltinPipeOp.args` for the generic case,
+/// `As.target` for the typed-format case.
+Object? evalPipeOp(LamExpr op, Object? ctx, PipeOpEval eval) {
+  final spec = pipeOpInfoFor(op);
   if (spec == null) {
-    throw QueryError('${op.name}: no registered pipe-op spec');
+    throw QueryError(
+      'evalPipeOp: ${op.runtimeType} is not a registered pipe-op AST',
+    );
   }
-  return spec.eval(ctx, op.args, eval);
+  return spec.eval(ctx, op, eval);
 }
 
 // Every predicate treats [SAny] as accepted. Inference cannot prove
@@ -274,9 +325,9 @@ final PipeOpInfo _filterSpec = (
   accepts: _acceptsList,
   // `filter` preserves the list-of-elements shape.
   infer: (input, _) => input,
-  eval: (ctx, args, eval) {
+  eval: (ctx, op, eval) {
     final list = _asList(ctx, 'filter');
-    final pred = args[0];
+    final pred = (op as BuiltinPipeOp).args[0];
     return [
       for (final item in list)
         if (eval(pred, item) == true) item,
@@ -297,9 +348,9 @@ final PipeOpInfo _mapSpec = (
           SList(_inferSubExpr(transform, e)),
         _ => const SAny(),
       },
-  eval: (ctx, args, eval) {
+  eval: (ctx, op, eval) {
     final list = _asList(ctx, 'map');
-    final transform = args[0];
+    final transform = (op as BuiltinPipeOp).args[0];
     return [for (final item in list) eval(transform, item)];
   },
   parseKind: PipeOpParseKind.oneArg,
@@ -329,9 +380,9 @@ final PipeOpInfo _sortBySpec = (
   name: 'sort_by',
   accepts: _acceptsList,
   infer: (input, _) => input,
-  eval: (ctx, args, eval) {
+  eval: (ctx, op, eval) {
     final list = List<Object?>.of(_asList(ctx, 'sort_by'));
-    final key = args[0];
+    final key = (op as BuiltinPipeOp).args[0];
     list.sort((a, b) => compareValues(eval(key, a), eval(key, b)));
     return list;
   },
@@ -361,9 +412,9 @@ final PipeOpInfo _uniqueBySpec = (
   name: 'unique_by',
   accepts: _acceptsList,
   infer: (input, _) => input,
-  eval: (ctx, args, eval) {
+  eval: (ctx, op, eval) {
     final list = _asList(ctx, 'unique_by');
-    final key = args[0];
+    final key = (op as BuiltinPipeOp).args[0];
     final seen = <String>{};
     return [
       for (final item in list)
@@ -520,9 +571,9 @@ final PipeOpInfo _groupBySpec = (
         ),
         _ => const SAny(),
       },
-  eval: (ctx, args, eval) {
+  eval: (ctx, op, eval) {
     final list = _asList(ctx, 'group_by');
-    final key = args[0];
+    final key = (op as BuiltinPipeOp).args[0];
     // Group on a canonical string representation so structurally-equal
     // Maps and Lists compare as equal. A side map preserves the
     // original key value for the output record.
@@ -579,9 +630,9 @@ final PipeOpInfo _filterValuesSpec = (
   name: 'filter_values',
   accepts: _acceptsMap,
   infer: (input, _) => input,
-  eval: (ctx, args, eval) {
+  eval: (ctx, op, eval) {
     final map = _asMap(ctx, 'filter_values');
-    final predicate = args[0];
+    final predicate = (op as BuiltinPipeOp).args[0];
     return {
       for (final MapEntry(:key, :value) in map.entries)
         if (eval(predicate, value) == true) key: value,
@@ -605,9 +656,9 @@ final PipeOpInfo _mapValuesSpec = (
           }),
         _ => const SAny(),
       },
-  eval: (ctx, args, eval) {
+  eval: (ctx, op, eval) {
     final map = _asMap(ctx, 'map_values');
-    final transform = args[0];
+    final transform = (op as BuiltinPipeOp).args[0];
     return {
       for (final MapEntry(:key, :value) in map.entries)
         key: eval(transform, value),
@@ -620,9 +671,9 @@ final PipeOpInfo _filterKeysSpec = (
   name: 'filter_keys',
   accepts: _acceptsMap,
   infer: (input, _) => input,
-  eval: (ctx, args, eval) {
+  eval: (ctx, op, eval) {
     final map = _asMap(ctx, 'filter_keys');
-    final predicate = args[0];
+    final predicate = (op as BuiltinPipeOp).args[0];
     return {
       for (final MapEntry(:key, :value) in map.entries)
         if (eval(predicate, key) == true) key: value,
@@ -635,8 +686,8 @@ final PipeOpInfo _hasSpec = (
   name: 'has',
   accepts: _acceptsMap,
   infer: (_, _) => const SBool(),
-  eval: (ctx, args, eval) {
-    final key = args[0];
+  eval: (ctx, op, eval) {
+    final key = (op as BuiltinPipeOp).args[0];
     if (ctx is Map<String, Object?>) {
       final k = eval(key, ctx);
       if (k is String) return ctx.containsKey(k);
@@ -868,19 +919,53 @@ void _appendMarkdownText(StringBuffer buf, Object? node) {
 /// [SAny] as a safe default; the real computation happens in
 /// `infer.dart` for the [As] case.
 ///
-/// `parseKind` is `custom` because `as(fmt)` takes a keyword set
-/// (`json`, `yaml`, etc.) rather than an arbitrary expression — the
+/// `parseKind` is `custom` because `as(fmt)` takes a closed keyword
+/// set (`json`, `yaml`, etc.) rather than an arbitrary expression — the
 /// generic `oneArg` rule cannot express that. The parser hand-writes
-/// `_asOp` and the runtime evaluator handles [As] directly. The `eval`
-/// field here is unreachable via [BuiltinPipeOp] dispatch and is a
-/// stub.
+/// `_asOp` and emits an [As] AST node carrying the typed [OutputFormat]
+/// argument.
+///
+/// Both `infer` and `eval` here are real implementations. They
+/// destructure the [As] node to read the typed target and consult the
+/// shape-bridge synthesis table (`canWriteAs` / `synthesize`). With
+/// this in place, the [As] AST flows through the same `pipeOpInfoFor`
+/// → spec.eval / spec.infer dispatch as every other pipe op, so per-op
+/// invariants (null short-circuit, completer gating, trivial-warning
+/// suppression) apply uniformly without an `if (expr is As)` branch in
+/// the inference or evaluator code paths.
 final PipeOpInfo _asSpec = (
   name: 'as',
   accepts: _acceptsAny,
-  infer: (_, _) => const SAny(),
-  eval:
-      (_, _, _) =>
-          throw const QueryError('as: dispatched outside BuiltinPipeOp'),
+  infer: (input, op) {
+    final target = (op as As).target;
+    final report = canWriteShapeAs(input, target);
+    if (report is Writable) return input;
+    final bridges = synthesize(input, target);
+    if (bridges.length == 1) return _inferSubExpr(bridges.first, input);
+    return const SAny();
+  },
+  eval: (ctx, op, eval) {
+    final target = (op as As).target;
+    final report = canWriteAs(ctx, target);
+    if (report is Writable) return ctx;
+    final nw = report as NotWritable;
+    if (nw.suggestions.isEmpty) {
+      throw QueryError(
+        'as(${target.name}): no known bridge from '
+        '${renderShape(nw.got)} to ${target.name}. ',
+      );
+    }
+    if (nw.suggestions.length > 1) {
+      final listing = nw.suggestions
+          .map((r) => '  | ${r.display}    # ${r.explanation}')
+          .join('\n');
+      throw QueryError(
+        'as(${target.name}): ambiguous bridge from '
+        '${renderShape(nw.got)}. Pick one explicitly:\n$listing',
+      );
+    }
+    return eval(nw.suggestions.first.template, ctx);
+  },
   parseKind: PipeOpParseKind.custom,
 );
 

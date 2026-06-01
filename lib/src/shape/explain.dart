@@ -295,13 +295,26 @@ String? _predicateWarning(
 /// returns false, the query will throw at runtime. This warning
 /// surfaces that statically.
 ///
+/// The one exception is null input. The [Pipe] evaluator
+/// short-circuits on null and returns null without invoking the
+/// right-hand op, except for ops in [nullSafePipeOpNames]. For
+/// non-null-safe ops, an [SNull] input is documented "navigation on
+/// null returns null" behaviour, not a runtime rejection — so no
+/// warning is emitted.
+///
 /// Returns `null` when [op] is not a pipe op (e.g. an object
-/// constructor), when the input shape is [SAny] (cannot prove), or
-/// when the op accepts the input shape.
+/// constructor), when the input shape is [SAny] (cannot prove), when
+/// the input is null and the op short-circuits, or when the op
+/// accepts the input shape.
 String? _analyzeRejection(LamExpr op, Shape inputShape) {
   if (inputShape is SAny) return null;
   final info = pipeOpInfoFor(op);
   if (info == null) return null;
+  if (inputShape is SNull &&
+      op is BuiltinPipeOp &&
+      !nullSafePipeOpNames.contains(op.name)) {
+    return null;
+  }
   if (info.accepts(inputShape)) return null;
   return '${info.name} rejects ${renderShape(inputShape)}; '
       'this will throw at runtime';

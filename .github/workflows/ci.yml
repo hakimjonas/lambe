@@ -49,3 +49,32 @@ jobs:
       - run: dart pub get
       - run: dart compile exe bin/lam.dart -o lam
       - run: ./tool/lint_changelog.sh
+
+  generated-files-in-sync:
+    # Catches drift between source-of-truth files and the generated
+    # artifacts that embed them (`_version.dart` from pubspec.yaml,
+    # `_skill.dart` from `.agents/skills/lambe/SKILL.md`, `lam.1`
+    # from `doc/lam.1.md`). Without this, a SKILL.md edit can merge
+    # without regenerating the embedded copy and `lam --skill` ships
+    # stale content until the next release-prep run.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dart-lang/setup-dart@v1.7.2
+        with:
+          sdk: 3.12.0
+      - run: dart pub get
+      - run: dart run tool/gen_version.dart
+      - run: dart run tool/gen_skill.dart
+      - run: dart run tool/manpage.dart > doc/lam.1
+      - name: Verify generated files match committed copies
+        run: |
+          if ! git diff --quiet -- lib/src/_version.dart lib/src/_skill.dart doc/lam.1; then
+            echo "::error::Generated files are out of sync with their sources."
+            echo "Run the generators locally and commit the result:"
+            echo "  dart run tool/gen_version.dart"
+            echo "  dart run tool/gen_skill.dart"
+            echo "  dart run tool/manpage.dart > doc/lam.1"
+            git --no-pager diff -- lib/src/_version.dart lib/src/_skill.dart doc/lam.1
+            exit 1
+          fi

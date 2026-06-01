@@ -105,6 +105,14 @@ void main(List<String> arguments) {
               'for value computations: `lam -n \'[1,2,3] | unique\'`.',
           negatable: false,
         )
+        ..addFlag(
+          'skill',
+          help:
+              'Print the embedded agent SKILL.md to stdout and exit. '
+              'Useful for installing the skill into a tooling-agnostic '
+              'agent skills directory: `lam --skill > .agents/skills/lambe/SKILL.md`.',
+          negatable: false,
+        )
         ..addFlag('help', abbr: 'h', negatable: false, help: 'Show usage');
 
   final ArgResults args;
@@ -119,6 +127,15 @@ void main(List<String> arguments) {
 
   if (args.flag('help')) {
     _usage(argParser);
+    return;
+  }
+
+  // --skill: print the embedded SKILL.md and exit. Filesystem-free so
+  // it works in any environment (pub-installed, AOT, future WASM CLI),
+  // and lets agent harnesses install the skill with a single command:
+  //   `lam --skill > .agents/skills/lambe/SKILL.md`
+  if (args.flag('skill')) {
+    stdout.write(lambeSkill);
     return;
   }
 

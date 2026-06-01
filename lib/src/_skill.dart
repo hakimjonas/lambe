@@ -1,4 +1,12 @@
----
+// GENERATED FILE. DO NOT EDIT.
+// Run `dart run tool/gen_skill.dart` to regenerate after editing
+// .agents/skills/lambe/SKILL.md.
+
+/// Embedded contents of `.agents/skills/lambe/SKILL.md`, captured at
+/// build time. Surfaced via `lam --skill` so an agent harness can
+/// install the skill regardless of how `lam` was acquired:
+///   `lam --skill > .agents/skills/lambe/SKILL.md`
+const lambeSkill = r'''---
 name: lambe
 description: Query, filter, transform, validate, and convert structured data files (JSON, YAML, TOML, HCL/Terraform, CSV, TSV, Markdown) using the `lam` CLI. Use when the user asks to extract a field, filter records, aggregate values, check structure, validate against a schema, or convert between formats. Works on config files, API responses, deployment manifests, data exports, and Markdown documents (parsed as a typed AST). Bounded — no recursion, no `def`, no regex; for those the user should reach for a real programming language.
 license: MIT
@@ -157,3 +165,4 @@ Deeper reference lives in the lambé repo:
 
 The MCP server `lam-mcp` is available for sandboxed agents that can't
 shell out.
+''';

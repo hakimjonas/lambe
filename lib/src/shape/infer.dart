@@ -14,11 +14,8 @@
 library;
 
 import '../ast.dart';
-import '../output_format.dart';
-import 'check.dart';
 import 'pipe_ops.dart';
 import 'shape.dart';
-import 'synthesize.dart';
 
 /// Tracks whether [inferShape] has been registered as the
 /// sub-expression inferrer for `pipe_ops.dart`. Checked on entry to
@@ -44,16 +41,13 @@ Shape inferShape(LamExpr expr, Shape input) {
     registerSubExprInferrer(inferShape);
     _inferrerRegistered = true;
   }
-  // Pipe ops are dispatched through the shared spec table so the
-  // completer, `--explain`, and the evaluator agree on per-op
-  // behaviour. Non-op expressions (ObjConstruct, literals, field
-  // access, etc.) fall through to the switch below.
-  final pipeInfo = pipeOpInfoFor(expr);
-  if (pipeInfo != null) {
-    // `as(target)` needs access to the synthesis table, which lives in
-    // this file to avoid importing it from `pipe_ops.dart`. Handle it
-    // explicitly rather than teaching the spec table about synthesis.
-    if (expr is As) return _asShape(input, expr.target);
+  // Pipe ops dispatch through the shared spec table so the completer,
+  // `--explain`, and the evaluator agree on per-op behaviour. This
+  // includes `as` (the lone typed-argument op) — its `infer` field in
+  // the spec table consults the synthesis table directly. Non-op
+  // expressions (ObjConstruct, literals, field access, etc.) fall
+  // through to the switch below.
+  if (pipeOpInfoFor(expr) != null) {
     return inferPipeOpShape(input, expr);
   }
   return switch (expr) {
@@ -119,14 +113,6 @@ Shape inferShape(LamExpr expr, Shape input) {
     // through to [SAny] is the safe default.
     _ => const SAny(),
   };
-}
-
-Shape _asShape(Shape input, OutputFormat target) {
-  final report = canWriteShapeAs(input, target);
-  if (report is Writable) return input;
-  final bridges = synthesize(input, target);
-  if (bridges.length == 1) return inferShape(bridges.first, input);
-  return const SAny();
 }
 
 Shape _lookupField(Shape context, String name) {

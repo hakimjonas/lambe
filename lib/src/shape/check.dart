@@ -8,16 +8,15 @@
 /// when appended to the original query, produce a value the target
 /// format accepts.
 ///
-/// Remediations are curated query fragments. Each is parsed to an AST at
-/// construction so consumers can compose it with a user query without
-/// string manipulation.
+/// Remediations are curated query fragments held as hand-built [LamExpr]
+/// constants. Hand-building (rather than parsing source strings) keeps
+/// the import graph acyclic — `synthesize.dart` depends on this file,
+/// so anything dragged in here is also dragged into `pipe_ops.dart`
+/// when [synthesize] is consulted from the spec table.
 library;
-
-import 'package:rumil/rumil.dart' show Success;
 
 import '../ast.dart';
 import '../output_format.dart';
-import '../parser.dart' as parser_;
 import 'shape.dart';
 
 /// The shape a given [OutputFormat] requires at its root.
@@ -260,12 +259,18 @@ final class Hint {
 /// the composed query is `.users | {items: .}`.
 ///
 /// [display] is what the user sees and pastes. [template] is the AST
-/// that actually runs. They are usually identical: [Remediation.new]
-/// sets `display = source`. The [Remediation.withDisplay] factory
-/// decouples them, letting a remediation surface an intent-level form
-/// (such as `as(csv)`) while running a raw fragment (such as
-/// `to_entries`). Safe because `as(fmt)` at runtime consults this
-/// same curated table and resolves to the raw template.
+/// that actually runs. They are usually identical for the curated
+/// remediations defined here, but the two fields are separated so a
+/// remediation can surface an intent-level form (such as `as(csv)`)
+/// while running a raw fragment (such as `to_entries`). Safe because
+/// `as(fmt)` at runtime consults this same curated table and resolves
+/// to the raw template.
+///
+/// Remediations are an internal curated set: the constructor is private
+/// and the four canonical templates are hand-built [LamExpr] constants.
+/// This keeps `check.dart` independent of the parser, which would
+/// otherwise close a `pipe_ops → synthesize → check → parser → pipe_ops`
+/// import cycle.
 final class Remediation {
   /// Short human-readable label, for example `"Wrap under a key"`.
   final String label;
@@ -276,12 +281,11 @@ final class Remediation {
   ///
   /// Usually identical to [template]'s source. May differ when a
   /// remediation surfaces an intent-level form (e.g. `as(csv)`) while
-  /// running a raw fragment (e.g. `to_entries`) underneath. See
-  /// [Remediation.withDisplay].
+  /// running a raw fragment (e.g. `to_entries`) underneath.
   final String display;
 
-  /// The query fragment parsed to a [LamExpr]. Composable with a user
-  /// query via `applyBridge(user, template)`.
+  /// The query fragment as a [LamExpr]. Composable with a user query
+  /// via `applyBridge(user, template)`.
   final LamExpr template;
 
   /// One-line description of the resulting shape, for example
@@ -294,50 +298,6 @@ final class Remediation {
     required this.template,
     required this.explanation,
   });
-
-  /// Parse [source] as a query fragment and build a [Remediation] whose
-  /// [display] equals [source].
-  ///
-  /// Throws [ArgumentError] if [source] does not parse. This validates
-  /// curated templates at construction time so invalid suggestions
-  /// cannot be surfaced to users.
-  factory Remediation({
-    required String label,
-    required String source,
-    required String explanation,
-  }) => Remediation.withDisplay(
-    label: label,
-    source: source,
-    display: source,
-    explanation: explanation,
-  );
-
-  /// Build a [Remediation] whose [display] differs from its runtime
-  /// [source].
-  ///
-  /// Used to surface a readable intent (such as `as(csv)`) while the
-  /// runtime AST is a raw fragment (such as `to_entries`). [source]
-  /// is parsed and validated exactly as in [Remediation.new];
-  /// [display] is opaque user-facing text and is not parsed.
-  factory Remediation.withDisplay({
-    required String label,
-    required String source,
-    required String display,
-    required String explanation,
-  }) {
-    final result = parser_.parseQuery(source);
-    final ast = switch (result) {
-      Success(value: final v) => v,
-      _ =>
-        throw ArgumentError('Remediation template failed to parse: "$source"'),
-    };
-    return Remediation._(
-      label: label,
-      display: display,
-      template: ast,
-      explanation: explanation,
-    );
-  }
 }
 
 /// Check whether [value] can be written in [format].
@@ -440,30 +400,33 @@ List<Remediation> _suggestionsFor(Shape got, OutputFormat format) => switch ((
 
 // Curated remediations.
 //
-// The four canonical template ASTs are parsed lazily on first use
-// (Dart initializes top-level `final`s on first read) and reused
-// across every format that shares the same curated bridge. The
+// The four canonical template ASTs are hand-built `const` [LamExpr]
+// values shared across every format that uses the same bridge. The
 // factories below build a per-format `Remediation` from the shared
 // AST, setting `display` to `as(<format>)` so the user sees the
 // intent form. At runtime `as(<format>)` consults this same table
 // and resolves to the raw template, which is why displaying the
 // intent form is safe.
+//
+// Hand-building rather than parsing avoids importing the parser from
+// `check.dart` and keeps the import graph acyclic; see the
+// [Remediation] doc comment for the full chain.
 
-final LamExpr _wrapItemsAst = _parseTemplate('{items: .}');
-final LamExpr _wrapValueAst = _parseTemplate('{value: .}');
-final LamExpr _toEntriesAst = _parseTemplate('to_entries');
-final LamExpr _wrapValueThenEntriesAst = _parseTemplate(
-  '{value: .} | to_entries',
+/// `{items: .}` — wraps the input under a single-entry map.
+const LamExpr _wrapItemsAst = ObjConstruct([('items', Identity())]);
+
+/// `{value: .}` — wraps a scalar under a single-entry map.
+const LamExpr _wrapValueAst = ObjConstruct([('value', Identity())]);
+
+/// `to_entries` — converts a map to a `[{key, value}, ...]` row list.
+const LamExpr _toEntriesAst = BuiltinPipeOp('to_entries', []);
+
+/// `{value: .} | to_entries` — wraps a scalar then projects to a
+/// one-row list with a "value" column.
+const LamExpr _wrapValueThenEntriesAst = Pipe(
+  ObjConstruct([('value', Identity())]),
+  BuiltinPipeOp('to_entries', []),
 );
-
-LamExpr _parseTemplate(String source) {
-  final result = parser_.parseQuery(source);
-  return switch (result) {
-    Success(value: final v) => v,
-    _ =>
-      throw StateError('Curated remediation template failed to parse: $source'),
-  };
-}
 
 Remediation _wrapItems(OutputFormat format) => Remediation._(
   label: 'Wrap under a key',
