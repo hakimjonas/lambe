@@ -16,7 +16,7 @@ $ lam --to toml '.dependencies | keys | as(toml)' pubspec.yaml
 items = ["rumil", "rumil_parsers", "rumil_expressions"]
 ```
 
-Queries are bounded and always terminate. No recursion, no lambdas, no `def`. That's the tradeoff: Lambe doesn't try to be a programming language, so its shape inference, `--explain`, `--schema`, and error remediations all work.
+Queries are bounded and always terminate. No recursion, no lambdas, no `def`. That's the tradeoff: Lambë doesn't try to be a programming language, so its shape inference, `--explain`, `--schema`, and error remediations all work.
 
 *Lambë (pronounced "lam-beh") means "language" in Quenya (Tolkien's elvish). The package name is `lambe` for ASCII compatibility.*
 
@@ -105,7 +105,7 @@ Not writable as: toml, hcl
 
 Explain flags provably-empty filters (`filter(.missing)` on a known shape) and runtime-rejection mismatches (`filter` on a non-list input) by default. Pass `--explain-trivial` to also flag `sort_by`/`group_by`/`map`/`unique_by` whose argument references a missing field (often a typo, sometimes intentional). For agent tooling and build pipelines, `--explain-json` emits the same information as a structured JSON document.
 
-### `--schema` — declare a shape and let Lambe check your work
+### `--schema` — declare a shape and let Lambë check your work
 
 When you have a JSON Schema for your data — from an API contract, OpenAPI spec, or hand-written docs — point `--schema` at it:
 
@@ -120,7 +120,7 @@ Not writable as: toml, hcl
 
 The schema fills in information data alone can't express: optional fields (from JSON Schema's `required`), element shapes of empty lists, types `shapeOf` couldn't infer from sampling. `--explain` shows them; the evaluator trusts them.
 
-With data present, Lambe also validates: a schema saying `age: number` against data with `age: "30"` exits 1 at load time with a JSON-path-annotated diagnostic. No silent drift, no running a query against data that doesn't match its contract.
+With data present, Lambë also validates: a schema saying `age: number` against data with `age: "30"` exits 1 at load time with a JSON-path-annotated diagnostic. No silent drift, no running a query against data that doesn't match its contract.
 
 A sibling `<datafile>.schema.json` is auto-detected, so a project convention of placing schemas next to data works without explicit flags.
 
@@ -131,7 +131,7 @@ lam --print-shape data.json > data.schema.json    # bootstrap a schema from data
 lam --schema data.schema.json '.users' data.json  # use it back
 ```
 
-Accepted JSON Schema keywords: `type`, `properties`, `items`, `required`. Value-level constraints (`minimum`, `pattern`, `enum`, etc.), structural combinators (`allOf`, `oneOf`), `$ref`, and conditional schemas are rejected with a per-keyword error. Lambe is a shape system, not a validation engine — for richer validation, reach for `ajv` or `check-jsonschema`.
+Accepted JSON Schema keywords: `type`, `properties`, `items`, `required`. Value-level constraints (`minimum`, `pattern`, `enum`, etc.), structural combinators (`allOf`, `oneOf`), `$ref`, and conditional schemas are rejected with a per-keyword error. Lambë is a shape system, not a validation engine — for richer validation, reach for `ajv` or `check-jsonschema`.
 
 ## Query Syntax
 
@@ -250,7 +250,7 @@ lam -i data.json
 ```
 
 ```
-lambe v0.9.0 - type :help for commands, :q to quit
+lambe v0.12.0 - type :help for commands, :q to quit
 Data loaded: {3 fields, 42 users}
 
 lambe> .users | filter(.age > 30) | map(.name)
@@ -469,16 +469,16 @@ expect(data, lamHas('.users[0].address.city'));
 - [Recipes](doc/recipes.md) - real-world patterns for Kubernetes, Terraform, CI, CSV
 - [Man page](doc/lam.1.md) - Unix man page (`man -l doc/lam.1`)
 
-## What lambé is not
+## What lambë is not
 
-Lambé is a bounded tree transformer over JSON-shaped data. It
+Lambë is a bounded tree transformer over JSON-shaped data. It
 deliberately omits Turing-completeness, user-defined functions,
 recursive descent (`..`), `try`/`catch`, regex, streaming, and
 in-place mutation. Staying bounded is what makes shape inference,
 `--explain`, and `as(fmt)` bridging work.
 
 See [doc/non-goals.md](doc/non-goals.md) for the full list and the
-lambé idiom that replaces each omission.
+lambë idiom that replaces each omission.
 
 ## Design
 

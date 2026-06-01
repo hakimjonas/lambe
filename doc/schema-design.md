@@ -8,21 +8,21 @@ what it is, for contributors and curious readers.
 
 0.9.0 completes the shape feedback loop: declare a shape, check queries
 against it, round-trip with JSON Schema tooling. The schema feature is
-the piece that lets Lambe's shape system act as a contract between the
+the piece that lets Lambë's shape system act as a contract between the
 tool and its users' data.
 
 The positioning is *"a query language for structured data that shows
-you what you're working with."* Schemas are how a user tells Lambe
+you what you're working with."* Schemas are how a user tells Lambë
 what they're working with when the data alone doesn't say enough
 (empty lists, optional fields, heterogeneous sampling) — and how
-Lambe tells the user, statically, whether their query makes sense
+Lambë tells the user, statically, whether their query makes sense
 against that contract.
 
 ## Non-goals
 
 - **No value-level constraints.** `minimum`, `maximum`, `pattern`,
   `enum`, `format`, `minLength`, `maxLength` are rejected at
-  schema-load time with a one-line per-keyword error. Lambe is a
+  schema-load time with a one-line per-keyword error. Lambë is a
   query tool that understands shape, not a constraint system. Users
   who want value validation reach for ajv, check-jsonschema, or CUE.
 - **No conditional schemas** (`if`/`then`/`else`, `dependencies`,
@@ -44,7 +44,7 @@ against that contract.
 Accept JSON files that describe a shape using four JSON Schema
 keywords: `type`, `properties`, `items`, `required`.
 
-**Chosen over a custom Lambe DSL because:**
+**Chosen over a custom Lambë DSL because:**
 
 - Ecosystem leverage. JSON Schema is what users already have —
   OpenAPI specs, pub.dev metadata, IDE validators, CI linters all
@@ -54,7 +54,7 @@ keywords: `type`, `properties`, `items`, `required`.
   errors and line/column locations. The "walk `JsonValue` → build
   `Shape`" layer is ~50 lines of exhaustive switch.
 - JSON Schema as the ecosystem's lingua franca for structural
-  description is a fact. A Lambe-specific DSL would be one more
+  description is a fact. A Lambë-specific DSL would be one more
   thing to learn with no reciprocal win.
 
 **Accepted keywords and their mapping:**
@@ -295,7 +295,7 @@ schema := object_schema
 scalar_schema := {"type": "null"}
                | {"type": "boolean"}
                | {"type": "number"}
-               | {"type": "integer"}     # same as number, per lambe
+               | {"type": "integer"}     # same as number, per lambë
                | {"type": "string"}
 
 array_schema := {"type": "array", "items": <schema>}

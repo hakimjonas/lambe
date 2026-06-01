@@ -217,9 +217,9 @@ final class As extends LamExpr {
 /// Alternative: `a // b` — evaluate [left]; if it is `null`, evaluate
 /// [right] instead. Otherwise return [left]'s result unchanged.
 ///
-/// Lambé's semantics differ deliberately from jq's: jq's `//` fires on
-/// "null or false". Lambé's fires only on `null`. A genuine `false`
-/// passes through — matching Lambé's broader strictness stance.
+/// Lambë's semantics differ deliberately from jq's: jq's `//` fires on
+/// "null or false". Lambë's fires only on `null`. A genuine `false`
+/// passes through — matching Lambë's broader strictness stance.
 ///
 /// Because field access on a missing key already yields `null` via
 /// null-propagation, `//` doubles as a missing-key fallback:

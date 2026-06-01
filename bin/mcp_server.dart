@@ -1,4 +1,4 @@
-/// Lambé MCP server: exposes query, schema, and assert tools to AI agents.
+/// Lambë MCP server: exposes query, schema, and assert tools to AI agents.
 ///
 /// Run with: `dart run bin/mcp_server.dart`
 /// Or install: `dart pub global activate lambe` → `lam-mcp`
@@ -16,14 +16,14 @@ void main() {
   LambeServer(stdioChannel(input: io.stdin, output: io.stdout));
 }
 
-/// MCP server providing Lambé query tools to AI agents.
+/// MCP server providing Lambë query tools to AI agents.
 base class LambeServer extends MCPServer with ToolsSupport {
-  /// Creates a Lambé MCP server connected to the given [channel].
+  /// Creates a Lambë MCP server connected to the given [channel].
   LambeServer(super.channel)
     : super.fromStreamChannel(
         implementation: Implementation(name: 'lambe', version: lambeVersion),
         instructions:
-            'Lambé is a multi-format query language for structured data. '
+            'Lambë is a multi-format query language for structured data. '
             'Use lambe_query to find, extract, filter, transform, or look up '
             'values from JSON, YAML, TOML, HCL, CSV, TSV, or Markdown files. '
             'Use lambe_print_shape to understand data structure before '
@@ -111,7 +111,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
       properties: {
         'expression': Schema.string(
           description:
-              'The Lambe query expression. Syntax reference:\n'
+              'The Lambë query expression. Syntax reference:\n'
               '\n'
               'Field access and indexing:\n'
               '  ".name"                                   — field access\n'
@@ -359,7 +359,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
     name: 'lambe_explain',
     description:
         'Use this tool to trace the shape of values flowing through a '
-        'Lambe query without running it. Returns a structured JSON '
+        'Lambë query without running it. Returns a structured JSON '
         'report with one entry per pipe stage (source + inferred shape), '
         'static-analysis warnings (empty filters, runtime rejections, '
         'and optionally trivial results), and the output formats the '
@@ -371,7 +371,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
     inputSchema: Schema.object(
       properties: {
         'expression': Schema.string(
-          description: 'The Lambe query expression to analyze.',
+          description: 'The Lambë query expression to analyze.',
         ),
         'data': Schema.string(
           description:

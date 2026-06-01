@@ -10,7 +10,7 @@
 /// File-loading helpers (`loadSchemaFromFile`, `loadSchemaForData`)
 /// live in `bin/schema_io.dart` because they pull in `dart:io`. The
 /// published library has zero `dart:io` imports so it stays
-/// WASM-compilable for browser consumers (e.g. the lambé playground).
+/// WASM-compilable for browser consumers (e.g. the lambë playground).
 library;
 
 import '../errors.dart';

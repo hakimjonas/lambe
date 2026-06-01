@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Lambe installer. Downloads the latest release binaries for your
+# Lambë installer. Downloads the latest release binaries for your
 # platform, verifies SHA256 checksums against the published
 # `checksums.txt`, and installs to `~/.local/bin/`.
 #

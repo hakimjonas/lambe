@@ -1,4 +1,4 @@
-.TH "LAM" "1" "May 2026" "Lambë 0.9.0" ""
+.TH "LAM" "1" "June 2026" "Lambë 0.12.0" ""
 .SH AUTHOR
 Hakim Jonas Ghoula
 .SH NAME
@@ -13,7 +13,7 @@ lam - query structured data files
 .PP
 Query JSON, YAML, TOML, HCL, CSV, TSV, and Markdown files using a composable pipeline DSL. Format is auto-detected from file extension.
 .PP
-Lambe infers the structural shape of query results and reports incompatibilities with target output formats. Use \fB--explain\fR to trace the shape at each pipeline stage, or the \fBas\fR(\fIfmt\fR) combinator inside a query to bridge common mismatches.
+Lambë infers the structural shape of query results and reports incompatibilities with target output formats. Use \fB--explain\fR to trace the shape at each pipeline stage, or the \fBas\fR(\fIfmt\fR) combinator inside a query to bridge common mismatches.
 .PP
 If no file is given, reads from standard input.
 .SH OPTIONS
@@ -64,7 +64,7 @@ Treat input as ndjson or jsonl: one JSON document per line, evaluated independen
 Run the query against \fBnull\fR context with no input. Useful for value computations like \fClam -n '[1,2,3] | unique'\fR. Without \fB-n\fR, the missing-input guard fires (a typo'd filename or missing redirect is a common footgun); the flag makes the "I have no input" intent explicit. Cannot combine with \fB--interactive\fR, \fB--ndjson\fR, \fB--schema\fR, or \fB--assert\fR.
 .TP
 \fB--skill\fR
-Print the embedded agent SKILL.md to stdout and exit. Lets agent harnesses install the skill regardless of how \fClam\fR was acquired: \fClam --skill > .agents/skills/lambe/SKILL.md\fR. The content is captured at compile time from \fC.agents/skills/lambe/SKILL.md\fR in the lambé source.
+Print the embedded agent SKILL.md to stdout and exit. Lets agent harnesses install the skill regardless of how \fClam\fR was acquired: \fClam --skill > .agents/skills/lambe/SKILL.md\fR. The content is captured at compile time from \fC.agents/skills/lambe/SKILL.md\fR in the lambë source.
 .TP
 \fB-h\fR, \fB--help\fR
 Show usage information.
@@ -301,7 +301,7 @@ tail -f app.log | lam --ndjson '.user.id'
 .fi
 .SH SEE ALSO
 .PP
-\fBjq\fR(1) — the established JSON query tool. Lambe shares its pipeline aesthetic and extends to multi-format input with shape-aware output.
+\fBjq\fR(1) — the established JSON query tool. Lambë shares its pipeline aesthetic and extends to multi-format input with shape-aware output.
 .SH BUGS
 .PP
 Report issues at https://github.com/hakimjonas/lambe/issues.

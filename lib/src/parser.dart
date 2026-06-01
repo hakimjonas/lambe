@@ -311,13 +311,13 @@ final Parser<ParseError, LamExpr> _asOp = _sym('as')
 final Parser<ParseError, LamExpr> _pipeOp = _buildPipeOp();
 
 /// jq-ism aliases: names agents reach for that map cleanly to an
-/// existing Lambé op. Registered at the parser layer so shape/eval
+/// existing Lambë op. Registered at the parser layer so shape/eval
 /// stay unaware. Canonical name is what `--print-shape` / `--explain`
 /// emit; these just let jq-trained agents land the query.
 ///
-/// Only entries whose jq semantics match an existing Lambé op exactly
+/// Only entries whose jq semantics match an existing Lambë op exactly
 /// belong here. `select` deliberately stays out — `select(p)` is only
-/// valid inside `filter(...)` in Lambé and an alias would mislead;
+/// valid inside `filter(...)` in Lambë and an alias would mislead;
 /// `_jqIdiomHint` already steers users to `filter`. `paths`,
 /// `recurse`, etc. need pattern hints, not aliases.
 const Map<String, String> _jqAliases = {'tonumber': 'to_number', 'add': 'sum'};
@@ -422,13 +422,13 @@ final Parser<ParseError, String> _divSym = _lex(
   string('/').thenSkip(char('/').notFollowedBy),
 );
 
-/// Lambé's symbol parser routing: `/` requires a not-followed-by guard
+/// Lambë's symbol parser routing: `/` requires a not-followed-by guard
 /// so it doesn't shadow the `//` alternative; everything else is a
 /// whitespace-tolerant `_sym(...)`.
 Parser<ParseError, String> _opSym(String s) => s == '/' ? _divSym : _sym(s);
 
 /// Single Pratt parse covering prefix unary, the six binary precedence
-/// levels supplied by [cFamilyPrecedence], plus Lambé extensions: the
+/// levels supplied by [cFamilyPrecedence], plus Lambë extensions: the
 /// right-associative `//` alternative at the bottom, and the keyword
 /// aliases `and` / `or`. The conditional (`if/then/else`) is parsed
 /// inside `_atom` rather than as a Pratt operator because its
@@ -442,7 +442,7 @@ final Parser<ParseError, LamExpr> _operators = pratt<LamExpr>(_postfix, [
     binary: BinaryOp.new,
     unary: UnaryOp.new,
   ),
-  // Lambé-specific keyword aliases for && / ||. _kw enforces a word
+  // Lambë-specific keyword aliases for && / ||. _kw enforces a word
   // boundary so `.andy` / `.orbit` keep tokenizing as identifiers.
   InfixLeft(_kw('and'), 20, (LamExpr a, LamExpr b) => BinaryOp('&&', a, b)),
   InfixLeft(_kw('or'), 10, (LamExpr a, LamExpr b) => BinaryOp('||', a, b)),

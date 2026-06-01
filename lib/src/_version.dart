@@ -2,5 +2,5 @@
 // Run `dart run tool/gen_version.dart` to regenerate after bumping
 // pubspec.yaml version.
 
-/// Lambe version, sourced from pubspec.yaml at generation time.
-const lambeVersion = '0.11.0';
+/// Lambë version, sourced from pubspec.yaml at generation time.
+const lambeVersion = '0.12.0';

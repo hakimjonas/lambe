@@ -929,7 +929,7 @@ void main() {
 
   group('Bare pipe-op completion inside parameterised ops', () {
     // Bare pipe-op names like `text`, `length`, `to_entries` are legal
-    // expressions in lambé (sugar for `. | op`), so `map(text)` and
+    // expressions in lambë (sugar for `. | op`), so `map(text)` and
     // `filter(length > 0)` parse and run. These tests pin the
     // completer's behaviour for partial bare ops inside `map(...)` /
     // `filter(...)`. The shape filter uses the element shape of the

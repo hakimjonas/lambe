@@ -13,7 +13,7 @@ void main() {
 
   group('Title block', () {
     test('TH header from YAML front matter', () {
-      expect(output, contains('.TH "LAM" "1" "May 2026" "'));
+      expect(output, contains('.TH "LAM" "1" "June 2026" "'));
     });
 
     test('author section', () {

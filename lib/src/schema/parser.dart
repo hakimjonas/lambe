@@ -1,4 +1,4 @@
-/// Parser for a JSON Schema subset that maps to Lambe [Shape].
+/// Parser for a JSON Schema subset that maps to Lambë [Shape].
 ///
 /// Accepts four keywords:
 /// - `type` (string): `"null"`, `"boolean"`, `"number"`, `"integer"`,
@@ -141,10 +141,10 @@ Set<String> _requiredList(JsonValue? node, {required String path}) {
 }
 
 /// Keywords that are part of JSON Schema but have no mapping to
-/// Lambe's shape system. Each is rejected with a targeted error so the
+/// Lambë's shape system. Each is rejected with a targeted error so the
 /// user sees exactly which feature is unsupported.
 const _rejectedKeywords = <String, String>{
-  // Value-level constraints — out of scope. Lambe is a shape system,
+  // Value-level constraints — out of scope. Lambë is a shape system,
   // not a validator.
   'minimum': 'value-level constraints are not supported',
   'maximum': 'value-level constraints are not supported',
@@ -162,7 +162,7 @@ const _rejectedKeywords = <String, String>{
   'maxProperties': 'value-level constraints are not supported',
   'const': 'value-level constraints are not supported',
   'enum': 'value-level constraints are not supported',
-  // Structural combinators — out of scope. Lambe's shape ADT is
+  // Structural combinators — out of scope. Lambë's shape ADT is
   // unions-free by design.
   'allOf': 'structural combinators are not supported',
   'oneOf': 'structural combinators are not supported',

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# CLI-level micro-benchmarks for lambé.
+# CLI-level micro-benchmarks for lambë.
 #
 # Three cases drawn from the discovery report (0.8.0 baseline) plus one
 # realistic third case. Runs the AOT binary so JIT warmup is out of the
 # measurement; repeats N times and reports min / median / max in
 # milliseconds.
 #
-# Run from the lambé repo root:
+# Run from the lambë repo root:
 #   ./tool/bench/cli_bench.sh
 #
 # Requires:
@@ -77,7 +77,7 @@ EOF
   printf "%-50s %s\n" "$label" "$stats"
 }
 
-printf "lambé CLI bench (%s runs, AOT, %s)\n" "$RUNS" "$(./lam --version 2>/dev/null || echo unknown)"
+printf "lambë CLI bench (%s runs, AOT, %s)\n" "$RUNS" "$(./lam --version 2>/dev/null || echo unknown)"
 printf "%-50s %s\n" "case" "       min      median       max"
 printf "%-50s %s\n" "--------------------------------------------------" "---------------------------------"
 

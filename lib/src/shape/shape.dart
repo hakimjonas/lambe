@@ -196,7 +196,7 @@ final class SMap extends Shape {
 ///
 /// Optional appears in the shape system to let schema-declared
 /// absences be represented faithfully. At evaluation time, an
-/// optional field that's absent produces null through Lambe's usual
+/// optional field that's absent produces null through Lambë's usual
 /// null-propagation; the query language itself is unchanged. The
 /// variant's purpose is purely to sharpen [explain] and writer
 /// compatibility checks: an optional field accessed without a null

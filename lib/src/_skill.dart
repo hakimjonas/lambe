@@ -15,16 +15,16 @@ metadata:
   repository: https://github.com/hakimjonas/lambe
 ---
 
-# Lambé (`lam`) — structured data queries
+# Lambë (`lam`) — structured data queries
 
-Lambé is on the user's PATH after `dart pub global activate lambe`. You
+Lambë is on the user's PATH after `dart pub global activate lambe`. You
 invoke it via shell. The binary is named `lam`.
 
 **Sandbox note for agent harnesses:** some agent shells do not inherit
 the user's interactive PATH. If `lam: command not found` appears, fall
 back to the absolute path `~/.pub-cache/bin/lam`, which is where `dart
 pub global activate` installs it. This is a shell-environment behavior,
-not a lambé issue.
+not a lambë issue.
 
 ## When to reach for `lam`
 
@@ -91,7 +91,7 @@ boolean `&& || !`, null fallback `//`, conditional `if c then a else b`,
 object construction `{name, total: .price * .qty}`, string interpolation
 `"\(.name) is \(.age)"`, list literal `[1, 2, 3]`.
 
-**Boolean keywords**: lambé's logic operators are `&&` `||` `!`. `and`
+**Boolean keywords**: lambë's logic operators are `&&` `||` `!`. `and`
 and `or` are accepted as keyword aliases (jq compatibility). `not` is
 not aliased; use `!`.
 
@@ -126,7 +126,7 @@ and misses nested emphasis, links, and inline code.
 
 - **Output is pretty-printed JSON by default.** Pass `--no-pretty` for
   compact output, or `-r` for raw top-level strings (no quotes).
-- **Lambé's null contract**: navigation returns null (`.missing` is null,
+- **Lambë's null contract**: navigation returns null (`.missing` is null,
   doesn't throw); computation throws (`.missing + 5` errors). Use
   `.field == null` to test, or `.field // default` to substitute.
 - **Empty-list policy**: `first`/`last` return null on empty;
@@ -140,17 +140,17 @@ and misses nested emphasis, links, and inline code.
   errors. It prints the shape at every stage statically, plus warnings
   for runtime-rejected ops and provably-empty filters.
 
-## What lambé deliberately doesn't do
+## What lambë deliberately doesn't do
 
 `..` recursive descent, `def` user functions, `try`/`catch`, regex,
 `getpath`/`setpath`, in-place mutation, streaming. If you draft a
-query needing any of these, lambé will tell you with an "unknown
+query needing any of these, lambë will tell you with an "unknown
 pipe op" error or a `_jqIdiomHint`. See the non-goals reference for
-the lambé idiom that replaces each omission.
+the lambë idiom that replaces each omission.
 
 ## When you hit something this skill doesn't cover
 
-Deeper reference lives in the lambé repo:
+Deeper reference lives in the lambë repo:
 
 - `AGENTS.md` — broader reference: more examples, full pipeline op
   list, error pattern table, format auto-detect rules.
@@ -159,8 +159,8 @@ Deeper reference lives in the lambé repo:
   <https://github.com/hakimjonas/lambe/blob/main/doc/syntax.md>
 - `doc/recipes.md` — end-to-end examples.
   <https://github.com/hakimjonas/lambe/blob/main/doc/recipes.md>
-- `doc/non-goals.md` — what lambé deliberately doesn't do, and the
-  lambé idiom that replaces each omission.
+- `doc/non-goals.md` — what lambë deliberately doesn't do, and the
+  lambë idiom that replaces each omission.
   <https://github.com/hakimjonas/lambe/blob/main/doc/non-goals.md>
 
 The MCP server `lam-mcp` is available for sandboxed agents that can't

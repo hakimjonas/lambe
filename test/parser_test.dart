@@ -226,7 +226,7 @@ void main() {
 
     test('`add` parses as sum (jq alias)', () {
       // jq's `add` reduces a list of numbers to their sum, matching
-      // Lambé's `sum` exactly. Aliased so jq-trained agents land the
+      // Lambë's `sum` exactly. Aliased so jq-trained agents land the
       // right idiom; the AST and `--explain` output use the canonical
       // name.
       final viaAlias = _parse('.x | add') as Pipe;

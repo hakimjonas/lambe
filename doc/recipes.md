@@ -198,8 +198,8 @@ true
 ```
 
 These same queries are gated by `--assert` in `tool/lint_changelog.sh`,
-which CI runs on every push: lambé itself validates lambé's release
-notes, parsed by lambé's own Markdown parser. Real-world example of the
+which CI runs on every push: lambë itself validates lambë's release
+notes, parsed by lambë's own Markdown parser. Real-world example of the
 pattern.
 
 ## TOML (Rust, Python config)

@@ -1,10 +1,10 @@
-/// Lambé test matchers.
+/// Lambë test matchers.
 library;
 
 import 'package:lambe/lambe.dart';
 import 'package:matcher/matcher.dart';
 
-/// Matches when the Lambé [expression] evaluates to `true` against the data.
+/// Matches when the Lambë [expression] evaluates to `true` against the data.
 ///
 /// ```dart
 /// expect(data, lamWhere('.users | length > 0'));
@@ -12,7 +12,7 @@ import 'package:matcher/matcher.dart';
 /// ```
 Matcher lamWhere(String expression) => _LamWhereMatcher(expression);
 
-/// Matches when the Lambé [expression] evaluates to [expected] against the
+/// Matches when the Lambë [expression] evaluates to [expected] against the
 /// data.
 ///
 /// ```dart
@@ -22,7 +22,7 @@ Matcher lamWhere(String expression) => _LamWhereMatcher(expression);
 Matcher lamEquals(String expression, Object? expected) =>
     _LamEqualsMatcher(expression, expected);
 
-/// Matches when the Lambé [expression] evaluates to a value that satisfies
+/// Matches when the Lambë [expression] evaluates to a value that satisfies
 /// [matcher].
 ///
 /// ```dart
@@ -32,7 +32,7 @@ Matcher lamEquals(String expression, Object? expected) =>
 Matcher lamMatches(String expression, Matcher matcher) =>
     _LamMatchesMatcher(expression, matcher);
 
-/// Matches when the Lambé [expression] evaluates to a non-null value.
+/// Matches when the Lambë [expression] evaluates to a non-null value.
 ///
 /// ```dart
 /// expect(data, lamHas('.users[0].email'));
@@ -60,7 +60,7 @@ class _LamWhereMatcher extends Matcher {
 
   @override
   Description describe(Description description) =>
-      description.add('lambe query "$_expression" evaluates to true');
+      description.add('lambë query "$_expression" evaluates to true');
 
   @override
   Description describeMismatch(
@@ -100,7 +100,7 @@ class _LamEqualsMatcher extends Matcher {
 
   @override
   Description describe(Description description) =>
-      description.add('lambe query "$_expression" equals $_expected');
+      description.add('lambë query "$_expression" equals $_expected');
 
   @override
   Description describeMismatch(
@@ -135,7 +135,7 @@ class _LamMatchesMatcher extends Matcher {
 
   @override
   Description describe(Description description) =>
-      description.add('lambe query "$_expression" ').addDescriptionOf(_inner);
+      description.add('lambë query "$_expression" ').addDescriptionOf(_inner);
 
   @override
   Description describeMismatch(
@@ -171,7 +171,7 @@ class _LamHasMatcher extends Matcher {
 
   @override
   Description describe(Description description) =>
-      description.add('lambe query "$_expression" is non-null');
+      description.add('lambë query "$_expression" is non-null');
 
   @override
   Description describeMismatch(

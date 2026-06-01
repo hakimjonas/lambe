@@ -7,7 +7,7 @@
 ///   3. Schema-only fields: preserved.
 ///   4. Data-only fields: preserved.
 ///   5. Schema optional + data present: strip optional.
-///   6. Schema optional + data null: keep optional (Lambe-style
+///   6. Schema optional + data null: keep optional (Lambë-style
 ///      null propagation: null means absent-ish).
 ///   7. Disagreement on concrete types: QueryError with a path.
 ///   8. Recursion through lists and maps.
@@ -235,7 +235,7 @@ void main() {
     });
 
     test('schema optional + data null keeps optional '
-        '(Lambe null-propagation stance)', () {
+        '(Lambë null-propagation stance)', () {
       final schema = SMap({'age': SOptional(const SNum())});
       const data = SMap({'age': SNull()});
       final merged = mergeSchemaWithData(schema, data) as SMap;

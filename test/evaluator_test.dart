@@ -603,7 +603,7 @@ void main() {
       expect(query('.email // "unknown"', {'name': 'alice'}), 'unknown');
     });
 
-    test('false is NOT a fallback trigger (Lambé is NOT jq)', () {
+    test('false is NOT a fallback trigger (Lambë is NOT jq)', () {
       expect(query('.active // true', {'active': false}), false);
     });
 
