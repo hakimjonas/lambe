@@ -15,6 +15,7 @@ library;
 
 import 'package:lambe/lambe.dart';
 import 'package:lambe/src/evaluator.dart' as eval_;
+import 'package:lambe/src/shape/pipe_ops.dart' as ops_;
 import 'package:test/test.dart';
 
 /// Representative value for each concrete shape kind.
@@ -248,6 +249,63 @@ void main() {
               'registered in _specsByName.',
         );
       }
+    });
+  });
+
+  group('Unified pipe-op dispatch (As folded into the spec table)', () {
+    // After the As unification, every pipe op — including the custom
+    // [As] node with its typed [OutputFormat] argument — resolves
+    // through the same `pipeOpInfoFor` → `evalPipeOp` path. These pin
+    // that invariant so a future change cannot silently re-introduce a
+    // parallel `if (expr is As)` codepath without failing here.
+
+    test('As resolves through pipeOpInfoFor to the `as` spec', () {
+      // The BuiltinPipeOp round-trip above skips `custom` ops. This is
+      // the missing half: the lone custom node must resolve too.
+      for (final fmt in OutputFormat.values) {
+        final resolved = pipeOpInfoFor(As(fmt));
+        expect(
+          resolved?.name,
+          'as',
+          reason:
+              'As(${fmt.name}) must resolve to the `as` spec via '
+              'pipeOpInfoFor, not fall through to null.',
+        );
+      }
+    });
+
+    test('evalPipeOp evaluates an As node (same path as BuiltinPipeOp)', () {
+      // `as(toml)` on a list applies the curated `{items: .}` bridge.
+      // Going through evalPipeOp directly (not the top-level evaluate
+      // switch) proves the spec's eval field is what runs.
+      final result = ops_.evalPipeOp(const As(OutputFormat.toml), <Object?>[
+        1,
+        2,
+        3,
+      ], eval_.evaluate);
+      expect(result, <String, Object?>{
+        'items': <Object?>[1, 2, 3],
+      });
+    });
+
+    test('evalPipeOp throws QueryError on a non-pipe-op AST node', () {
+      // The dispatch's programmer-error guard: a node that is neither a
+      // BuiltinPipeOp nor an As (here a bare object constructor) has no
+      // spec, so evalPipeOp must reject it rather than silently no-op.
+      expect(
+        () => ops_.evalPipeOp(
+          const ObjConstruct([('x', Identity())]),
+          null,
+          eval_.evaluate,
+        ),
+        throwsA(
+          isA<QueryError>().having(
+            (e) => e.message,
+            'message',
+            contains('not a registered pipe-op AST'),
+          ),
+        ),
+      );
     });
   });
 }
