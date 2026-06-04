@@ -77,6 +77,9 @@ If no file is given, reads from standard input.
 **--completions** *SHELL*
 :   Print a shell completion script for *SHELL* (**bash**, **zsh**, or **fish**) to stdout and exit. The script completes flag names, their fixed enum values (`--to`, `--format`, `--flatten-cells`, `--completions`), and file paths. It is static — no document is parsed and `lam` is not invoked at completion time. Install per your shell, e.g. `lam --completions zsh > "${fpath[1]}/_lam"`.
 
+**--version**
+:   Print the Lambë version (`lam <version>`) and exit.
+
 **-h**, **--help**
 :   Show usage information.
 

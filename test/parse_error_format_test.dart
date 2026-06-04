@@ -376,5 +376,46 @@ void main() {
         expect(e.message, contains('bounded'));
       }
     });
+
+    test('| startswith hint says strings are opaque', () {
+      try {
+        parseAst('.name | startswith("v")');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('startswith'));
+        expect(e.message, contains('opaque'));
+      }
+    });
+
+    test('| endswith hint says strings are opaque', () {
+      try {
+        parseAst('.name | endswith(".exe")');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('endswith'));
+        expect(e.message, contains('opaque'));
+      }
+    });
+
+    test('| contains hint routes to has / filter / grep', () {
+      try {
+        parseAst('.tags | contains("x")');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('contains'));
+        expect(e.message, contains('has('));
+        expect(e.message, contains('filter(. == x)'));
+      }
+    });
+
+    test('| inside gets the same membership hint as contains', () {
+      try {
+        parseAst('.tags | inside([1, 2])');
+        fail('expected parse to fail');
+      } on QueryError catch (e) {
+        expect(e.message, contains('inside'));
+        expect(e.message, contains('filter(. == x)'));
+      }
+    });
   });
 }

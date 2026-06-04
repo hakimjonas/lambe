@@ -484,6 +484,17 @@ String? _jqPipeOpHint(String word) {
       return '`$word` is a regex op; lambë treats strings as opaque. '
           'Pipe through `grep` / `sed` / a regex tool before or after '
           '`lam` for regex transforms.';
+    case 'startswith':
+    case 'endswith':
+      return '`$word` is a string op; lambë treats strings as opaque. '
+          'Pipe through `grep` / `sed` before or after `lam` for '
+          'prefix/suffix matching.';
+    case 'contains':
+    case 'inside':
+      return '`$word` is not a lambë op. For map keys use `has("k")`, '
+          'for list membership use `filter(. == x) | length` (> 0), '
+          'and for substrings strings are opaque — use grep/sed '
+          'around `lam`.';
     case 'tojson':
       return '`tojson` is not a lambë op. Use `as(json)` to bridge to '
           'a JSON-shaped value, or run `lam` with `-t json` (the '

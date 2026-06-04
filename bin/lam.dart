@@ -120,6 +120,11 @@ void main(List<String> arguments) {
           allowed: ['bash', 'zsh', 'fish'],
           help: 'Print a shell completion script for the given shell and exit.',
         )
+        ..addFlag(
+          'version',
+          negatable: false,
+          help: 'Print the Lambë version and exit',
+        )
         ..addFlag('help', abbr: 'h', negatable: false, help: 'Show usage');
 
   final ArgResults args;
@@ -134,6 +139,11 @@ void main(List<String> arguments) {
 
   if (args.flag('help')) {
     _usage(argParser);
+    return;
+  }
+
+  if (args.flag('version')) {
+    stdout.writeln('lam $lambeVersion');
     return;
   }
 
