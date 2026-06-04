@@ -74,6 +74,9 @@ If no file is given, reads from standard input.
 **--skill**
 :   Print the embedded agent SKILL.md to stdout and exit. Lets agent harnesses install the skill regardless of how `lam` was acquired: `lam --skill > .agents/skills/lambe/SKILL.md`. The content is captured at compile time from `.agents/skills/lambe/SKILL.md` in the lambë source.
 
+**--completions** *SHELL*
+:   Print a shell completion script for *SHELL* (**bash**, **zsh**, or **fish**) to stdout and exit. The script completes flag names, their fixed enum values (`--to`, `--format`, `--flatten-cells`, `--completions`), and file paths. It is static — no document is parsed and `lam` is not invoked at completion time. Install per your shell, e.g. `lam --completions zsh > "${fpath[1]}/_lam"`.
+
 **-h**, **--help**
 :   Show usage information.
 

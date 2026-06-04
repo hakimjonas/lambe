@@ -66,6 +66,9 @@ Run the query against \fBnull\fR context with no input. Useful for value computa
 \fB--skill\fR
 Print the embedded agent SKILL.md to stdout and exit. Lets agent harnesses install the skill regardless of how \fClam\fR was acquired: \fClam --skill > .agents/skills/lambe/SKILL.md\fR. The content is captured at compile time from \fC.agents/skills/lambe/SKILL.md\fR in the lambë source.
 .TP
+\fB--completions\fR \fISHELL\fR
+Print a shell completion script for \fISHELL\fR (\fBbash\fR, \fBzsh\fR, or \fBfish\fR) to stdout and exit. The script completes flag names, their fixed enum values (\fC--to\fR, \fC--format\fR, \fC--flatten-cells\fR, \fC--completions\fR), and file paths. It is static — no document is parsed and \fClam\fR is not invoked at completion time. Install per your shell, e.g. \fClam --completions zsh > "${fpath[1]}/_lam"\fR.
+.TP
 \fB-h\fR, \fB--help\fR
 Show usage information.
 .SH QUERY LANGUAGE
