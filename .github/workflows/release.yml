@@ -81,9 +81,18 @@ jobs:
       - uses: softprops/action-gh-release@v3
         with:
           files: artifacts/*
+          # Tags with a pre-release identifier (e.g. v0.13.0-rc.1) publish
+          # as a GitHub pre-release, so install.sh's "latest" resolution
+          # and `brew`/`scoop` keep pointing at the last stable release.
+          prerelease: ${{ contains(github.ref_name, '-') }}
 
   publish-mcp:
     needs: release
+    # Skip the registry/package-manager publishing jobs for pre-release
+    # tags. They build + attest + create a (pre-)release so binaries are
+    # available for staging, but don't touch the MCP registry or push to
+    # the tap / Scoop bucket.
+    if: ${{ !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -166,6 +175,7 @@ jobs:
   # fine-grained PAT with contents:write on hakimjonas/homebrew-lambe.
   update-homebrew:
     needs: release
+    if: ${{ !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
@@ -238,6 +248,7 @@ jobs:
   # branch-protected, swap the final push for a create-pull-request step.
   update-scoop:
     needs: release
+    if: ${{ !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
