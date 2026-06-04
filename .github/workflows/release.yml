@@ -52,6 +52,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # Build-provenance attestation needs an OIDC token to sign and
+      # write permission to record the attestation for the repo.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -65,6 +69,14 @@ jobs:
           # install.sh reads this to verify downloaded binaries.
           sha256sum lam-* > checksums.txt
           cat checksums.txt
+
+      # Free supply-chain provenance: attests that these exact binaries
+      # were built by this workflow run from this commit. Verifiable with
+      #   gh attestation verify lam-macos-arm64 --repo hakimjonas/lambe
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "artifacts/lam-*"
 
       - uses: softprops/action-gh-release@v3
         with:
@@ -148,3 +160,135 @@ jobs:
 
       - name: Publish to MCP Registry
         run: ./mcp-publisher publish
+
+  # Regenerate the Homebrew formula from the released binaries and push
+  # it to the tap repo. Requires a HOMEBREW_TAP_TOKEN secret: a
+  # fine-grained PAT with contents:write on hakimjonas/homebrew-lambe.
+  update-homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate and push formula
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          TAG=${GITHUB_REF#refs/tags/}
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          SHA_MAC_ARM=$(sha256sum artifacts/lam-macos-arm64 | cut -d' ' -f1)
+          SHA_MAC_X64=$(sha256sum artifacts/lam-macos-x64 | cut -d' ' -f1)
+          SHA_LNX_ARM=$(sha256sum artifacts/lam-linux-arm64 | cut -d' ' -f1)
+          SHA_LNX_X64=$(sha256sum artifacts/lam-linux-x64 | cut -d' ' -f1)
+
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/hakimjonas/homebrew-lambe.git" tap
+          mkdir -p tap/Formula
+          cat > tap/Formula/lambe.rb <<EOF
+          class Lambe < Formula
+            desc "Shape-aware query language for JSON, YAML, TOML, HCL, CSV, and Markdown"
+            homepage "https://ardaproject.org/lambe"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              on_arm do
+                url "${BASE}/lam-macos-arm64"
+                sha256 "${SHA_MAC_ARM}"
+              end
+              on_intel do
+                url "${BASE}/lam-macos-x64"
+                sha256 "${SHA_MAC_X64}"
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url "${BASE}/lam-linux-arm64"
+                sha256 "${SHA_LNX_ARM}"
+              end
+              on_intel do
+                url "${BASE}/lam-linux-x64"
+                sha256 "${SHA_LNX_X64}"
+              end
+            end
+
+            def install
+              bin.install Dir["*"].first => "lam"
+            end
+
+            test do
+              assert_equal "2", shell_output("#{bin}/lam -n '1 + 1'").strip
+            end
+          end
+          EOF
+
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/lambe.rb
+          git diff --staged --quiet || git commit -m "lambe ${VERSION}"
+          git push
+
+  # Bump the Scoop manifest in this repo (it doubles as a Scoop bucket).
+  # NOTE: this pushes a commit to the default branch. If `main` is
+  # branch-protected, swap the final push for a create-pull-request step.
+  update-scoop:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Bump Scoop manifest
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          TAG=${GITHUB_REF#refs/tags/}
+          HASH=$(sha256sum artifacts/lam-windows-x64.exe | cut -d' ' -f1)
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download"
+          cat > bucket/lambe.json <<EOF
+          {
+            "version": "${VERSION}",
+            "description": "Shape-aware query language for structured data — JSON, YAML, TOML, HCL, CSV, Markdown.",
+            "homepage": "https://ardaproject.org/lambe",
+            "license": "MIT",
+            "architecture": {
+              "64bit": {
+                "url": "${BASE}/${TAG}/lam-windows-x64.exe#/lam.exe",
+                "hash": "${HASH}"
+              }
+            },
+            "bin": "lam.exe",
+            "checkver": {
+              "github": "https://github.com/${GITHUB_REPOSITORY}"
+            },
+            "autoupdate": {
+              "architecture": {
+                "64bit": {
+                  "url": "${BASE}/v\$version/lam-windows-x64.exe#/lam.exe",
+                  "hash": {
+                    "url": "${BASE}/v\$version/checksums.txt",
+                    "regex": "\$sha256\\\\s+lam-windows-x64.exe"
+                  }
+                }
+              }
+            }
+          }
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bucket/lambe.json
+          git diff --staged --quiet || git commit -m "scoop: lambe ${VERSION}"
+          git push
