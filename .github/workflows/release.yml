@@ -187,6 +187,10 @@ jobs:
         env:
           TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
+          if [ -z "${TAP_TOKEN}" ]; then
+            echo "::warning::HOMEBREW_TAP_TOKEN is not set; skipping Homebrew formula update. Add the secret to enable it."
+            exit 0
+          fi
           VERSION=${GITHUB_REF#refs/tags/v}
           TAG=${GITHUB_REF#refs/tags/}
           BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
@@ -303,5 +307,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add bucket/lambe.json
-          git diff --staged --quiet || git commit -m "scoop: lambe ${VERSION}"
-          git push
+          if git diff --staged --quiet; then
+            echo "Scoop manifest already up to date."
+          else
+            git commit -m "scoop: lambe ${VERSION}"
+            # main may have advanced during the build; rebase our single
+            # commit on top before pushing to avoid a non-fast-forward.
+            git pull --rebase origin main
+            git push
+          fi
