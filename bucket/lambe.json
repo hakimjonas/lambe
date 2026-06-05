@@ -1,0 +1,27 @@
+{
+  "version": "0.12.0",
+  "description": "Shape-aware query language for structured data — JSON, YAML, TOML, HCL, CSV, Markdown.",
+  "homepage": "https://ardaproject.org/lambe",
+  "license": "MIT",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/hakimjonas/lambe/releases/download/v0.12.0/lam-windows-x64.exe#/lam.exe",
+      "hash": "db0c915dd31c15ce4a40c33aedb6d86f77ea972c65f5e2b1d95cdc1e1fbb744f"
+    }
+  },
+  "bin": "lam.exe",
+  "checkver": {
+    "github": "https://github.com/hakimjonas/lambe"
+  },
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/hakimjonas/lambe/releases/download/v$version/lam-windows-x64.exe#/lam.exe",
+        "hash": {
+          "url": "https://github.com/hakimjonas/lambe/releases/download/v$version/checksums.txt",
+          "regex": "$sha256\\s+lam-windows-x64.exe"
+        }
+      }
+    }
+  }
+}

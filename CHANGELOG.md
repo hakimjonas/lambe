@@ -1,5 +1,9 @@
 ## Unreleased
 
+Install ergonomics and small CLI affordances surfaced while building out
+package-manager distribution (see the *Distribution and install
+ergonomics* section of `ROADMAP.md`).
+
 ### Features
 
 - `lam --completions <shell>` prints a static shell completion script for
@@ -10,6 +14,26 @@
   interface. No document is parsed and `lam` is not invoked at completion
   time — data-aware `.field` completion stays in the REPL, where a
   persistent process parses the document once.
+- `lam --version` prints `lam <version>` and exits. The version constant
+  was already generated from `pubspec.yaml` (and used by the REPL and MCP
+  server); this exposes it on the CLI for install verification and for
+  package-manager test blocks.
+- jq muscle-memory hints for `contains`, `inside`, `startswith`, and
+  `endswith`. `contains`/`inside` route to `has("k")` for map keys,
+  `filter(. == x) | length` for list membership, or grep/sed for
+  substrings; `startswith`/`endswith` note that Lambë treats strings as
+  opaque. Joins the existing advisor for `test`/`gsub`/`limit`/`range`.
+
+### Packaging
+
+- Scoop manifest (`bucket/lambe.json`) for Windows, with `checkver` and
+  `autoupdate` wired to GitHub releases and `checksums.txt`.
+- `doc/getting-started.md`: the macOS pre-built-binary example now leads
+  with Apple Silicon (`lam-macos-arm64`) and documents the Gatekeeper
+  quarantine workaround for browser downloads.
+- `install.sh`: the unsupported-OS message now points at the real
+  `lam-windows-x64.exe` release asset instead of a Scoop package that
+  did not exist yet.
 
 ## 0.12.0
 

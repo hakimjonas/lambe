@@ -69,6 +69,9 @@ Print the embedded agent SKILL.md to stdout and exit. Lets agent harnesses insta
 \fB--completions\fR \fISHELL\fR
 Print a shell completion script for \fISHELL\fR (\fBbash\fR, \fBzsh\fR, or \fBfish\fR) to stdout and exit. The script completes flag names, their fixed enum values (\fC--to\fR, \fC--format\fR, \fC--flatten-cells\fR, \fC--completions\fR), and file paths. It is static — no document is parsed and \fClam\fR is not invoked at completion time. Install per your shell, e.g. \fClam --completions zsh > "${fpath[1]}/_lam"\fR.
 .TP
+\fB--version\fR
+Print the Lambë version (\fClam <version>\fR) and exit.
+.TP
 \fB-h\fR, \fB--help\fR
 Show usage information.
 .SH QUERY LANGUAGE

@@ -865,4 +865,25 @@ void main() {
       },
     );
   });
+
+  group('--version: print version and exit', () {
+    test('prints "lam <version>" and exits 0', () async {
+      final (code, out, _) = await _runLam(['--version']);
+      expect(code, 0);
+      // Matches the constant generated from pubspec.yaml; the exact
+      // number tracks releases, so assert the shape rather than a literal.
+      expect(out.trim(), matches(RegExp(r'^lam \d+\.\d+\.\d+')));
+    });
+
+    test('matches the version in pubspec.yaml', () async {
+      final pubspec = await File('pubspec.yaml').readAsString();
+      final declared = RegExp(
+        r'^version:\s*(\S+)',
+        multiLine: true,
+      ).firstMatch(pubspec)!.group(1);
+      final (code, out, _) = await _runLam(['--version']);
+      expect(code, 0);
+      expect(out.trim(), 'lam $declared');
+    });
+  });
 }

@@ -65,7 +65,7 @@ detect_platform() {
   case "$os" in
     Linux)   platform_os="linux" ;;
     Darwin)  platform_os="macos" ;;
-    *) fail "Unsupported OS: $os. Use Scoop (Windows) or a pre-built binary from releases." ;;
+    *) fail "Unsupported OS: $os. On Windows, download lam-windows-x64.exe from https://github.com/$REPO/releases." ;;
   esac
   case "$arch" in
     x86_64|amd64)  platform_arch="x64" ;;

@@ -22,11 +22,22 @@ curl -L https://github.com/hakimjonas/lambe/releases/latest/download/lam-linux-x
 chmod +x lam
 sudo mv lam /usr/local/bin/
 
-# macOS
+# macOS (Apple Silicon)
+curl -L https://github.com/hakimjonas/lambe/releases/latest/download/lam-macos-arm64 -o lam
+chmod +x lam
+sudo mv lam /usr/local/bin/
+
+# macOS (Intel)
 curl -L https://github.com/hakimjonas/lambe/releases/latest/download/lam-macos-x64 -o lam
 chmod +x lam
 sudo mv lam /usr/local/bin/
 ```
+
+> **macOS Gatekeeper.** The release binaries are not code-signed. Downloading with `curl` (above) or the `curl … | sh` installer is unaffected. But if you download via a *browser* and macOS refuses to run `lam` with "cannot be opened because the developer cannot be verified," clear the quarantine flag once:
+>
+> ```bash
+> xattr -d com.apple.quarantine /usr/local/bin/lam
+> ```
 
 ### Build from source
 

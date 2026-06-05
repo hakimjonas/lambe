@@ -51,6 +51,36 @@ The rule: sharpen Lambë within its scope. Don't widen. Any of the items below m
 - **ndjson at the CLI layer.** Line-delimited JSON: one document per line, evaluated independently, no shared state between lines. Covers the "tail a log" use case without requiring streaming in the core. Small CLI-layer feature, not a core change.
 - **CSV cell-flattening policy.** A `--flatten-cells json` flag that encodes nested structure as a JSON string in a CSV cell rather than refusing. Opt-in on the writer side; default behavior stays at 0.8.0's refuse-rather-than-garble.
 
+## Distribution and install ergonomics
+
+A separate axis from the language roadmap above: how people *get* `lam`, not what it does. The aim is to make the reflexive install command work on every platform a colleague reaches for. Sequenced easy-and-free first; the only deferred work is the part behind a paywall.
+
+**Funding principle.** Lambë is unfunded FOSS. Anything with a recurring cost stays parked unless that changes. Free tiers cover the install paths that ~95% of users actually use, so the paid work is polish on the long tail, not a blocker.
+
+### Tier 1 — trivial, free, ship immediately
+
+- **macOS Gatekeeper note.** A one-line `xattr -d com.apple.quarantine ./lam` remedy in `doc/getting-started.md` for the browser-download path. Costs nothing, unblocks the only mac users who currently hit a wall.
+- **`install.sh` messaging.** The script advertises Scoop (`install.sh`) before a Scoop manifest exists. Point users only at channels that are real until Tier 2 lands.
+
+### Tier 2 — the mac/Windows ergonomics win (free, moderate effort)
+
+- **Homebrew tap.** A `hakimjonas/homebrew-lambe` repo with `Formula/lambe.rb` that installs the prebuilt macOS binaries (no Dart toolchain needed), shell completions, and the man page; `release.yml` auto-bumps version + SHA256 on each tag from the checksums it already computes. Gets colleagues to `brew install hakimjonas/lambe/lambe`. **Highest-impact item for the stated mac goal** — and Homebrew strips the quarantine xattr, so it sidesteps Gatekeeper entirely.
+- **Scoop manifest.** A `lambe.json` manifest (in-repo bucket or a small bucket repo), auto-bumped the same way. Gets Windows users to `scoop install lambe` and makes good on the `install.sh` promise.
+
+### Tier 3 — provenance and discoverability (free)
+
+- **Shell completions.** A `lam --completions {bash,zsh,fish}` subcommand, shipped as release assets and placed by the tap / `install.sh`. Completing the fixed-enum flags (`--to`, `--format`, `--flatten-cells`) teaches the format names without a docs trip.
+- **Build-provenance attestations.** `actions/attest-build-provenance` in `release.yml` — a free, verifiable supply-chain belt (`gh attestation verify lam-macos-arm64 --repo hakimjonas/lambe`) that's stronger than detached PGP for CI-built binaries. Complements the existing `checksums.txt`. Note: this is *provenance*, not OS code signing — it does not silence Gatekeeper/SmartScreen.
+
+### Tier 4 — parked behind the paywall (deferred, not scheduled)
+
+OS-enforced code signing is the only thing that silences Gatekeeper / SmartScreen automatically, and it is the only work here with a recurring bill. Deferred while Lambë is unfunded.
+
+- **macOS:** Apple Developer Program ($99/yr) + Developer ID signing + notarization, wrapped in a `.pkg`/`.dmg` (bare CLI binaries cannot be notarization-stapled).
+- **Windows:** Authenticode signing — EV cert (~$300–700/yr) or Azure Trusted Signing (~$10/mo) for SmartScreen reputation.
+
+Both buy only the *browser-download* path; Homebrew, the curl installer, and Scoop already strip the quarantine/mark-of-the-web friction for everyone else. Revisit only if funding appears (sponsorship) or if browser-download UX becomes a genuine, recurring complaint.
+
 ## Explicit non-goals
 
 The tool is small *because* these are excluded.
