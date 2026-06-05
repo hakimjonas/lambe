@@ -57,17 +57,19 @@ A separate axis from the language roadmap above: how people *get* `lam`, not wha
 
 **Funding principle.** Lambë is unfunded FOSS. Anything with a recurring cost stays parked unless that changes. Free tiers cover the install paths that ~95% of users actually use, so the paid work is polish on the long tail, not a blocker.
 
-### Tier 1 — trivial, free, ship immediately
+**Status:** Tiers 1–3 shipped in 0.13.0. Only Tier 4 (paid OS code signing) remains deferred.
+
+### Tier 1 — trivial, free, ship immediately — *shipped in 0.13.0*
 
 - **macOS Gatekeeper note.** A one-line `xattr -d com.apple.quarantine ./lam` remedy in `doc/getting-started.md` for the browser-download path. Costs nothing, unblocks the only mac users who currently hit a wall.
 - **`install.sh` messaging.** The script advertises Scoop (`install.sh`) before a Scoop manifest exists. Point users only at channels that are real until Tier 2 lands.
 
-### Tier 2 — the mac/Windows ergonomics win (free, moderate effort)
+### Tier 2 — the mac/Windows ergonomics win (free, moderate effort) — *shipped in 0.13.0*
 
 - **Homebrew tap.** A `hakimjonas/homebrew-lambe` repo with `Formula/lambe.rb` that installs the prebuilt macOS binaries (no Dart toolchain needed), shell completions, and the man page; `release.yml` auto-bumps version + SHA256 on each tag from the checksums it already computes. Gets colleagues to `brew install hakimjonas/lambe/lambe`. **Highest-impact item for the stated mac goal** — and Homebrew strips the quarantine xattr, so it sidesteps Gatekeeper entirely.
 - **Scoop manifest.** A `lambe.json` manifest (in-repo bucket or a small bucket repo), auto-bumped the same way. Gets Windows users to `scoop install lambe` and makes good on the `install.sh` promise.
 
-### Tier 3 — provenance and discoverability (free)
+### Tier 3 — provenance and discoverability (free) — *shipped in 0.13.0*
 
 - **Shell completions.** A `lam --completions {bash,zsh,fish}` subcommand, shipped as release assets and placed by the tap / `install.sh`. Completing the fixed-enum flags (`--to`, `--format`, `--flatten-cells`) teaches the format names without a docs trip.
 - **Build-provenance attestations.** `actions/attest-build-provenance` in `release.yml` — a free, verifiable supply-chain belt (`gh attestation verify lam-macos-arm64 --repo hakimjonas/lambe`) that's stronger than detached PGP for CI-built binaries. Complements the existing `checksums.txt`. Note: this is *provenance*, not OS code signing — it does not silence Gatekeeper/SmartScreen.
