@@ -59,8 +59,11 @@ run_invariant "no-duplicate-h2" \
 run_invariant "first-heading-is-h2" \
   '.children | filter(.type == "heading") | first | .level == 2'
 
-run_invariant "latest-h2-matches-pubspec-version" \
-  ".children | filter(.type == \"heading\" and .level == 2) | map(text) | first == \"$VERSION\""
+# A leading "## Unreleased" section is allowed to collect changes that
+# have landed but aren't cut yet; the version-match check then applies
+# to the first *versioned* heading below it.
+run_invariant "latest-versioned-h2-matches-pubspec-version" \
+  ".children | filter(.type == \"heading\" and .level == 2) | map(text) | filter(. != \"Unreleased\") | first == \"$VERSION\""
 
 if [ "$failed" -eq 0 ]; then
   echo "lint_changelog.sh: all invariants pass (version $VERSION)"
