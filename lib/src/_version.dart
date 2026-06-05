@@ -3,4 +3,4 @@
 // pubspec.yaml version.
 
 /// Lambë version, sourced from pubspec.yaml at generation time.
-const lambeVersion = '0.12.0';
+const lambeVersion = '0.13.0';

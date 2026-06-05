@@ -1,8 +1,10 @@
-## Unreleased
+## 0.13.0
 
-Install ergonomics and small CLI affordances surfaced while building out
-package-manager distribution (see the *Distribution and install
-ergonomics* section of `ROADMAP.md`).
+Distribution and install ergonomics: this release is about how people
+*get* `lam`, not what it does. Shell completions, a Homebrew tap, a
+Scoop manifest, `lam --version`, and release-workflow automation that
+keeps the package managers in sync. No language or API changes (see the
+*Distribution and install ergonomics* section of `ROADMAP.md`).
 
 ### Features
 
