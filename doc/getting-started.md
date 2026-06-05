@@ -47,6 +47,24 @@ sudo mv lam lam-mcp /usr/local/bin/
 sudo cp doc/lam.1 /usr/share/man/man1/
 ```
 
+### Shell completions
+
+`lam --completions <shell>` prints a completion script for `bash`, `zsh`, or
+`fish`. It completes flag names, their enum values (`--to json|yaml|…`,
+`--format`, `--flatten-cells`), and file paths. Install it where your shell
+looks for completions:
+
+```bash
+# bash — source it, or drop it in a bash-completion.d directory
+lam --completions bash > ~/.local/share/bash-completion/completions/lam
+
+# zsh — install on your $fpath as a file named _lam, then restart the shell
+lam --completions zsh > "${fpath[1]}/_lam"
+
+# fish
+lam --completions fish > ~/.config/fish/completions/lam.fish
+```
+
 ## Your first query
 
 Create a file called `data.json`:

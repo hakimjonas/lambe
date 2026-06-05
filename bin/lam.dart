@@ -11,6 +11,7 @@ import 'dart:io';
 import 'package:args/args.dart';
 import 'package:lambe/lambe.dart';
 
+import 'completions.dart';
 import 'repl.dart' show runRepl;
 import 'schema_io.dart';
 
@@ -113,6 +114,12 @@ void main(List<String> arguments) {
               'agent skills directory: `lam --skill > .agents/skills/lambe/SKILL.md`.',
           negatable: false,
         )
+        ..addOption(
+          'completions',
+          valueHelp: 'shell',
+          allowed: ['bash', 'zsh', 'fish'],
+          help: 'Print a shell completion script for the given shell and exit.',
+        )
         ..addFlag('help', abbr: 'h', negatable: false, help: 'Show usage');
 
   final ArgResults args;
@@ -136,6 +143,14 @@ void main(List<String> arguments) {
   //   `lam --skill > .agents/skills/lambe/SKILL.md`
   if (args.flag('skill')) {
     stdout.write(lambeSkill);
+    return;
+  }
+
+  // --completions <shell>: print a static completion script and exit.
+  // Generated from argParser, so it never drifts from the real flags.
+  final completionsShell = args.option('completions');
+  if (completionsShell != null) {
+    stdout.write(renderCompletions(completionsShell, argParser));
     return;
   }
 

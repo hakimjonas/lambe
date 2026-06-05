@@ -812,4 +812,49 @@ void main() {
       },
     );
   });
+
+  group('--completions: shell completion scripts', () {
+    test('bash script defines the completion and registers it', () async {
+      final (code, out, _) = await _runLam(['--completions', 'bash']);
+      expect(code, 0);
+      expect(out, contains('_lam()'));
+      expect(out, contains('complete -F _lam lam'));
+      // Enum values for --to are present.
+      expect(out, contains('json yaml toml csv tsv hcl'));
+    });
+
+    test('zsh script is an autoload #compdef file', () async {
+      final (code, out, _) = await _runLam(['--completions', 'zsh']);
+      expect(code, 0);
+      expect(out, startsWith('#compdef lam'));
+      expect(out, contains('_arguments'));
+      // Brace forms must sit OUTSIDE quotes so zsh expands them.
+      expect(out, contains("{-t,--to}'["));
+    });
+
+    test('fish script uses declarative complete lines', () async {
+      final (code, out, _) = await _runLam(['--completions', 'fish']);
+      expect(code, 0);
+      expect(out, contains('complete -c lam'));
+      expect(out, contains('-l to -x -a "json yaml toml csv tsv hcl"'));
+    });
+
+    test('rejects an unsupported shell', () async {
+      final (code, _, err) = await _runLam(['--completions', 'powershell']);
+      expect(code, isNonZero);
+      expect(err, contains('completions'));
+    });
+
+    test('bash output mentions every flag the CLI defines (no drift)', () async {
+      // Guard against the completion script falling behind the real CLI:
+      // every --flag the help text lists must appear in the bash script.
+      final (_, help, _) = await _runLam(['--help']);
+      final flags = RegExp(r'--[a-z][a-z-]+').allMatches(help).map((m) => m[0]).toSet();
+      final (code, bash, _) = await _runLam(['--completions', 'bash']);
+      expect(code, 0);
+      for (final flag in flags) {
+        expect(bash, contains(flag), reason: 'completion script is missing $flag');
+      }
+    });
+  });
 }
