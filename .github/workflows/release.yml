@@ -250,14 +250,23 @@ jobs:
           git push
 
   # Bump the Scoop manifest in this repo (it doubles as a Scoop bucket).
-  # NOTE: this pushes a commit to the default branch. If `main` is
-  # branch-protected, swap the final push for a create-pull-request step.
+  # `main` is branch-protected (5 required status checks, enforce_admins),
+  # so a direct push is rejected — GitHub returns GH006 because the pushed
+  # commit has no check runs and nothing can bypass. Instead, open a PR
+  # from a release branch; its own CI satisfies the required checks and it
+  # merges like any other change.
+  #
+  # The PR is created with SCOOP_PR_TOKEN (a fine-grained PAT with
+  # contents:write + pull-requests:write on this repo), NOT the built-in
+  # GITHUB_TOKEN: PRs opened by GITHUB_TOKEN do not trigger workflows
+  # (anti-recursion), so their required checks would never run and the PR
+  # would be unmergeable. If the secret is unset the job skips gracefully
+  # (warning + exit 0) so a release never fails on the Scoop bump; bump
+  # bucket/lambe.json by hand in that case.
   update-scoop:
     needs: release
     if: ${{ !contains(github.ref_name, '-') }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v6
         with:
@@ -268,8 +277,14 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Bump Scoop manifest
+      - name: Bump Scoop manifest and open PR
+        env:
+          GH_TOKEN: ${{ secrets.SCOOP_PR_TOKEN }}
         run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::warning::SCOOP_PR_TOKEN is not set; skipping Scoop manifest PR. Bump bucket/lambe.json by hand, or add the secret to enable it."
+            exit 0
+          fi
           VERSION=${GITHUB_REF#refs/tags/v}
           TAG=${GITHUB_REF#refs/tags/}
           HASH=$(sha256sum artifacts/lam-windows-x64.exe | cut -d' ' -f1)
@@ -304,15 +319,20 @@ jobs:
           }
           EOF
 
+          if git diff --quiet -- bucket/lambe.json; then
+            echo "Scoop manifest already up to date."
+            exit 0
+          fi
+
+          BRANCH="scoop/lambe-${VERSION}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "${BRANCH}"
           git add bucket/lambe.json
-          if git diff --staged --quiet; then
-            echo "Scoop manifest already up to date."
-          else
-            git commit -m "scoop: lambe ${VERSION}"
-            # main may have advanced during the build; rebase our single
-            # commit on top before pushing to avoid a non-fast-forward.
-            git pull --rebase origin main
-            git push
-          fi
+          git commit -m "scoop: lambe ${VERSION}"
+          git push -u origin "${BRANCH}" --force-with-lease
+          gh pr create \
+            --base main \
+            --head "${BRANCH}" \
+            --title "scoop: lambe ${VERSION}" \
+            --body "Automated Scoop manifest bump for v${VERSION}, opened by the release workflow. Merges once CI passes."

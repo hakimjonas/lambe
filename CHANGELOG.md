@@ -1,3 +1,17 @@
+## Unreleased
+
+### Fixes
+
+- `update-scoop` release job now opens a PR instead of pushing the Scoop
+  manifest bump directly to `main`. `main` is branch-protected (5
+  required checks, enforce_admins), so the direct push was rejected
+  (`GH006`) after the v0.13.0 release — the binaries, attestations,
+  GitHub release, MCP publish, and Homebrew bump all succeeded; only the
+  Scoop commit failed. The job now uses a `SCOOP_PR_TOKEN` PAT (so the
+  PR's CI actually runs) and skips gracefully when the secret is unset.
+- `bucket/lambe.json` bumped to 0.13.0 (the v0.13.0 release couldn't
+  commit it automatically; see above).
+
 ## 0.13.0
 
 Distribution and install ergonomics: this release is about how people
