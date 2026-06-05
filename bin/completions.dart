@@ -104,7 +104,9 @@ _arguments -s \\
 }
 
 String _fish(ArgParser p) {
-  final lines = <String>['# fish completion for lam. Place in ~/.config/fish/completions/lam.fish.'];
+  final lines = <String>[
+    '# fish completion for lam. Place in ~/.config/fish/completions/lam.fish.',
+  ];
   for (final o in p.options.values) {
     final b = StringBuffer('complete -c lam');
     if (o.abbr != null) b.write(' -s ${o.abbr}');

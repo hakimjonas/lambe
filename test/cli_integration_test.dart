@@ -845,16 +845,24 @@ void main() {
       expect(err, contains('completions'));
     });
 
-    test('bash output mentions every flag the CLI defines (no drift)', () async {
-      // Guard against the completion script falling behind the real CLI:
-      // every --flag the help text lists must appear in the bash script.
-      final (_, help, _) = await _runLam(['--help']);
-      final flags = RegExp(r'--[a-z][a-z-]+').allMatches(help).map((m) => m[0]).toSet();
-      final (code, bash, _) = await _runLam(['--completions', 'bash']);
-      expect(code, 0);
-      for (final flag in flags) {
-        expect(bash, contains(flag), reason: 'completion script is missing $flag');
-      }
-    });
+    test(
+      'bash output mentions every flag the CLI defines (no drift)',
+      () async {
+        // Guard against the completion script falling behind the real CLI:
+        // every --flag the help text lists must appear in the bash script.
+        final (_, help, _) = await _runLam(['--help']);
+        final flags =
+            RegExp(r'--[a-z][a-z-]+').allMatches(help).map((m) => m[0]).toSet();
+        final (code, bash, _) = await _runLam(['--completions', 'bash']);
+        expect(code, 0);
+        for (final flag in flags) {
+          expect(
+            bash,
+            contains(flag),
+            reason: 'completion script is missing $flag',
+          );
+        }
+      },
+    );
   });
 }
