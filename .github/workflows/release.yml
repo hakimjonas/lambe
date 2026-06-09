@@ -170,6 +170,37 @@ jobs:
       - name: Publish to MCP Registry
         run: ./mcp-publisher publish
 
+  # Publish the package to pub.dev via OIDC trusted publishing (no stored
+  # credentials — the same id-token mechanism publish-mcp uses). Requires
+  # the automated publisher to be configured once on pub.dev:
+  #   pub.dev → lambe → Admin → Automated publishing → Enable, repo
+  #   hakimjonas/lambe, tag pattern v{{version}}.
+  # Until that's enabled this job will fail at the publish step; the rest
+  # of the release is unaffected (it needs `release` only for ordering).
+  #
+  # Before this job existed pub.dev was published BY HAND, and 0.13.0
+  # shipped everywhere else while pub.dev stayed at 0.12.0 until caught.
+  publish-pub-dev:
+    needs: release
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dart-lang/setup-dart@v1.7.2
+        with:
+          sdk: 3.12.1
+
+      - run: dart pub get
+      # _version.dart is generated (gitignored), so regenerate it before
+      # publishing or the published package ships a stale version constant.
+      - run: dart run tool/gen_version.dart
+      - run: dart run tool/gen_skill.dart
+
+      - name: Publish to pub.dev
+        run: dart pub publish --force
+
   # Regenerate the Homebrew formula from the released binaries and push
   # it to the tap repo. Requires a HOMEBREW_TAP_TOKEN secret: a
   # fine-grained PAT with contents:write on hakimjonas/homebrew-lambe.
