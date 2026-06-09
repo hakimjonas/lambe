@@ -72,8 +72,18 @@ Print a shell completion script for \fISHELL\fR (\fBbash\fR, \fBzsh\fR, or \fBfi
 \fB--version\fR
 Print the Lambë version (\fClam <version>\fR) and exit.
 .TP
+\fB--update-check\fR, \fB--no-update-check\fR
+On a normal run, check at most once a day whether a newer \fClam\fR release exists and, if so, print a one-line notice to stderr with the upgrade command for the detected install method. Enabled by default; the check is cached, never blocks the query, never writes to stdout, and is off automatically in CI and when stderr is not a terminal. Disable with \fB--no-update-check\fR or by setting \fBLAM_NO_UPDATE_CHECK\fR.
+.TP
 \fB-h\fR, \fB--help\fR
 Show usage information.
+.SH ENVIRONMENT
+.TP
+\fBLAM_NO_UPDATE_CHECK\fR
+When set (to any value), disables the passive update check, equivalent to \fB--no-update-check\fR.
+.TP
+\fBCI\fR
+When set (to any value), the passive update check is disabled automatically, so scripted and continuous-integration runs never emit a notice.
 .SH QUERY LANGUAGE
 .PP
 Queries start with \fB.\fR (the current document) and chain operations with \fB|\fR.
@@ -225,6 +235,9 @@ Error, or \fB--assert\fR failed.
 .TP
 \fB~/.lambe_history\fR
 REPL command history, persisted between sessions.
+.TP
+\fB$XDG_CACHE_HOME/lambe/update-check.json\fR
+Update-check cache (falls back to \fB~/.cache/lambe/\fR or, on Windows, \fB%LOCALAPPDATA%\\lambe\\\fR). Stores the last-check timestamp and the latest known version. Safe to delete; recreated on the next run.
 .SH EXAMPLES
 .PP
 Extract a value:

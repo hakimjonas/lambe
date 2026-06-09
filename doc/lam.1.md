@@ -80,8 +80,19 @@ If no file is given, reads from standard input.
 **--version**
 :   Print the Lambë version (`lam <version>`) and exit.
 
+**--update-check**, **--no-update-check**
+:   On a normal run, check at most once a day whether a newer `lam` release exists and, if so, print a one-line notice to stderr with the upgrade command for the detected install method. Enabled by default; the check is cached, never blocks the query, never writes to stdout, and is off automatically in CI and when stderr is not a terminal. Disable with **--no-update-check** or by setting **LAM_NO_UPDATE_CHECK**.
+
 **-h**, **--help**
 :   Show usage information.
+
+# ENVIRONMENT
+
+**LAM_NO_UPDATE_CHECK**
+:   When set (to any value), disables the passive update check, equivalent to **--no-update-check**.
+
+**CI**
+:   When set (to any value), the passive update check is disabled automatically, so scripted and continuous-integration runs never emit a notice.
 
 # QUERY LANGUAGE
 
@@ -249,6 +260,9 @@ Tab completes field names and pipeline operations. Up/Down navigates history. Ct
 
 **~/.lambe_history**
 :   REPL command history, persisted between sessions.
+
+**$XDG_CACHE_HOME/lambe/update-check.json**
+:   Update-check cache (falls back to **~/.cache/lambe/** or, on Windows, **%LOCALAPPDATA%\\lambe\\**). Stores the last-check timestamp and the latest known version. Safe to delete; recreated on the next run.
 
 # EXAMPLES
 
