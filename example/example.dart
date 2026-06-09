@@ -33,6 +33,6 @@ void main() {
   final result = query('.users[0]', data);
   print(formatOutput(result, OutputFormat.yaml));
 
-  // Schema inference
+  // Schema inference: infer the structure as a JSON Schema document
   print(renderJsonSchema(shapeOf(data)));
 }

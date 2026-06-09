@@ -46,43 +46,6 @@ String formatOutput(
   OutputFormat.hcl => _toHcl(value),
 };
 
-/// Infer the structure of [value] without showing actual data.
-///
-/// Replaces values with type names:
-/// - `null` → `"null"`
-/// - `true`/`false` → `"boolean"`
-/// - `42`, `3.14` → `"number"`
-/// - `"hello"` → `"string"`
-/// - `[1, 2]` → `["number"]` (schema of first element)
-/// - `{a: 1}` → `{a: "number"}`
-///
-/// Deprecated in 0.9.0, to be removed in 1.0. Use
-/// `renderJsonSchema(shapeOf(value))` for the canonical JSON Schema
-/// output that round-trips with `parseJsonSchema`, or `shapeOf(value)`
-/// alone for the [Shape] ADT.
-@Deprecated(
-  'Use renderJsonSchema(shapeOf(value)) for JSON Schema output, or '
-  'shapeOf(value) for the Shape ADT. Scheduled for removal in 1.0.',
-)
-Object? inferSchema(Object? value) {
-  if (value == null) return 'null';
-  if (value is bool) return 'boolean';
-  if (value is int) return 'number';
-  if (value is double) return 'number';
-  if (value is String) return 'string';
-  if (value is List<Object?>) {
-    if (value.isEmpty) return <Object?>[];
-    return [inferSchema(value.first)];
-  }
-  if (value is Map<String, Object?>) {
-    return {
-      for (final MapEntry(:key, value: entryValue) in value.entries)
-        key: inferSchema(entryValue),
-    };
-  }
-  return value.runtimeType.toString();
-}
-
 String _toYaml(Object? value) {
   final ast = nativeToAst(value, yamlBuilder);
   return serializeYaml(ast);

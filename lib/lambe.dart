@@ -32,7 +32,7 @@ export 'src/input.dart'
     show Format, detectFormat, sniffFormat, parseInput, formatNames, mdToNative;
 export 'src/mcp_payload.dart' show renderMcpShapeErrorPayload;
 export 'src/output.dart'
-    show OutputFormat, CellPolicy, formatOutput, outputFormatNames, inferSchema;
+    show OutputFormat, CellPolicy, formatOutput, outputFormatNames;
 export 'src/schema/loader.dart' show mergeSchemaWithData;
 export 'src/schema/parser.dart' show parseJsonSchema;
 export 'src/schema/renderer.dart' show renderJsonSchema;
