@@ -170,6 +170,29 @@ jobs:
       - name: Publish to MCP Registry
         run: ./mcp-publisher publish
 
+  # Publish to pub.dev via OIDC trusted publishing (no stored credentials).
+  # Uses Dart's official reusable workflow rather than a hand-rolled job:
+  # setup-dart provisions the OIDC token, and the workflow runs a dry-run
+  # before the irreversible `dart pub publish -f`. The Dart team maintains
+  # the publishing logic; the docs strongly encourage this path.
+  #
+  # One-time setup on pub.dev (Admin → Automated publishing → Enable):
+  # repository hakimjonas/lambe, tag-pattern v{{version}}. The pubspec
+  # `version` must match the tag (e.g. tag v0.14.0 ⇒ version: 0.14.0).
+  # Until enabled the job fails in isolation; the rest of the release is
+  # unaffected (it needs `release` only for ordering). This closes the
+  # gap that left 0.13.0 at 0.12.0 on pub.dev when publishing was manual.
+  #
+  # NOTE: the committed tree is what gets published. _version.dart /
+  # _skill.dart are tracked and kept current by the generated-files CI
+  # check, so no regeneration step is needed here.
+  publish-pub-dev:
+    needs: release
+    if: ${{ !contains(github.ref_name, '-') }}
+    permissions:
+      id-token: write # provision the pub.dev OIDC token
+    uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1
+
   # Regenerate the Homebrew formula from the released binaries and push
   # it to the tap repo. Requires a HOMEBREW_TAP_TOKEN secret: a
   # fine-grained PAT with contents:write on hakimjonas/homebrew-lambe.
