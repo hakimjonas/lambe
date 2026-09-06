@@ -51,6 +51,88 @@ void main() {
     );
   });
 
+  group('Format sniffing: TOML table headers vs JSON arrays', () {
+    test(
+      '[table] header with assignments → toml',
+      () => expect(sniffFormat('[database]\nhost = "localhost"'), Format.toml),
+    );
+    test(
+      '[[array-of-tables]] header → toml',
+      () => expect(
+        sniffFormat('[[products]]\nname = "widget"'),
+        Format.toml,
+      ),
+    );
+    test(
+      'table header followed by another header → toml',
+      () => expect(sniffFormat('[a]\n\n[b]\nc = 1'), Format.toml),
+    );
+    test('bare bracket line stays json', () {
+      expect(sniffFormat('[2026]'), Format.json);
+      expect(sniffFormat('[1, 2]'), Format.json);
+    });
+    test('multi-line JSON array stays json', () {
+      expect(sniffFormat('[\n  {"a": 1}\n]'), Format.json);
+    });
+    test('bracketed string array stays json', () {
+      expect(sniffFormat('["a", "b"]'), Format.json);
+    });
+  });
+
+  group('Format sniffing: inline tables vs HCL blocks', () {
+    test(
+      'one-line inline table → toml, not hcl',
+      () => expect(sniffFormat('x = { a = 1 }'), Format.toml),
+    );
+    test(
+      'inline table with several pairs → toml',
+      () => expect(sniffFormat('point = { x = 1, y = 2 }'), Format.toml),
+    );
+    test(
+      'HCL block with labels → hcl',
+      () => expect(
+        sniffFormat(
+          'resource "aws_instance" "example" {\n  ami = "ami-0123"\n}',
+        ),
+        Format.hcl,
+      ),
+    );
+    test(
+      'HCL block with trailing comment → hcl',
+      () => expect(
+        sniffFormat('variable "x" { # region config\n  type = string\n}'),
+        Format.hcl,
+      ),
+    );
+  });
+
+  group('Format sniffing: leading comments', () {
+    test(
+      '# comment above a TOML body → toml',
+      () => expect(sniffFormat('# config\nname = "test"'), Format.toml),
+    );
+    test(
+      '# comment above a YAML body → yaml',
+      () => expect(sniffFormat('# config\nname: test'), Format.yaml),
+    );
+    test(
+      '# comment above a table header → toml',
+      () => expect(
+        sniffFormat('# server settings\n[server]\nport = 8080'),
+        Format.toml,
+      ),
+    );
+    test('# heading plus prose stays markdown', () {
+      expect(sniffFormat('# Title\n\nSome prose here.'), Format.markdown);
+    });
+    test('# heading plus list stays markdown', () {
+      expect(sniffFormat('# Title\n- item one\n- item two'), Format.markdown);
+    });
+    test('comment-only document stays markdown', () {
+      expect(sniffFormat('# just a note\n# another note'), Format.markdown);
+    });
+  });
+
   group('YAML input', () {
     test('simple mapping', () {
       final result = queryString('.name', 'name: Alice', format: Format.yaml);

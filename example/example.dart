@@ -34,5 +34,5 @@ void main() {
   print(formatOutput(result, OutputFormat.yaml));
 
   // Schema inference
-  print(inferSchema(data));
+  print(renderJsonSchema(shapeOf(data)));
 }

@@ -23,6 +23,15 @@ enum OutputFormat {
   hcl,
 }
 
+/// Names of all supported output formats, derived from
+/// [OutputFormat.values].
+///
+/// Single source of truth for CLI option validation, MCP schema enums,
+/// REPL help text, and completion lists.
+List<String> outputFormatNames() => [
+  for (final f in OutputFormat.values) f.name,
+];
+
 /// Policy for handling non-scalar cells in CSV/TSV output.
 ///
 /// Delimited formats project rows onto a flat grid of scalar cells. A

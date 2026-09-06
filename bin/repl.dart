@@ -98,12 +98,12 @@ void runRepl(Object? data, {OutputFormat format = OutputFormat.json}) {
             stdout.writeln('Output format: ${fmt.name}');
           } else {
             stderr.writeln(
-              'Unknown format: $arg (use json, yaml, toml, csv, tsv, hcl)',
+              'Unknown format: $arg (use ${outputFormatNames().join(', ')})',
             );
           }
 
         case 'to':
-          stderr.writeln('Usage: :to <json|yaml|toml|csv|tsv|hcl>');
+          stderr.writeln('Usage: :to <${outputFormatNames().join('|')}>');
 
         case 'raw':
           raw = !raw;
@@ -445,9 +445,6 @@ Object? _loadFile(String path) {
     final input = file.readAsStringSync();
     final fmt = detectFormat(path) ?? sniffFormat(input);
     return parseInput(input, fmt);
-  } on FormatException catch (e) {
-    stderr.writeln('Error: ${e.message}');
-    return null;
   } on QueryError catch (e) {
     stderr.writeln('Error: ${e.message}');
     return null;
@@ -463,7 +460,8 @@ void _printHelp() {
     '  :print-shape             Print the data\'s inferred shape as JSON Schema',
   );
   stdout.writeln(
-    '  :to <format>             Set output format (json, yaml, toml, csv, tsv, hcl)',
+    '  :to <format>             Set output format '
+    '(${outputFormatNames().join(', ')})',
   );
   stdout.writeln('  :raw                     Toggle raw string output');
   stdout.writeln('  :pretty                  Toggle pretty-printing');

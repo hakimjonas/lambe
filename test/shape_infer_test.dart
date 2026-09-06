@@ -220,6 +220,114 @@ void main() {
       expect(_inferFor('-.n', const SAny()), const SNum());
       expect(_inferFor('!.flag', const SAny()), const SBool());
     });
+
+    test('string addition infers string (L1)', () {
+      const input = SMap({'first': SString(), 'last': SString()});
+      expect(_inferFor('.first + .last', input), const SString());
+    });
+
+    test('mixed string addition infers string (L1)', () {
+      const input = SMap({'name': SString(), 'age': SNum()});
+      expect(_inferFor('.name + .age', input), const SString());
+    });
+
+    test('list addition joins element shapes (L1)', () {
+      const input = SMap({'a': SList(SNum()), 'b': SList(SNum())});
+      expect(_inferFor('.a + .b', input), const SList(SNum()));
+    });
+
+    test('list mixed with string addition widens to SAny (L1)', () {
+      const input = SMap({'a': SList(SNum()), 'b': SString()});
+      expect(_inferFor('.a + .b', input), const SAny());
+    });
+  });
+
+  group('inferShape: string indexing and slicing (F1)', () {
+    test('slicing a string infers string', () {
+      expect(_inferFor('.name[:3]', const SMap({'name': SString()})),
+          const SString());
+      expect(_inferFor('.name[1:3]', const SMap({'name': SString()})),
+          const SString());
+      expect(_inferFor('"hello"[2:]', const SAny()), const SString());
+    });
+
+    test('single-character indexing on a string infers optional string', () {
+      expect(_inferFor('.name[0]', const SMap({'name': SString()})),
+          SOptional(const SString()));
+      expect(_inferFor('"hello"[-1]', const SAny()),
+          SOptional(const SString()));
+    });
+
+    test('string indexing with a non-number index widens to SAny', () {
+      expect(
+        _inferFor('.name["a"]', const SMap({'name': SString()})),
+        const SAny(),
+      );
+    });
+
+    test('slicing an optional string keeps optionality', () {
+      final input = SMap({'name': SOptional(const SString())});
+      expect(_inferFor('.name[:3]', input), SOptional(const SString()));
+    });
+
+    test('slicing other scalars widens to SAny', () {
+      expect(_inferFor('.n[:3]', const SMap({'n': SNum()})), const SAny());
+    });
+  });
+
+  group('inferShape: bracketed map indexing (F2)', () {
+    test('literal key on a known map resolves the field shape', () {
+      expect(
+        _inferFor('.["x-axis"]', const SMap({'x-axis': SNum()})),
+        const SNum(),
+      );
+      expect(
+        _inferFor('.users[0]["name"]', const SMap({'users': SList(SMap({'name': SString()}))})),
+        const SString(),
+      );
+    });
+
+    test('missing literal key infers SNull (runtime null read)', () {
+      expect(
+        _inferFor('.["missing"]', const SMap({'name': SString()})),
+        const SNull(),
+      );
+    });
+
+    test('non-literal key on a map widens to SAny', () {
+      expect(
+        _inferFor('.[.key]', const SMap({'name': SString(), 'key': SString()})),
+        const SAny(),
+      );
+    });
+  });
+
+  group('inferShape: alternative on optional shapes (F3)', () {
+    test('optional left joins with concrete right to the inner shape', () {
+      final input = SMap({'email': SOptional(const SString()), 'name': const SString()});
+      expect(_inferFor('.email // .name', input), const SString());
+      expect(_inferFor('.email // "unknown"', input), const SString());
+    });
+
+    test('optional on both sides keeps optionality', () {
+      final input = SMap({
+        'email': SOptional(const SString()),
+        'phone': SOptional(const SString()),
+      });
+      expect(
+        _inferFor('.email // .phone', input),
+        SOptional(const SString()),
+      );
+    });
+
+    test('equal concrete shapes still pass through', () {
+      const input = SMap({'a': SNum(), 'b': SNum()});
+      expect(_inferFor('.a // .b', input), const SNum());
+    });
+
+    test('null left falls through to right shape', () {
+      expect(_inferFor('null // 42', const SAny()), const SNum());
+    });
   });
 
   group('inferShape: string interpolation', () {

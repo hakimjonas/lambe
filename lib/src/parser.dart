@@ -199,17 +199,23 @@ final Parser<ParseError, (String, LamExpr)> _objEntry =
       (key) => _sym(':').skipThen(defer(() => _expr)).map((val) => (key, val)),
     );
 
+/// Object constructor: `{expr}`, `{a: 1, b: 2}`, or `{a: 1,}` — a
+/// trailing comma before the closing brace is tolerated, mirroring the
+/// list form and common JSON5/JS habit.
 final Parser<ParseError, LamExpr> _objConstruct = _sym('{')
     .skipThen(_objEntry.sepBy(_sym(',')))
+    .thenSkip(_sym(',').optional)
     .thenSkip(_closeBrace)
     .map((entries) => ObjConstruct(entries) as LamExpr);
 
-/// List literal: `[expr, expr, ...]` or `[]`.
+/// List literal: `[expr, expr, ...]`, `[]`, or `[1, 2,]` — a trailing
+/// comma before the closing bracket is tolerated.
 ///
 /// Parsed at atom level so it never shadows postfix indexing
 /// (`expr[i]`), which requires a prior atom to the left of `[`.
 final Parser<ParseError, LamExpr> _listConstruct = _sym('[')
     .skipThen(defer(() => _expr).sepBy(_sym(',')))
+    .thenSkip(_sym(',').optional)
     .thenSkip(_closeBracket)
     .map((parts) => ListConstruct(parts) as LamExpr);
 

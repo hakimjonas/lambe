@@ -53,8 +53,9 @@ const _replCommands = <String>[
   'to',
 ];
 
-/// Output format names for `:to` command completion.
-const _outputFormats = <String>['csv', 'hcl', 'json', 'toml', 'tsv', 'yaml'];
+/// Output format names for `:to` command completion, derived from
+/// [OutputFormat.values] (sorted for stable presentation).
+final _outputFormats = outputFormatNames()..sort();
 
 /// Identifier: letter or underscore, then alphanumerics and underscores.
 ///

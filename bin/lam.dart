@@ -11,6 +11,7 @@ import 'dart:io';
 
 import 'package:args/args.dart';
 import 'package:lambe/lambe.dart';
+import 'package:rumil_expressions/rumil_expressions.dart' show typeName;
 
 import 'completions.dart';
 import 'repl.dart' show runRepl;
@@ -31,13 +32,13 @@ void main(List<String> arguments) {
           'format',
           abbr: 'f',
           help: 'Input format',
-          allowed: ['json', 'yaml', 'toml', 'hcl', 'csv', 'tsv', 'markdown'],
+          allowed: formatNames(),
         )
         ..addOption(
           'to',
           abbr: 't',
           help: 'Output format',
-          allowed: ['json', 'yaml', 'toml', 'csv', 'tsv', 'hcl'],
+          allowed: outputFormatNames(),
         )
         ..addOption(
           'flatten-cells',
@@ -387,14 +388,12 @@ void main(List<String> arguments) {
     }
   }
 
-  // Parse input if we have any.
+  // Parse input if we have any. parseInput reports every parse
+  // failure as [QueryError], regardless of format.
   Object? data;
   if (input != null && format != null) {
     try {
       data = parseInput(input, format);
-    } on FormatException catch (e) {
-      stderr.writeln('Error: invalid ${format.name} input: ${e.message}');
-      exit(1);
     } on QueryError catch (e) {
       stderr.writeln('Error: ${e.message}');
       exit(1);
@@ -551,7 +550,8 @@ void main(List<String> arguments) {
       exit(1);
     } else {
       stderr.writeln(
-        'Error: --assert expression must return a boolean, got ${result.runtimeType}',
+        'Error: --assert expression must return a boolean, '
+        'got ${typeName(result)}',
       );
       exit(1);
     }
@@ -744,26 +744,13 @@ bool _looksLikeDataFile(String path) {
   final lower = path.toLowerCase();
   // *.schema.json is the canonical JSON Schema filename — not data.
   if (lower.endsWith('.schema.json')) return false;
-  const dataExts = [
-    '.json',
-    '.ndjson',
-    '.jsonl',
-    '.jsonlines',
-    '.yaml',
-    '.yml',
-    '.toml',
-    '.tf',
-    '.hcl',
-    '.csv',
-    '.tsv',
-    '.md',
-    '.markdown',
-    '.proto',
-  ];
-  for (final ext in dataExts) {
-    if (lower.endsWith(ext)) return true;
-  }
-  return false;
+  // Extension set derived from [detectFormat]; anything it recognizes
+  // is data by definition.
+  if (detectFormat(path) != null) return true;
+  // Line-delimited JSON auto-enables --ndjson by extension but is not
+  // a [Format] value, so it needs its own check.
+  const ndjsonExts = ['.ndjson', '.jsonl', '.jsonlines'];
+  return ndjsonExts.any(lower.endsWith);
 }
 
 /// Emit a one-line "newer lam available" notice to stderr when every
@@ -816,11 +803,11 @@ void _usage(ArgParser parser) {
   stderr.writeln("  cat data.yaml | lam '.users | filter(.age > 30)'");
   stderr.writeln("  lam --to yaml '.config' data.json");
   stderr.writeln("  lam --to csv '.users | map({name, age})' data.json");
-  stderr.writeln("  lam '.[] | filter(.age > 30)' users.csv");
+  stderr.writeln("  lam '. | filter(.age > 30)' users.csv");
   stderr.writeln(
     "  lam '.children | filter(.type == \"heading\") | map(.level)' README.md",
   );
-  stderr.writeln('  lam --schema data.json');
+  stderr.writeln("  lam --schema user.schema.json '.name' data.json");
   stderr.writeln('  lam --assert \'.version != "0.0.0"\' pubspec.yaml');
   stderr.writeln('  lam -i data.json');
   stderr.writeln();

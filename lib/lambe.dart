@@ -29,10 +29,10 @@ export 'src/_version.dart' show lambeVersion;
 export 'src/ast.dart';
 export 'src/errors.dart';
 export 'src/input.dart'
-    show Format, detectFormat, sniffFormat, parseInput, mdToNative;
+    show Format, detectFormat, sniffFormat, parseInput, formatNames, mdToNative;
 export 'src/mcp_payload.dart' show renderMcpShapeErrorPayload;
 export 'src/output.dart'
-    show OutputFormat, CellPolicy, formatOutput, inferSchema;
+    show OutputFormat, CellPolicy, formatOutput, outputFormatNames, inferSchema;
 export 'src/schema/loader.dart' show mergeSchemaWithData;
 export 'src/schema/parser.dart' show parseJsonSchema;
 export 'src/schema/renderer.dart' show renderJsonSchema;
