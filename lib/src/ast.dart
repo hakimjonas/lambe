@@ -135,7 +135,7 @@ final class BinaryOp extends LamExpr {
 /// `map(transform)`. Custom-arity ops (currently just `as(fmt)` with its
 /// typed [OutputFormat] argument) keep dedicated AST classes; see [As].
 final class BuiltinPipeOp extends LamExpr {
-  /// The canonical op name (matches a [PipeOpInfo.name] in the spec table).
+  /// The canonical op name (matches a `PipeOpInfo.name` in the spec table).
   final String name;
 
   /// Parsed argument expressions, in source order. Empty for zero-arg ops.

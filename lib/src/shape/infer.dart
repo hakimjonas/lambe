@@ -73,8 +73,9 @@ Shape inferShape(LamExpr expr, Shape input) {
     // [SMap.fields] reads as null at runtime, so it infers [SNull].
     Index(:final target, :final index) => switch (inferShape(target, input)) {
       SList(element: final e) => e,
-      SString() when _plausiblyNum(inferShape(index, input)) =>
-        SOptional(const SString()),
+      SString() when _plausiblyNum(inferShape(index, input)) => SOptional(
+        const SString(),
+      ),
       SMap(:final fields) when index is StrLit =>
         fields[index.value] ?? const SNull(),
       SMap() => const SAny(),
@@ -85,8 +86,12 @@ Shape inferShape(LamExpr expr, Shape input) {
     Pipe(input: final lhs, :final op) => inferShape(op, inferShape(lhs, input)),
 
     UnaryOp(:final op) => _unaryOpShape(op, inferShape(expr.operand, input)),
-    BinaryOp(:final op, :final left, :final right) =>
-      _binaryOpShape(op, left, right, input),
+    BinaryOp(:final op, :final left, :final right) => _binaryOpShape(
+      op,
+      left,
+      right,
+      input,
+    ),
 
     ObjConstruct(:final entries) => SMap({
       for (final (key, valueExpr) in entries) key: inferShape(valueExpr, input),
@@ -158,8 +163,9 @@ Shape _lookupField(Shape context, String name) {
 Shape _indexOnOptional(Shape inner, LamExpr index) => switch (inner) {
   SList(element: final e) => SOptional(e),
   SString() => SOptional(const SString()),
-  SMap(:final fields) when index is StrLit =>
-    SOptional(fields[index.value] ?? const SNull()),
+  SMap(:final fields) when index is StrLit => SOptional(
+    fields[index.value] ?? const SNull(),
+  ),
   _ => const SAny(),
 };
 
@@ -176,14 +182,18 @@ Shape _binaryOpShape(String op, LamExpr left, LamExpr right, Shape input) {
     '+' => _addShape(l, r),
     // The evaluator coerces both operands with `asNum`, so a concrete
     // non-number operand is a guaranteed runtime error, not a number.
-    '-' || '*' || '/' || '%' =>
-      _plausiblyNum(l) && _plausiblyNum(r) ? const SNum() : const SAny(),
+    '-' ||
+    '*' ||
+    '/' ||
+    '%' => _plausiblyNum(l) && _plausiblyNum(r) ? const SNum() : const SAny(),
     // `==` / `!=` succeed on any operand pair.
     '==' || '!=' => const SBool(),
     // Ordering comparisons also run through `asNum`: strings, bools,
     // and containers cannot be ordered.
-    '<' || '<=' || '>' || '>=' =>
-      _plausiblyNum(l) && _plausiblyNum(r) ? const SBool() : const SAny(),
+    '<' ||
+    '<=' ||
+    '>' ||
+    '>=' => _plausiblyNum(l) && _plausiblyNum(r) ? const SBool() : const SAny(),
     // The evaluator coerces both operands with `asBool`.
     '&&' || '||' =>
       _plausiblyBool(l) && _plausiblyBool(r) ? const SBool() : const SAny(),

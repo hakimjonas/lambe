@@ -87,7 +87,7 @@ final RegExp _configAssignment = RegExp(
 
 /// A TOML-only assignment (TOML has no `key:` form).
 final RegExp _tomlAssignment = RegExp(
-  r'''^["']?[A-Za-z0-9_][A-Za-z0-9_\.\-]*["']?\s*=''' ,
+  r'''^["']?[A-Za-z0-9_][A-Za-z0-9_\.\-]*["']?\s*=''',
 );
 
 /// An HCL block opener: a line whose last significant character is
@@ -191,9 +191,8 @@ bool _looksLikeConfig(String text) {
 }
 
 /// True when any line of [text] ends with an open-block `{`.
-bool _hasBlockOpen(String text) => text
-    .split('\n')
-    .any((line) => _hclBlockOpen.hasMatch(line.trimRight()));
+bool _hasBlockOpen(String text) =>
+    text.split('\n').any((line) => _hclBlockOpen.hasMatch(line.trimRight()));
 
 /// Parse a [result] from a Rumil parser, converting to native Dart types
 /// via [toNative]. Throws [QueryError] on parse failure.

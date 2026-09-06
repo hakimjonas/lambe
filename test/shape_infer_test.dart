@@ -244,18 +244,26 @@ void main() {
 
   group('inferShape: string indexing and slicing (F1)', () {
     test('slicing a string infers string', () {
-      expect(_inferFor('.name[:3]', const SMap({'name': SString()})),
-          const SString());
-      expect(_inferFor('.name[1:3]', const SMap({'name': SString()})),
-          const SString());
+      expect(
+        _inferFor('.name[:3]', const SMap({'name': SString()})),
+        const SString(),
+      );
+      expect(
+        _inferFor('.name[1:3]', const SMap({'name': SString()})),
+        const SString(),
+      );
       expect(_inferFor('"hello"[2:]', const SAny()), const SString());
     });
 
     test('single-character indexing on a string infers optional string', () {
-      expect(_inferFor('.name[0]', const SMap({'name': SString()})),
-          SOptional(const SString()));
-      expect(_inferFor('"hello"[-1]', const SAny()),
-          SOptional(const SString()));
+      expect(
+        _inferFor('.name[0]', const SMap({'name': SString()})),
+        SOptional(const SString()),
+      );
+      expect(
+        _inferFor('"hello"[-1]', const SAny()),
+        SOptional(const SString()),
+      );
     });
 
     test('string indexing with a non-number index widens to SAny', () {
@@ -282,7 +290,12 @@ void main() {
         const SNum(),
       );
       expect(
-        _inferFor('.users[0]["name"]', const SMap({'users': SList(SMap({'name': SString()}))})),
+        _inferFor(
+          '.users[0]["name"]',
+          const SMap({
+            'users': SList(SMap({'name': SString()})),
+          }),
+        ),
         const SString(),
       );
     });
@@ -304,7 +317,10 @@ void main() {
 
   group('inferShape: alternative on optional shapes (F3)', () {
     test('optional left joins with concrete right to the inner shape', () {
-      final input = SMap({'email': SOptional(const SString()), 'name': const SString()});
+      final input = SMap({
+        'email': SOptional(const SString()),
+        'name': const SString(),
+      });
       expect(_inferFor('.email // .name', input), const SString());
       expect(_inferFor('.email // "unknown"', input), const SString());
     });
@@ -314,10 +330,7 @@ void main() {
         'email': SOptional(const SString()),
         'phone': SOptional(const SString()),
       });
-      expect(
-        _inferFor('.email // .phone', input),
-        SOptional(const SString()),
-      );
+      expect(_inferFor('.email // .phone', input), SOptional(const SString()));
     });
 
     test('equal concrete shapes still pass through', () {

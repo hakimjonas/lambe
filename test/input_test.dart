@@ -58,10 +58,7 @@ void main() {
     );
     test(
       '[[array-of-tables]] header → toml',
-      () => expect(
-        sniffFormat('[[products]]\nname = "widget"'),
-        Format.toml,
-      ),
+      () => expect(sniffFormat('[[products]]\nname = "widget"'), Format.toml),
     );
     test(
       'table header followed by another header → toml',
