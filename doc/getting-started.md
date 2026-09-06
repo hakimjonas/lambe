@@ -301,7 +301,7 @@ Output format: yaml
 lambe> :help
 Commands:
   :schema         Show data structure
-  :to <format>    Set output format (json, yaml, toml, csv, tsv, hcl)
+  :to <format>    Set output format (json, yaml, toml, csv, tsv, hcl, hocon)
   :raw            Toggle raw string output
   :pretty         Toggle pretty-printing
   :load <file>    Load a different data file

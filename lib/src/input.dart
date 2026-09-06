@@ -28,6 +28,9 @@ enum Format {
 
   /// CommonMark Markdown.
   markdown,
+
+  /// HOCON (lightbend/config spec): `.conf` / `.hocon` files.
+  hocon,
 }
 
 /// Names of all supported input formats, derived from [Format.values].
@@ -44,15 +47,45 @@ List<String> formatNames() => [for (final f in Format.values) f.name];
 ///
 /// For CSV/TSV with a header row, returns `List<Map<String, Object?>>` where
 /// each row is a map keyed by header names.
-Object? parseInput(String input, Format format) => switch (format) {
-  Format.json => _parse(parseJson(input), jsonToNative, 'JSON'),
-  Format.yaml => _parse(parseYaml(input), yamlToNative, 'YAML'),
-  Format.toml => _parse(parseToml(input), tomlDocToNative, 'TOML'),
-  Format.hcl => _parse(parseHcl(input), hclDocToNative, 'HCL'),
-  Format.csv => _parseDelimited(input, null),
-  Format.tsv => _parseDelimited(input, _detectTsvDialect(input)),
-  Format.markdown => _parseMd(input),
-};
+///
+/// For [Format.hocon], the document is resolved before conversion:
+/// includes load, substitutions look up, and concatenations combine.
+/// [hoconConfig] supplies the include loader and environment-variable
+/// fallback; without it, file includes only resolve when the loader is
+/// provided by the caller (CLI/REPL wire one relative to the input
+/// file) and environment fallback is disabled.
+Object? parseInput(String input, Format format, {HoconConfig? hoconConfig}) =>
+    switch (format) {
+      Format.json => _parse(parseJson(input), jsonToNative, 'JSON'),
+      Format.yaml => _parse(parseYaml(input), yamlToNative, 'YAML'),
+      Format.toml => _parse(parseToml(input), tomlDocToNative, 'TOML'),
+      Format.hcl => _parse(parseHcl(input), hclDocToNative, 'HCL'),
+      Format.csv => _parseDelimited(input, null),
+      Format.tsv => _parseDelimited(input, _detectTsvDialect(input)),
+      Format.markdown => _parseMd(input),
+      Format.hocon => _parseHocon(input, hoconConfig),
+    };
+
+/// Parse and resolve a HOCON document, converting to native Dart types.
+///
+/// Resolution errors (unresolvable substitutions, circular includes,
+/// required-include misses) surface as [QueryError], matching every
+/// other format's error contract.
+Object? _parseHocon(String input, HoconConfig? hoconConfig) {
+  final result = parseHocon(input);
+  final ast = switch (result) {
+    Success<ParseError, HoconValue>(:final value) => value,
+    Partial<ParseError, HoconValue>(:final value) => value,
+    Failure() => throw QueryError('HOCON parse error: ${result.errors}'),
+  };
+  try {
+    return hoconToNative(
+      resolveHocon(ast, config: hoconConfig ?? const HoconConfig()),
+    );
+  } on HoconResolveException catch (e) {
+    throw QueryError(e.message);
+  }
+}
 
 /// Detect format from a file path's extension.
 ///
@@ -67,6 +100,9 @@ Format? detectFormat(String path) {
   if (lower.endsWith('.tsv') || lower.endsWith('.tab')) return Format.tsv;
   if (lower.endsWith('.md') || lower.endsWith('.markdown')) {
     return Format.markdown;
+  }
+  if (lower.endsWith('.conf') || lower.endsWith('.hocon')) {
+    return Format.hocon;
   }
   return null;
 }

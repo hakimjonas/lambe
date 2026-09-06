@@ -235,7 +235,19 @@ base class LambeServer extends MCPServer with ToolsSupport {
 
       // Parse once, up front. Schema validation and the query both
       // work from the same parsed document instead of parsing twice.
-      final parsed = parseInput(data, format ?? sniffFormat(data));
+      // HOCON include loading needs file-path context the MCP sandbox
+      // does not have, so the loader is null (missing optional includes
+      // are ignored; required ones error clearly) and environment
+      // variables remain available as a fallback source.
+      final hoconConfig =
+          (format ?? sniffFormat(data)) == Format.hocon
+              ? HoconConfig(environment: io.Platform.environment)
+              : null;
+      final parsed = parseInput(
+        data,
+        format ?? sniffFormat(data),
+        hoconConfig: hoconConfig,
+      );
 
       // Validate data against schema, if provided. A structural
       // disagreement returns an error before the query runs.
@@ -313,7 +325,15 @@ base class LambeServer extends MCPServer with ToolsSupport {
 
     try {
       final format = formatStr != null ? Format.values.byName(formatStr) : null;
-      final parsed = parseInput(data, format ?? sniffFormat(data));
+      final hoconConfig =
+          (format ?? sniffFormat(data)) == Format.hocon
+              ? HoconConfig(environment: io.Platform.environment)
+              : null;
+      final parsed = parseInput(
+        data,
+        format ?? sniffFormat(data),
+        hoconConfig: hoconConfig,
+      );
       return CallToolResult(
         content: [TextContent(text: renderJsonSchema(shapeOf(parsed)))],
       );
@@ -370,7 +390,15 @@ base class LambeServer extends MCPServer with ToolsSupport {
     try {
       final schema = parseJsonSchema(schemaStr);
       final format = formatStr != null ? Format.values.byName(formatStr) : null;
-      final parsed = parseInput(data, format ?? sniffFormat(data));
+      final hoconConfig =
+          (format ?? sniffFormat(data)) == Format.hocon
+              ? HoconConfig(environment: io.Platform.environment)
+              : null;
+      final parsed = parseInput(
+        data,
+        format ?? sniffFormat(data),
+        hoconConfig: hoconConfig,
+      );
       mergeSchemaWithData(schema, shapeOf(parsed));
       return CallToolResult(content: [TextContent(text: '{"ok": true}')]);
     } on QueryError catch (e) {
@@ -475,7 +503,15 @@ base class LambeServer extends MCPServer with ToolsSupport {
       } else {
         final format =
             formatStr != null ? Format.values.byName(formatStr) : null;
-        final parsed = parseInput(data, format ?? sniffFormat(data));
+        final hoconConfig =
+            (format ?? sniffFormat(data)) == Format.hocon
+                ? HoconConfig(environment: io.Platform.environment)
+                : null;
+        final parsed = parseInput(
+          data,
+          format ?? sniffFormat(data),
+          hoconConfig: hoconConfig,
+        );
         final dataShape = shapeOf(parsed);
         inputShape =
             schemaStr != null
