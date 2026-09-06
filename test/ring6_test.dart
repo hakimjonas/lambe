@@ -87,56 +87,6 @@ void main() {
     });
   });
 
-  group('--schema: structure inference', () {
-    test('primitives', () {
-      expect(inferSchema(null), 'null');
-      expect(inferSchema(true), 'boolean');
-      expect(inferSchema(42), 'number');
-      expect(inferSchema(3.14), 'number');
-      expect(inferSchema('hello'), 'string');
-    });
-
-    test('list shows first element schema', () {
-      expect(inferSchema([1, 2, 3]), ['number']);
-    });
-
-    test('empty list', () {
-      expect(inferSchema(<Object?>[]), <Object?>[]);
-    });
-
-    test('map shows field schemas', () {
-      expect(inferSchema({'name': 'Alice', 'age': 25}), {
-        'name': 'string',
-        'age': 'number',
-      });
-    });
-
-    test('nested structure', () {
-      final schema = inferSchema({
-        'users': [
-          {'name': 'Alice', 'active': true},
-        ],
-        'total': 1,
-      });
-      expect(schema, {
-        'users': [
-          {'name': 'string', 'active': 'boolean'},
-        ],
-        'total': 'number',
-      });
-    });
-
-    test('list of maps', () {
-      final schema = inferSchema([
-        {'id': 1, 'name': 'Alice'},
-        {'id': 2, 'name': 'Bob'},
-      ]);
-      expect(schema, [
-        {'id': 'number', 'name': 'string'},
-      ]);
-    });
-  });
-
   group('--assert: validation', () {
     test('true expression', () {
       final result = query('.version != "0.0.0"', {'version': '1.0.0'});
@@ -229,18 +179,6 @@ void main() {
       );
       final json = formatOutput(result, OutputFormat.json, pretty: false);
       expect(json, contains('"name":"Alice"'));
-    });
-
-    test('schema of nested YAML', () {
-      final data = queryString(
-        '.',
-        'database:\n  host: localhost\n  port: 5432\n',
-        format: Format.yaml,
-      );
-      final schema = inferSchema(data);
-      expect(schema, {
-        'database': {'host': 'string', 'port': 'number'},
-      });
     });
 
     test('assert on TOML config', () {

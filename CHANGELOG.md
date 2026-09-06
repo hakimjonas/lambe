@@ -1,5 +1,14 @@
 ## Unreleased
 
+### Breaking
+
+- Removed the deprecated `inferSchema` library function. It was
+  deprecated in 0.9.0 (it emitted a lossy type-name structure that did
+  not round-trip) with removal scheduled for 1.0; removing it now in the
+  0.14.0 cycle. Use `renderJsonSchema(shapeOf(value))` for a JSON Schema
+  document that round-trips with `parseJsonSchema`, or `shapeOf(value)`
+  for the `Shape` ADT. CLI and MCP are unaffected — neither used it.
+
 ### Features
 
 - Passive update check. On a normal `lam` run (a query or the REPL),
