@@ -337,6 +337,18 @@ void main() {
       expect((pipe.op as BuiltinPipeOp).name, 'map');
       expect((pipe.op as BuiltinPipeOp).args[0], isA<ListConstruct>());
     });
+
+    test('trailing comma tolerated (F7)', () {
+      final expr = _parse('[1, 2, 3,]');
+      expect(expr, isA<ListConstruct>());
+      expect((expr as ListConstruct).parts.length, 3);
+    });
+
+    test('trailing comma with whitespace tolerated (F7)', () {
+      final expr = _parse('[.a, .b , ]');
+      expect(expr, isA<ListConstruct>());
+      expect((expr as ListConstruct).parts.length, 2);
+    });
   });
 
   group('Pipeline operations', () {
@@ -424,6 +436,18 @@ void main() {
       expect(expr, isA<Pipe>());
       final pipe = expr as Pipe;
       expect(pipe.op, isA<ObjConstruct>());
+    });
+
+    test('object constructor tolerates trailing comma (F7)', () {
+      final expr = _parse('{name: .name, age: .age,}');
+      expect(expr, isA<ObjConstruct>());
+      expect((expr as ObjConstruct).entries.length, 2);
+    });
+
+    test('shorthand object tolerates trailing comma (F7)', () {
+      final expr = _parse('{name, age,}');
+      expect(expr, isA<ObjConstruct>());
+      expect((expr as ObjConstruct).entries.length, 2);
     });
 
     test('. | .name parses as Pipe with Field', () {

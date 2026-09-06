@@ -11,6 +11,7 @@ import 'dart:io' as io;
 import 'package:dart_mcp/server.dart';
 import 'package:dart_mcp/stdio.dart';
 import 'package:lambe/lambe.dart';
+import 'package:rumil_expressions/rumil_expressions.dart' show typeName;
 
 void main() {
   LambeServer(stdioChannel(input: io.stdin, output: io.stdout));
@@ -41,7 +42,8 @@ base class LambeServer extends MCPServer with ToolsSupport {
             '  . | has("required_field")               — check existence\n'
             '\n'
             'Common mistakes:\n'
-            '  - Use && and || for boolean logic, not "and"/"or":\n'
+            '  - Use && and || for boolean logic '
+            '(the keyword forms "and"/"or" work too):\n'
             '      .users | filter(.age > 30 && .active)\n'
             '  - Hyphenated or dotted keys need bracket syntax:\n'
             '      .project["optional-dependencies"].dev\n'
@@ -128,7 +130,8 @@ base class LambeServer extends MCPServer with ToolsSupport {
               '  ".users | group_by(.dept)"                — returns [{key, values}]\n'
               '  ".users | unique_by(.role) | length"      — deduplicate\n'
               '\n'
-              'Boolean logic (combine predicates with && / || / !, NOT "and"/"or"):\n'
+              'Boolean logic (combine predicates with && / || / !; '
+              'the keyword forms and / or are also accepted):\n'
               '  ".users | filter(.active && .age > 30)"\n'
               '  ".items | filter(.status == \\"open\\" || .priority > 5)"\n'
               '\n'
@@ -175,7 +178,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
           description:
               'Input format: json, yaml, toml, hcl, csv, tsv, markdown. '
               'Auto-detected from content if omitted.',
-          values: ['json', 'yaml', 'toml', 'hcl', 'csv', 'tsv', 'markdown'],
+          values: formatNames(),
         ),
         'output_format': UntitledSingleSelectEnumSchema(
           description:
@@ -183,7 +186,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
               'yaml/toml/hcl for config-shaped results (root must be a map), '
               'csv/tsv for tabular results (root must be a list of maps or '
               'list of lists).',
-          values: ['json', 'yaml', 'toml', 'csv', 'tsv', 'hcl'],
+          values: outputFormatNames(),
         ),
         'flatten_cells': UntitledSingleSelectEnumSchema(
           description:
@@ -210,26 +213,37 @@ base class LambeServer extends MCPServer with ToolsSupport {
   );
 
   FutureOr<CallToolResult> _handleQuery(CallToolRequest request) {
-    final args = request.arguments!;
-    final expression = args['expression'] as String;
-    final data = args['data'] as String;
-    final formatStr = args['format'] as String?;
-    final outputFormatStr = args['output_format'] as String?;
-    final flattenCellsStr = args['flatten_cells'] as String?;
-    final schemaStr = args['schema'] as String?;
+    final args = request.arguments;
+    if (args == null) return _errorResult('Error: missing arguments.');
+    final expression = args['expression'];
+    final data = args['data'];
+    if (expression is! String || expression.isEmpty) {
+      return _errorResult(
+        'Error: "expression" is required and must be a non-empty string.',
+      );
+    }
+    if (data is! String) {
+      return _errorResult('Error: "data" is required and must be a string.');
+    }
+    final formatStr = _optionalString(args, 'format');
+    final outputFormatStr = _optionalString(args, 'output_format');
+    final flattenCellsStr = _optionalString(args, 'flatten_cells');
+    final schemaStr = _optionalString(args, 'schema');
 
     try {
       final format = formatStr != null ? Format.values.byName(formatStr) : null;
 
-      // Validate data against schema first, if provided. A structural
+      // Parse once, up front. Schema validation and the query both
+      // work from the same parsed document instead of parsing twice.
+      final parsed = parseInput(data, format ?? sniffFormat(data));
+
+      // Validate data against schema, if provided. A structural
       // disagreement returns an error before the query runs.
       if (schemaStr != null) {
-        final schema = parseJsonSchema(schemaStr);
-        final parsed = parseInput(data, format ?? sniffFormat(data));
-        mergeSchemaWithData(schema, shapeOf(parsed));
+        mergeSchemaWithData(parseJsonSchema(schemaStr), shapeOf(parsed));
       }
 
-      final result = queryString(expression, data, format: format);
+      final result = query(expression, parsed);
       final outputFormat =
           outputFormatStr != null
               ? OutputFormat.values.byName(outputFormatStr)
@@ -247,9 +261,15 @@ base class LambeServer extends MCPServer with ToolsSupport {
       return _errorResult(renderMcpShapeErrorPayload(e, expression));
     } on QueryError catch (e) {
       return _errorResult('Error: ${e.message}');
-    } on FormatException catch (e) {
-      return _errorResult('Parse error: ${e.message}');
     }
+  }
+
+  /// Read an optional string argument without assuming the client sent
+  /// a well-typed payload: a non-string value is treated as absent
+  /// rather than crashing the handler with a cast error.
+  String? _optionalString(Map<Object?, Object?> args, String key) {
+    final value = args[key];
+    return value is String ? value : null;
   }
 
   // See `renderMcpShapeErrorPayload` in package:lambe/lambe.dart for
@@ -275,7 +295,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
         ),
         'format': UntitledSingleSelectEnumSchema(
           description: 'Input format. Auto-detected if omitted.',
-          values: ['json', 'yaml', 'toml', 'hcl', 'csv', 'tsv', 'markdown'],
+          values: formatNames(),
         ),
       },
       required: ['data'],
@@ -283,9 +303,13 @@ base class LambeServer extends MCPServer with ToolsSupport {
   );
 
   FutureOr<CallToolResult> _handlePrintShape(CallToolRequest request) {
-    final args = request.arguments!;
-    final data = args['data'] as String;
-    final formatStr = args['format'] as String?;
+    final args = request.arguments;
+    if (args == null) return _errorResult('Error: missing arguments.');
+    final data = args['data'];
+    if (data is! String) {
+      return _errorResult('Error: "data" is required and must be a string.');
+    }
+    final formatStr = _optionalString(args, 'format');
 
     try {
       final format = formatStr != null ? Format.values.byName(formatStr) : null;
@@ -323,7 +347,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
         ),
         'format': UntitledSingleSelectEnumSchema(
           description: 'Input format. Auto-detected if omitted.',
-          values: ['json', 'yaml', 'toml', 'hcl', 'csv', 'tsv', 'markdown'],
+          values: formatNames(),
         ),
       },
       required: ['schema', 'data'],
@@ -331,10 +355,17 @@ base class LambeServer extends MCPServer with ToolsSupport {
   );
 
   FutureOr<CallToolResult> _handleCheck(CallToolRequest request) {
-    final args = request.arguments!;
-    final schemaStr = args['schema'] as String;
-    final data = args['data'] as String;
-    final formatStr = args['format'] as String?;
+    final args = request.arguments;
+    if (args == null) return _errorResult('Error: missing arguments.');
+    final schemaStr = args['schema'];
+    final data = args['data'];
+    if (schemaStr is! String) {
+      return _errorResult('Error: "schema" is required and must be a string.');
+    }
+    if (data is! String) {
+      return _errorResult('Error: "data" is required and must be a string.');
+    }
+    final formatStr = _optionalString(args, 'format');
 
     try {
       final schema = parseJsonSchema(schemaStr);
@@ -381,7 +412,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
         ),
         'format': UntitledSingleSelectEnumSchema(
           description: 'Input format for [data]. Auto-detected if omitted.',
-          values: ['json', 'yaml', 'toml', 'hcl', 'csv', 'tsv', 'markdown'],
+          values: formatNames(),
         ),
         'schema': Schema.string(
           description:
@@ -410,13 +441,19 @@ base class LambeServer extends MCPServer with ToolsSupport {
   );
 
   FutureOr<CallToolResult> _handleExplain(CallToolRequest request) {
-    final args = request.arguments!;
-    final expression = args['expression'] as String;
-    final data = args['data'] as String?;
-    final formatStr = args['format'] as String?;
-    final schemaStr = args['schema'] as String?;
-    final includeTrivial = args['include_trivial'] as bool? ?? false;
-    final flattenCellsStr = args['flatten_cells'] as String?;
+    final args = request.arguments;
+    if (args == null) return _errorResult('Error: missing arguments.');
+    final expression = args['expression'];
+    if (expression is! String || expression.isEmpty) {
+      return _errorResult(
+        'Error: "expression" is required and must be a non-empty string.',
+      );
+    }
+    final data = _optionalString(args, 'data');
+    final formatStr = _optionalString(args, 'format');
+    final schemaStr = _optionalString(args, 'schema');
+    final includeTrivial = args['include_trivial'] == true;
+    final flattenCellsStr = _optionalString(args, 'flatten_cells');
 
     try {
       final ast = parseAst(expression);
@@ -457,8 +494,6 @@ base class LambeServer extends MCPServer with ToolsSupport {
       );
     } on QueryError catch (e) {
       return _errorResult('Error: ${e.message}');
-    } on FormatException catch (e) {
-      return _errorResult('Parse error: ${e.message}');
     }
   }
 
@@ -480,7 +515,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
         'data': Schema.string(description: 'The input data as a string'),
         'format': UntitledSingleSelectEnumSchema(
           description: 'Input format. Auto-detected if omitted.',
-          values: ['json', 'yaml', 'toml', 'hcl', 'csv', 'tsv', 'markdown'],
+          values: formatNames(),
         ),
       },
       required: ['expression', 'data'],
@@ -488,10 +523,19 @@ base class LambeServer extends MCPServer with ToolsSupport {
   );
 
   FutureOr<CallToolResult> _handleAssert(CallToolRequest request) {
-    final args = request.arguments!;
-    final expression = args['expression'] as String;
-    final data = args['data'] as String;
-    final formatStr = args['format'] as String?;
+    final args = request.arguments;
+    if (args == null) return _errorResult('Error: missing arguments.');
+    final expression = args['expression'];
+    final data = args['data'];
+    if (expression is! String || expression.isEmpty) {
+      return _errorResult(
+        'Error: "expression" is required and must be a non-empty string.',
+      );
+    }
+    if (data is! String) {
+      return _errorResult('Error: "data" is required and must be a string.');
+    }
+    final formatStr = _optionalString(args, 'format');
 
     try {
       final format = formatStr != null ? Format.values.byName(formatStr) : null;
@@ -504,7 +548,7 @@ base class LambeServer extends MCPServer with ToolsSupport {
       } else {
         return _errorResult(
           'Error: assertion expression must return boolean, '
-          'got ${result.runtimeType}: $result',
+          'got ${typeName(result)}: $result',
         );
       }
     } on QueryError catch (e) {

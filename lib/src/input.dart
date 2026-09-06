@@ -30,6 +30,13 @@ enum Format {
   markdown,
 }
 
+/// Names of all supported input formats, derived from [Format.values].
+///
+/// Single source of truth for CLI option validation, MCP schema enums,
+/// and any other surface that enumerates formats. Never hardcode the
+/// list again; adding a [Format] value propagates automatically.
+List<String> formatNames() => [for (final f in Format.values) f.name];
+
 /// Parse [input] string in the given [format] to native Dart types.
 ///
 /// Returns `Map<String, Object?>`, `List<Object?>`, `String`, `num`,
@@ -64,22 +71,128 @@ Format? detectFormat(String path) {
   return null;
 }
 
+/// TOML table header: `[section]` or array-of-tables `[[section]]`,
+/// occupying a whole line.
+final RegExp _tomlTableHeader = RegExp(r'^\[[A-Za-z0-9_\.\-]+\]\s*(#.*)?$');
+final RegExp _tomlTableArrayHeader = RegExp(
+  r'^\[\[[A-Za-z0-9_\.\-]+\]\]\s*(#.*)?$',
+);
+
+/// A TOML/HCL-style assignment: `key = value` or a quoted key. Key
+/// characters stop before whitespace so prose like "This is: a test"
+/// does not match.
+final RegExp _configAssignment = RegExp(
+  r'''^["']?[A-Za-z_][A-Za-z0-9_\.\-]*["']?\s*[:=]''',
+);
+
+/// A TOML-only assignment (TOML has no `key:` form).
+final RegExp _tomlAssignment = RegExp(
+  r'''^["']?[A-Za-z0-9_][A-Za-z0-9_\.\-]*["']?\s*=''',
+);
+
+/// An HCL block opener: a line whose last significant character is
+/// `{` (optionally followed by a trailing comment). TOML inline
+/// tables close on the same line, so they never match.
+final RegExp _hclBlockOpen = RegExp(r'''\{(\s*#.*|\s*//.*)?$''');
+
 /// Guess format by sniffing the input content.
 ///
 /// Falls back to [Format.json] if uncertain.
 Format sniffFormat(String input) {
   final trimmed = input.trimLeft();
+  if (trimmed.isEmpty) return Format.json;
+
+  // Leading `[` is ambiguous: a TOML table header and a JSON array
+  // both start with one. Commit to TOML only when the first line is a
+  // well-formed table header followed by TOML-looking content.
+  if (trimmed.startsWith('[') && _looksLikeTomlTableDoc(trimmed)) {
+    return Format.toml;
+  }
   if (trimmed.startsWith('{') || trimmed.startsWith('[')) return Format.json;
-  if (trimmed.startsWith('---') || trimmed.contains(': ')) return Format.yaml;
-  if (trimmed.contains(' = ') && !trimmed.contains('{')) return Format.toml;
-  if (trimmed.contains(' = ') || trimmed.contains(' {')) return Format.hcl;
-  if (trimmed.startsWith('#') ||
-      trimmed.startsWith('- ') ||
-      trimmed.startsWith('* ')) {
+  if (trimmed.startsWith('---')) return Format.yaml;
+
+  // Leading comment lines carry no format signal: `# comment` above a
+  // config body is documentation, not a Markdown heading. Classify by
+  // what follows the comments; a document that is all comments (or
+  // whose body is prose) is Markdown.
+  if (trimmed.startsWith('#')) {
+    final body = _stripLeadingCommentLines(trimmed);
+    if (body.isNotEmpty && _looksLikeConfig(body)) {
+      return _sniffBody(body);
+    }
+    return Format.markdown;
+  }
+
+  return _sniffBody(trimmed);
+}
+
+/// Classify comment-free configuration content.
+Format _sniffBody(String text) {
+  if (text.contains(': ')) return Format.yaml;
+  if (text.contains(' = ')) {
+    // A line that opens a block (`{` at end of line) is HCL block
+    // syntax. A same-line inline table (`x = { a = 1 }`) closes on the
+    // line it opens, which is TOML syntax, not HCL.
+    return _hasBlockOpen(text) ? Format.hcl : Format.toml;
+  }
+  if (text.contains(' {')) return Format.hcl;
+  if (text.startsWith('- ') || text.startsWith('* ')) {
     return Format.markdown;
   }
   return Format.json;
 }
+
+/// True when [text] starts with a TOML table header and carries
+/// TOML-looking content after it. A bare bracket line with no follow-up
+/// (`[2026]`) stays with JSON, where it is a valid one-element array.
+bool _looksLikeTomlTableDoc(String text) {
+  final lines = text.split('\n');
+  final first = lines.first.trimRight();
+  if (!_tomlTableHeader.hasMatch(first) &&
+      !_tomlTableArrayHeader.hasMatch(first)) {
+    return false;
+  }
+  if (lines.length == 1) return false;
+  return lines.skip(1).any((line) {
+    final l = line.trim();
+    if (l.isEmpty || l.startsWith('#')) return false;
+    return _tomlTableHeader.hasMatch(l) ||
+        _tomlTableArrayHeader.hasMatch(l) ||
+        _tomlAssignment.hasMatch(l);
+  });
+}
+
+/// Drop leading blank and full-line `#` comment lines.
+String _stripLeadingCommentLines(String text) {
+  final lines = text.split('\n');
+  var i = 0;
+  while (i < lines.length) {
+    final l = lines[i].trim();
+    if (l.isEmpty || l.startsWith('#')) {
+      i++;
+      continue;
+    }
+    break;
+  }
+  return i == 0 ? text : lines.skip(i).join('\n');
+}
+
+/// True when any content line of [text] looks like a configuration
+/// assignment (`key =`, `key:`, or a `[table]` header).
+bool _looksLikeConfig(String text) {
+  for (final line in text.split('\n')) {
+    final l = line.trim();
+    if (l.isEmpty || l.startsWith('#')) continue;
+    if (_tomlTableHeader.hasMatch(l)) return true;
+    if (_tomlTableArrayHeader.hasMatch(l)) return true;
+    if (_configAssignment.hasMatch(l)) return true;
+  }
+  return false;
+}
+
+/// True when any line of [text] ends with an open-block `{`.
+bool _hasBlockOpen(String text) =>
+    text.split('\n').any((line) => _hclBlockOpen.hasMatch(line.trimRight()));
 
 /// Parse a [result] from a Rumil parser, converting to native Dart types
 /// via [toNative]. Throws [QueryError] on parse failure.

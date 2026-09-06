@@ -9,7 +9,7 @@ import 'errors.dart';
 import 'output_format.dart';
 import 'shape/check.dart';
 
-export 'output_format.dart' show OutputFormat, CellPolicy;
+export 'output_format.dart' show OutputFormat, CellPolicy, outputFormatNames;
 
 /// Format [value] as a string in the given [format].
 ///
