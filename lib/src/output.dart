@@ -44,7 +44,22 @@ String formatOutput(
   OutputFormat.csv => _toCsv(value, ',', flattenCells),
   OutputFormat.tsv => _toCsv(value, '\t', flattenCells),
   OutputFormat.hcl => _toHcl(value),
+  OutputFormat.hocon => _toHocon(value, pretty: pretty),
 };
+
+/// Serialize [value] as HOCON.
+///
+/// Every JSON document is valid HOCON, so v1 emits the standard JSON
+/// form (pretty by default) — byte-for-byte what `serializeHocon`
+/// produces for the same value (2-space indent, identical escaping).
+/// The shape check treats HOCON like JSON ([AnyShape], see
+/// `requirementFor`). When HOCON-specific serialization (bare keys,
+/// `key { … }` blocks) lands in rumil_parsers, this delegates to it
+/// instead.
+String _toHocon(Object? value, {required bool pretty}) =>
+    pretty
+        ? const JsonEncoder.withIndent('  ').convert(value)
+        : const JsonEncoder().convert(value);
 
 String _toYaml(Object? value) {
   final ast = nativeToAst(value, yamlBuilder);

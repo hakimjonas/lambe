@@ -151,6 +151,7 @@ ShapeRequirement requirementFor(
 }) => switch (format) {
   OutputFormat.json => const AnyShape(),
   OutputFormat.yaml => const AnyShape(),
+  OutputFormat.hocon => const AnyShape(),
   OutputFormat.toml => const MustBeMap(),
   OutputFormat.hcl => const MustBeMap(),
   OutputFormat.csv || OutputFormat.tsv =>

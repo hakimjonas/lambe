@@ -393,7 +393,16 @@ void main(List<String> arguments) {
   Object? data;
   if (input != null && format != null) {
     try {
-      data = parseInput(input, format);
+      final hoconConfig =
+          format == Format.hocon
+              ? HoconConfig(
+                includeLoader: _fileIncludeLoader(
+                  filePath != null ? File(filePath).parent.path : null,
+                ),
+                environment: Platform.environment,
+              )
+              : null;
+      data = parseInput(input, format, hoconConfig: hoconConfig);
     } on QueryError catch (e) {
       stderr.writeln('Error: ${e.message}');
       exit(1);
@@ -734,6 +743,24 @@ Iterable<String> _stdinLines() sync* {
     yield line!;
   }
 }
+
+/// Build a HOCON include loader that resolves resources relative to
+/// [baseDir] (the parent of the input file) and falls back to absolute
+/// paths. Any read failure — missing file, permission, directory — is
+/// reported as "not found": optional includes are silently ignored and
+/// required ones produce a clear resolve error.
+String? Function(String) _fileIncludeLoader(String? baseDir) => (resource) {
+  try {
+    final file =
+        baseDir == null || baseDir.isEmpty || File(resource).isAbsolute
+            ? File(resource)
+            : File('$baseDir/$resource');
+    if (!file.existsSync()) return null;
+    return file.readAsStringSync();
+  } on FileSystemException {
+    return null;
+  }
+};
 
 /// True if [path] has a data-format extension (`.json`, `.yaml`, etc.)
 /// rather than the `*.schema.json` JSON-Schema convention. Used by the

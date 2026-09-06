@@ -11,6 +11,24 @@
 
 ### Features
 
+- **HOCON input and output.** `lam` now reads HOCON (the lightbend/config
+  specification) — `.conf` and `.hocon` files are auto-detected by
+  extension, and `-f hocon` covers stdin. Full spec support: `#` and `//`
+  comments, optional root braces, dotted keys, `+=` appends,
+  `${path}` / `${?path}` substitutions (forward references,
+  self-referential look-back, environment-variable fallback via the
+  process environment), value/object/array concatenation with the spec's
+  whitespace rules, triple-quoted strings, and `include` statements —
+  file includes resolve relative to the input file in the CLI and REPL
+  (the MCP sandbox has no file context, so its includes resolve through
+  environment fallback only). Circular includes and unbreakable
+  substitution cycles fail fast with clear diagnostics. `--to hocon`
+  emits standard JSON, which is valid HOCON; `as(hocon)` accepts any
+  shape. Auto-generated surfaces updated: manpage, agent skill, shell
+  completions, and MCP format enums.
+
+### Features
+
 - Passive update check. On a normal `lam` run (a query or the REPL),
   `lam` checks at most once a day whether a newer release exists and, if
   so, prints a one-line notice to stderr with the upgrade command for how

@@ -18,15 +18,19 @@ import 'dart:io';
 import 'package:test/test.dart';
 
 /// Runs `dart bin/lam.dart [args]` with optional [stdinContents] and
-/// returns `(exitCode, stdout, stderr)`.
+/// extra [environment] entries (added on top of the parent environment)
+/// and returns `(exitCode, stdout, stderr)`.
 Future<(int, String, String)> _runLam(
   List<String> args, {
   String? stdinContents,
+  Map<String, String> environment = const {},
 }) async {
-  final process = await Process.start('dart', [
-    'bin/lam.dart',
-    ...args,
-  ], workingDirectory: Directory.current.path);
+  final process = await Process.start(
+    'dart',
+    ['bin/lam.dart', ...args],
+    workingDirectory: Directory.current.path,
+    environment: environment,
+  );
 
   if (stdinContents != null) {
     process.stdin.add(utf8.encode(stdinContents));
@@ -813,6 +817,91 @@ void main() {
     );
   });
 
+  group('HOCON: .conf input, includes, and --to hocon', () {
+    test(
+      '.conf extension auto-detects HOCON and resolves substitutions',
+      () async {
+        final file = File('${tmp.path}/app.conf')
+          ..writeAsStringSync('base = 10\nsize = ${"\${base}"}MB\n');
+        final (code, out, _) = await _runLam(['.size', file.path]);
+        expect(code, 0);
+        expect(out.trim(), '"10MB"');
+      },
+    );
+
+    test('include loads relative to the input file', () async {
+      Directory('${tmp.path}/lib').createSync();
+      File(
+        '${tmp.path}/lib/defaults.conf',
+      ).writeAsStringSync('host = "db.internal"\nport = 5432\n');
+      final file = File('${tmp.path}/app.conf')..writeAsStringSync(
+        'include "lib/defaults.conf"\napp = ${"\${host}"}\n',
+      );
+      final (code, out, _) = await _runLam(['.app', file.path]);
+      expect(code, 0);
+      expect(out.trim(), '"db.internal"');
+    });
+
+    test('required include that is missing errors clearly', () async {
+      final file = File('${tmp.path}/app.conf')
+        ..writeAsStringSync('include required("nope.conf")\na = 1\n');
+      final (code, _, err) = await _runLam(['.a', file.path]);
+      expect(code, 1);
+      expect(err, contains('Required include not found: nope.conf'));
+    });
+
+    test('environment fallback resolves undefined substitutions', () async {
+      final file = File('${tmp.path}/app.conf')
+        ..writeAsStringSync('region = ${"\${LAMBE_TEST_REGION}"}\n');
+      final (code, out, _) = await _runLam(
+        ['.region', file.path],
+        stdinContents: null,
+        environment: {'LAMBE_TEST_REGION': 'eu-west-1'},
+      );
+      expect(code, 0);
+      expect(out.trim(), '"eu-west-1"');
+    });
+
+    test('--to hocon emits a valid HOCON/JSON document', () async {
+      final file = File('${tmp.path}/data.json')
+        ..writeAsStringSync('{"server":{"host":"h","port":1}}');
+      final (code, out, _) = await _runLam(['--to', 'hocon', '.', file.path]);
+      expect(code, 0);
+      expect(out, contains('"server": {'));
+      // The output is itself parseable HOCON (JSON subset).
+      final (recode, reout, _) = await _runLam([
+        '-f',
+        'hocon',
+        '.server.host',
+      ], stdinContents: out);
+      expect(recode, 0);
+      expect(reout.trim(), '"h"');
+    });
+
+    test('-f hocon reads HOCON from stdin', () async {
+      final (code, out, _) = await _runLam([
+        '-f',
+        'hocon',
+        '.a | type',
+      ], stdinContents: 'a { b = 1 }');
+      expect(code, 0);
+      expect(out.trim(), '"object"');
+    });
+
+    test('--explain on a .conf file traces shape per stage', () async {
+      final file = File('${tmp.path}/app.conf')
+        ..writeAsStringSync('users = [ { name = "a" } ]\n');
+      final (code, out, _) = await _runLam([
+        '--explain',
+        '.users | map(.name)',
+        file.path,
+      ]);
+      expect(code, 0);
+      expect(out, contains('map(.name)'));
+      expect(out, contains('list<string>'));
+    });
+  });
+
   group('--completions: shell completion scripts', () {
     test('bash script defines the completion and registers it', () async {
       final (code, out, _) = await _runLam(['--completions', 'bash']);
@@ -820,7 +909,7 @@ void main() {
       expect(out, contains('_lam()'));
       expect(out, contains('complete -F _lam lam'));
       // Enum values for --to are present.
-      expect(out, contains('json yaml toml csv tsv hcl'));
+      expect(out, contains('json yaml toml csv tsv hcl hocon'));
     });
 
     test('zsh script is an autoload #compdef file', () async {
@@ -836,7 +925,7 @@ void main() {
       final (code, out, _) = await _runLam(['--completions', 'fish']);
       expect(code, 0);
       expect(out, contains('complete -c lam'));
-      expect(out, contains('-l to -x -a "json yaml toml csv tsv hcl"'));
+      expect(out, contains('-l to -x -a "json yaml toml csv tsv hcl hocon"'));
     });
 
     test('rejects an unsupported shell', () async {

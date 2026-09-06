@@ -2,7 +2,7 @@
 
 Lambë (`lam`) is a query language for structured data. It extracts,
 filters, transforms, validates, and converts JSON, YAML, TOML, HCL,
-CSV, TSV, and Markdown — auto-detecting format from file extension.
+CSV, TSV, Markdown, and HOCON — auto-detecting format from file extension.
 
 This file teaches you (the agent) **when to reach for `lam` and how to
 write queries that work**. The `lam` binary is on the user's PATH after
@@ -212,6 +212,7 @@ lam '. | text' README.md
 | `.csv` | CSV |
 | `.tsv`, `.tab` | TSV |
 | `.md`, `.markdown` | Markdown |
+| `.conf`, `.hocon` | HOCON |
 
 Stdin sniffs from content. Override with `-f`/`--format`.
 
