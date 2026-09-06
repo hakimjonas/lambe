@@ -1,3 +1,17 @@
+## Unreleased
+
+### Features
+
+- Passive update check. On a normal `lam` run (a query or the REPL),
+  `lam` checks at most once a day whether a newer release exists and, if
+  so, prints a one-line notice to stderr with the upgrade command for how
+  it was installed (`brew upgrade lambe`, `scoop update lambe`,
+  `dart pub global activate lambe`, or re-running the installer). The
+  check is cached, never blocks the query, and never writes to stdout. It
+  is off automatically in CI and when stderr is not a terminal, and can
+  be disabled with `--no-update-check` or `LAM_NO_UPDATE_CHECK`. Lives
+  entirely in the CLI harness — the library stays `dart:io`-free.
+
 ## 0.13.0
 
 Distribution and install ergonomics: this release is about how people

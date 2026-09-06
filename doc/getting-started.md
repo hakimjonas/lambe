@@ -76,6 +76,31 @@ lam --completions zsh > "${fpath[1]}/_lam"
 lam --completions fish > ~/.config/fish/completions/lam.fish
 ```
 
+## Updating
+
+Update `lam` with whatever installed it:
+
+```bash
+# Homebrew
+brew upgrade lambe
+
+# Scoop (Windows)
+scoop update lambe
+
+# pub
+dart pub global activate lambe
+
+# curl installer or a downloaded binary — re-run the installer
+curl -fsSL https://raw.githubusercontent.com/hakimjonas/lambe/main/install.sh | sh
+```
+
+On a normal run `lam` checks once a day whether a newer release exists and,
+if so, prints a one-line notice to stderr with the right upgrade command for
+how you installed it. The check is cached, never blocks the query, and never
+writes to stdout. It is off automatically in CI and whenever stderr is not a
+terminal (so it can't leak into pipes or scripts). Disable it explicitly with
+`--no-update-check` or by setting `LAM_NO_UPDATE_CHECK`.
+
 ## Your first query
 
 Create a file called `data.json`:

@@ -886,4 +886,27 @@ void main() {
       expect(out.trim(), 'lam $declared');
     });
   });
+
+  group('--update-check: passive update notice', () {
+    // _runLam captures stdout/stderr via pipes, so stderr is not a
+    // terminal — the update check must stay off and never leak a notice
+    // into either stream. (The notice policy itself is unit-tested with
+    // seams in update_check_test.dart; here we pin the integration gate.)
+    test('no notice leaks to stderr on a normal run (non-TTY)', () async {
+      final (code, out, err) = await _runLam(['.a'], stdinContents: '{"a":1}');
+      expect(code, 0);
+      expect(out.trim(), '1');
+      expect(err, isNot(contains('new lam is available')));
+      expect(err, isEmpty);
+    });
+
+    test('--no-update-check is accepted on a normal run', () async {
+      final (code, out, _) = await _runLam([
+        '--no-update-check',
+        '.a',
+      ], stdinContents: '{"a":1}');
+      expect(code, 0);
+      expect(out.trim(), '1');
+    });
+  });
 }

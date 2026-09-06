@@ -5,6 +5,7 @@
 ///   `cat data.json | lam 'expression'`
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -14,6 +15,7 @@ import 'package:lambe/lambe.dart';
 import 'completions.dart';
 import 'repl.dart' show runRepl;
 import 'schema_io.dart';
+import 'update_check.dart';
 
 void main(List<String> arguments) {
   final argParser =
@@ -124,6 +126,16 @@ void main(List<String> arguments) {
           'version',
           negatable: false,
           help: 'Print the Lambë version and exit',
+        )
+        ..addFlag(
+          'update-check',
+          defaultsTo: true,
+          help:
+              'On a normal run, check for a newer lam release and print a '
+              'one-line notice to stderr. Cached daily, never blocks the '
+              'query. Disable with --no-update-check or by setting '
+              'LAM_NO_UPDATE_CHECK; off automatically in CI and when '
+              'stderr is not a terminal.',
         )
         ..addFlag('help', abbr: 'h', negatable: false, help: 'Show usage');
 
@@ -260,6 +272,22 @@ void main(List<String> arguments) {
       isNdjsonMode = true;
     }
   }
+
+  // Passive update notice — fires only for the interactive query path
+  // (a normal `lam EXPR file` run or the REPL). Suppressed for
+  // machine-consumed and scripted/static modes: ndjson streaming,
+  // -n/--null-input, --assert, --print-shape, and --explain*. (--version,
+  // --skill, --completions already returned above.) Synchronous cache
+  // read; any network refresh is fire-and-forget for the next run.
+  _maybeNotifyUpdate(
+    args,
+    suppressedMode:
+        isNdjsonMode ||
+        nullInput ||
+        isAssertMode ||
+        isPrintShapeMode ||
+        isExplainMode,
+  );
 
   if (isNdjsonMode) {
     if (isInteractive) {
@@ -736,6 +764,44 @@ bool _looksLikeDataFile(String path) {
     if (lower.endsWith(ext)) return true;
   }
   return false;
+}
+
+/// Emit a one-line "newer lam available" notice to stderr when every
+/// gate allows it. The decision is a synchronous cache read; a stale
+/// cache schedules a fire-and-forget network refresh for the next run
+/// (never awaited, so it can't block or delay this run).
+void _maybeNotifyUpdate(ArgResults args, {required bool suppressedMode}) {
+  final env = Platform.environment;
+  if (!shouldCheck(
+    stderrIsTerminal: stderr.hasTerminal,
+    optedOutByEnv: env.containsKey('LAM_NO_UPDATE_CHECK'),
+    // `--update-check` defaults true; `--no-update-check` makes it false.
+    optedOutByFlag: !args.flag('update-check'),
+    isCi: env.containsKey('CI'),
+    suppressedMode: suppressedMode,
+  )) {
+    return;
+  }
+
+  final store = FileCacheStore(resolveCachePath(env));
+  final now = DateTime.now();
+  final decision = decideNotice(
+    currentVersion: lambeVersion,
+    store: store,
+    channel: detectChannel(Platform.resolvedExecutable),
+    now: now,
+  );
+  if (decision.stale) {
+    unawaited(
+      refreshCache(
+        store: store,
+        fetch: defaultFetcher(currentVersion: lambeVersion),
+        now: now,
+      ),
+    );
+  }
+  final notice = decision.notice;
+  if (notice != null) stderr.writeln(notice.render());
 }
 
 /// Print usage information to stderr.
