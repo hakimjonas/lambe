@@ -250,7 +250,7 @@ lam -i data.json
 ```
 
 ```
-lambe v0.12.0 - type :help for commands, :q to quit
+lambe v0.14.0 - type :help for commands, :q to quit
 Data loaded: {3 fields, 42 users}
 
 lambe> .users | filter(.age > 30) | map(.name)

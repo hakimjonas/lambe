@@ -1,4 +1,4 @@
-## Unreleased
+## 0.14.0
 
 ### Breaking
 
@@ -26,8 +26,6 @@
   emits standard JSON, which is valid HOCON; `as(hocon)` accepts any
   shape. Auto-generated surfaces updated: manpage, agent skill, shell
   completions, and MCP format enums.
-
-### Features
 
 - Passive update check. On a normal `lam` run (a query or the REPL),
   `lam` checks at most once a day whether a newer release exists and, if
