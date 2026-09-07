@@ -1,6 +1,6 @@
 ---
 name: lambe
-description: Query, filter, transform, validate, and convert structured data files (JSON, YAML, TOML, HCL/Terraform, CSV, TSV, Markdown) using the `lam` CLI. Use when the user asks to extract a field, filter records, aggregate values, check structure, validate against a schema, or convert between formats. Works on config files, API responses, deployment manifests, data exports, and Markdown documents (parsed as a typed AST). Bounded — no recursion, no `def`, no regex; for those the user should reach for a real programming language.
+description: Query, filter, transform, validate, and convert structured data files (JSON, YAML, TOML, HCL/Terraform, CSV, TSV, Markdown, HOCON) using the `lam` CLI. Use when the user asks to extract a field, filter records, aggregate values, check structure, validate against a schema, or convert between formats. Works on config files, API responses, deployment manifests, data exports, and Markdown documents (parsed as a typed AST). Bounded — no recursion, no `def`, no regex; for those the user should reach for a real programming language.
 license: MIT
 metadata:
   homepage: https://pub.dev/packages/lambe

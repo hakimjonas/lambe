@@ -239,7 +239,15 @@ void main() {
     test(':to format completion', () {
       final (:start, :end, :candidates) = complete(':to ', 4, null);
       expect(start, 4);
-      expect(candidates, ['csv', 'hcl', 'json', 'toml', 'tsv', 'yaml']);
+      expect(candidates, [
+        'csv',
+        'hcl',
+        'hocon',
+        'json',
+        'toml',
+        'tsv',
+        'yaml',
+      ]);
     });
 
     test(':to partial', () {

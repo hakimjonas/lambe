@@ -444,12 +444,33 @@ Object? _loadFile(String path) {
   try {
     final input = file.readAsStringSync();
     final fmt = detectFormat(path) ?? sniffFormat(input);
-    return parseInput(input, fmt);
+    final hoconConfig =
+        fmt == Format.hocon
+            ? HoconConfig(
+              includeLoader: _fileIncludeLoader(file.parent.path),
+              environment: Platform.environment,
+            )
+            : null;
+    return parseInput(input, fmt, hoconConfig: hoconConfig);
   } on QueryError catch (e) {
     stderr.writeln('Error: ${e.message}');
     return null;
   }
 }
+
+/// HOCON include loader for REPL `:load` — resolves resources relative
+/// to the loaded file's directory (see the CLI loader for the failure
+/// policy). Any read failure is reported as "not found".
+String? Function(String) _fileIncludeLoader(String baseDir) => (resource) {
+  try {
+    final file =
+        File(resource).isAbsolute ? File(resource) : File('$baseDir/$resource');
+    if (!file.existsSync()) return null;
+    return file.readAsStringSync();
+  } on FileSystemException {
+    return null;
+  }
+};
 
 void _printHelp() {
   stdout.writeln('Commands:');

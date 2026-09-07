@@ -21,6 +21,11 @@ enum OutputFormat {
 
   /// HCL output (root must be a map).
   hcl,
+
+  /// HOCON output. Every JSON document is valid HOCON, so the value is
+  /// emitted in standard JSON form (pretty by default) — see
+  /// [OutputFormat.hocon] notes in the formatOutput doc.
+  hocon,
 }
 
 /// Names of all supported output formats, derived from

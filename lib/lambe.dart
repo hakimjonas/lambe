@@ -24,6 +24,7 @@ import 'src/input.dart';
 import 'src/input.dart' as input_;
 import 'src/parser.dart' as parser_;
 
+export 'package:rumil_parsers/rumil_parsers.dart' show HoconConfig;
 export 'src/_skill.dart' show lambeSkill;
 export 'src/_version.dart' show lambeVersion;
 export 'src/ast.dart';

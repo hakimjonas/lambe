@@ -77,9 +77,13 @@ void main() {
       );
     });
 
-    test('scalar result only writable as JSON and YAML', () {
+    test('scalar result only writable as JSON, YAML, and HOCON', () {
       final report = explain(_parse('.name'), const SMap({'name': SString()}));
-      expect(report.writableAs.map((f) => f.name), <String>['json', 'yaml']);
+      expect(report.writableAs.map((f) => f.name), <String>[
+        'json',
+        'yaml',
+        'hocon',
+      ]);
       expect(
         report.notWritableAs.map((f) => f.name),
         containsAll(<String>['toml', 'csv', 'tsv', 'hcl']),
@@ -805,7 +809,7 @@ void main() {
       expect(report.stages.last.shape, const SNull());
       expect(
         report.writableAs.map((f) => f.name).toSet(),
-        unorderedEquals(<String>['json', 'yaml']),
+        unorderedEquals(<String>['json', 'yaml', 'hocon']),
       );
     });
 

@@ -18,7 +18,7 @@ lam - query structured data files
 
 # DESCRIPTION
 
-Query JSON, YAML, TOML, HCL, CSV, TSV, and Markdown files using a composable pipeline DSL. Format is auto-detected from file extension.
+Query JSON, YAML, TOML, HCL, CSV, TSV, Markdown, and HOCON files using a composable pipeline DSL. Format is auto-detected from file extension.
 
 Lambë infers the structural shape of query results and reports incompatibilities with target output formats. Use **--explain** to trace the shape at each pipeline stage, or the **as**(*fmt*) combinator inside a query to bridge common mismatches.
 
@@ -36,10 +36,10 @@ If no file is given, reads from standard input.
 :   Output top-level string scalars without quotes. No effect on structured output (objects, arrays, numbers, booleans, null) — those still serialize through the active output format.
 
 **-f**, **--format** *FMT*
-:   Input format. One of: json, yaml, toml, hcl, csv, tsv, markdown. Auto-detected from file extension if omitted.
+:   Input format. One of: json, yaml, toml, hcl, csv, tsv, markdown, hocon. Auto-detected from file extension if omitted.
 
 **-t**, **--to** *FMT*
-:   Output format. One of: json, yaml, toml, csv, tsv, hcl. Default is json.
+:   Output format. One of: json, yaml, toml, csv, tsv, hcl, hocon. Default is json.
 
 **--flatten-cells** *POLICY*
 :   CSV/TSV policy for non-scalar cells. **refuse** (default) rejects list- or map-valued cells with a shape error. **json** encodes them as JSON strings inline; the shape check correspondingly widens to accept any list at the root. Ignored for other output formats.
@@ -207,7 +207,7 @@ Queries start with **.** (the current document) and chain operations with **|**.
 :   Filter a map's keys.
 
 **as**(*fmt*)
-:   Shape-directed bridge to an output format. No-op when the current shape already satisfies *fmt*. Applies a single curated bridge when one exists. Errors with a list of candidates when more than one could apply. Valid *fmt*: json, yaml, toml, csv, tsv, hcl.
+:   Shape-directed bridge to an output format. No-op when the current shape already satisfies *fmt*. Applies a single curated bridge when one exists. Errors with a list of candidates when more than one could apply. Valid *fmt*: json, yaml, toml, csv, tsv, hcl, hocon.
 
 # NULL PROPAGATION
 

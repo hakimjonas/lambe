@@ -11,7 +11,7 @@ lam - query structured data files
 \fBlam\fR \fB-i\fR [\fIOPTIONS\fR] \fIFILE\fR
 .SH DESCRIPTION
 .PP
-Query JSON, YAML, TOML, HCL, CSV, TSV, and Markdown files using a composable pipeline DSL. Format is auto-detected from file extension.
+Query JSON, YAML, TOML, HCL, CSV, TSV, Markdown, and HOCON files using a composable pipeline DSL. Format is auto-detected from file extension.
 .PP
 Lambë infers the structural shape of query results and reports incompatibilities with target output formats. Use \fB--explain\fR to trace the shape at each pipeline stage, or the \fBas\fR(\fIfmt\fR) combinator inside a query to bridge common mismatches.
 .PP
@@ -28,10 +28,10 @@ Disable pretty-printing.
 Output top-level string scalars without quotes. No effect on structured output (objects, arrays, numbers, booleans, null) — those still serialize through the active output format.
 .TP
 \fB-f\fR, \fB--format\fR \fIFMT\fR
-Input format. One of: json, yaml, toml, hcl, csv, tsv, markdown. Auto-detected from file extension if omitted.
+Input format. One of: json, yaml, toml, hcl, csv, tsv, markdown, hocon. Auto-detected from file extension if omitted.
 .TP
 \fB-t\fR, \fB--to\fR \fIFMT\fR
-Output format. One of: json, yaml, toml, csv, tsv, hcl. Default is json.
+Output format. One of: json, yaml, toml, csv, tsv, hcl, hocon. Default is json.
 .TP
 \fB--flatten-cells\fR \fIPOLICY\fR
 CSV/TSV policy for non-scalar cells. \fBrefuse\fR (default) rejects list- or map-valued cells with a shape error. \fBjson\fR encodes them as JSON strings inline; the shape check correspondingly widens to accept any list at the root. Ignored for other output formats.
@@ -186,7 +186,7 @@ Transform a map's values.
 Filter a map's keys.
 .TP
 \fBas\fR(\fIfmt\fR)
-Shape-directed bridge to an output format. No-op when the current shape already satisfies \fIfmt\fR. Applies a single curated bridge when one exists. Errors with a list of candidates when more than one could apply. Valid \fIfmt\fR: json, yaml, toml, csv, tsv, hcl.
+Shape-directed bridge to an output format. No-op when the current shape already satisfies \fIfmt\fR. Applies a single curated bridge when one exists. Errors with a list of candidates when more than one could apply. Valid \fIfmt\fR: json, yaml, toml, csv, tsv, hcl, hocon.
 .SH NULL PROPAGATION
 .PP
 Navigation on null returns null: \fB.missing\fR returns null, \fB.missing.nested\fR returns null.
