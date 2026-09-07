@@ -1,7 +1,7 @@
 ---
 title: LAM
 section: 1
-source: Lambë 0.13.0
+source: Lambë 0.14.0
 author: Hakim Jonas Ghoula
 date: June 2026
 ---
